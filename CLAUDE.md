@@ -38,7 +38,7 @@ Gaokao RAG：帮助高中学生备考的 AI 助手（核心目的），MVP 聚�
 | `docs/architecture.md` | 系统架构、TeamAgent 编排、三层存储 | src/ 整体 |
 | `docs/data_model.md` | SQLite schema、知识点树、Chroma metadata | src/store/ |
 | `docs/ingestion.md` | PDF 摄取管线 7 阶段 | src/ingestion/ |
-| `docs/agent_design.md` | TeamAgent 子 Agent 分工、委派策略、Prompt | src/rag/ |
+| `docs/agent.md` | TeamAgent 子 Agent 分工、委派策略、Prompt | src/rag/ |
 | `docs/vlm_strategy.md` | VLM 选型、Prompt、描述粒度 | src/api/ + src/ingestion/ |
 | `docs/mcp_interface.md` | MCP 工具清单 | scripts/ |
 | `docs/im_interface.md` | trpc-claw QQ 接入（nanobot 通道适配器扩展） | scripts/ + 部署 |

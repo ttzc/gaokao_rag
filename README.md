@@ -76,7 +76,7 @@ gaokao_rag/
 │   ├── architecture.md        # 架构设计详解
 │   ├── data_model.md          # 数据模型与知识点图谱
 │   ├── ingestion.md           # 多模态摄取管线
-│   ├── agent_design.md        # Agent 编排与 TeamAgent 设计
+│   ├── agent.md               # Agent 编排与 TeamAgent 设计
 │   ├── vlm_strategy.md        # VLM 图形理解策略
 │   ├── mcp_interface.md       # MCP 接口设计
 │   ├── im_interface.md        # IM 接入（QQ 官方 API + 通道适配器）
@@ -131,7 +131,7 @@ gaokao_rag/
 | [架构设计](docs/architecture.md) | 系统架构、tRPC-Agent 集成方式、TeamAgent 编排设计 |
 | [数据模型](docs/data_model.md) | SQLite schema、知识点图谱、元数据设计 |
 | [摄取管线](docs/ingestion.md) | PDF 解析、图像提取、VLM 理解、分块向量化流程 |
-| [Agent 设计](docs/agent_design.md) | TeamAgent 子 Agent 分工、委派策略、Prompt 策略 |
+| [Agent 设计](docs/agent.md) | TeamAgent 子 Agent 分工、委派策略、Prompt 策略 |
 | [VLM 策略](docs/vlm_strategy.md) | 模型选型、图像理解 prompt、描述粒度 |
 | [MCP 接口](docs/mcp_interface.md) | MCP 工具定义、传输方式 |
 | [IM 接入](docs/im_interface.md) | trpc-claw QQ 接入（nanobot 通道适配器）、单用户 MVP |

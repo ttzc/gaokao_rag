@@ -237,7 +237,7 @@ CREATE TABLE periodic_reports (
 CREATE INDEX idx_reports_user_period ON periodic_reports(user_id, period_type, period_start);
 ```
 
-**生成流程**（详见 [Agent 设计](agent_design.md) 的 REPORT_GEN 节点）：
+**生成流程**（详见 [Agent 设计](agent.md) 的 REPORT_GEN 节点）：
 
 ```mermaid
 flowchart TD

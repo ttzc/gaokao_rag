@@ -497,7 +497,7 @@ memory_service = SqlMemoryService(db_path="data/gaokao.db")
 
 ### 系统 Prompt
 
-```text
+```
 你是一位帮助高中学生备考的 AI 助手（当前支持数学，后续扩展到理化生等科目）。
 
 你的职责：
