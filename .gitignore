@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+venv/
+.venv/
+
+# 环境变量
+.env
+.env.local
+
+# 数据目录（原始 PDF 和数据库不入库）
+data/raw/
+data/processed/
+data/chroma_db/
+*.db
+*.sqlite3
+
+# 测试与工具
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# AI 工具本地状态
+.workbuddy/
+.claude/
+
+# 日志
+*.log
