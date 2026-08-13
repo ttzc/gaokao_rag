@@ -31,6 +31,15 @@ Gaokao RAG：帮助高中学生备考的 AI 助手（核心目的），MVP 聚�
 - PDF：PyMuPDF（主力）+ MinerU2.5-Pro（兜底）
 - **用户入口：trpc-claw（QQ 官方 API + nanobot 通道适配器扩展）**，CLI + MCP + FastAPI 保留为开发/外部 Agent 接口
 
+## 配置体系（config/logger 组合方案，2026-08-13 定）
+
+**分层原则**：
+- **敏感信息**（api-key/AppSecret）→ 环境变量（.env，gitignore）；**公开信息**（model/base_url/存储路径）→ `config.toml` 明文（可提交 git）
+- **桥接**：config.toml 里写 `${VAR}` 占位符，运行时由 `_expand()` 从环境变量替换（沿用 AlgoNotes config.py 的设计）
+- **组合方案**：框架 configs（RunConfig/重试/限制，管"Agent 怎么跑"）+ 自研 config.py（管"系统是什么"：模型/存储/QQ）——两者互补
+- **日志**：MVP 开发期用框架 DefaultLogger；V0.5 需要性能分析时移植 AlgoNotes 双通道 logger（app.log 运营 + perf.log 性能，JSON Lines，trace_id 注入——LangSmith 换 Langfuse）
+- config.toml 草案见 [数据模型](docs/data_model.md) 或实现时参照：llm/vlm/embedding（模型+base_url+`${KEY}`）/qq（AppID/Secret）/store（路径）/logging
+
 ## 参考文档（先读这些再动手）
 
 | 文档 | 内容 | 对应实现模块 |
