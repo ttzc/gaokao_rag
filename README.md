@@ -79,6 +79,7 @@ gaokao_rag/
 │   ├── agent.md               # Agent 编排与 TeamAgent 设计
 │   ├── vlm_strategy.md        # VLM 图形理解策略
 │   ├── mcp_interface.md       # MCP 接口设计
+│   ├── test.md                # 测试规范（pytest）
 │   ├── im_interface.md        # IM 接入（QQ 官方 API + 通道适配器）
 │   └── roadmap.md            # 开发路线图（V0.1 → V1.0）
 ├── src/                       # 源代码（由 Claude 实现）
@@ -136,6 +137,7 @@ gaokao_rag/
 | [MCP 接口](docs/mcp_interface.md) | MCP 工具定义、传输方式 |
 | [IM 接入](docs/im_interface.md) | trpc-claw QQ 接入（nanobot 通道适配器）、单用户 MVP |
 | [学习指南](docs/onboarding.md) | 协作者从零上手的学习路径（含 AI 搜索关键词） |
+| [测试规范](docs/test.md) | pytest 单元测试约定、目录结构、fixture 规范 |
 | [开发路线图](docs/roadmap.md) | 版本规划（V0.1 → V1.0 MVP）、任务拆解 |
 
 ## 开源许可

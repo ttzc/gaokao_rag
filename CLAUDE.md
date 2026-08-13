@@ -23,7 +23,7 @@ Gaokao RAG：帮助高中学生备考的 AI 助手（核心目的），MVP 聚�
 
 ## 技术栈（已定，不要改）
 
-- Python 3.12
+- Python 3.13（由 uv 管理，与 `pyproject.toml` 一致）
 - Agent 框架：**tRPC-Agent-Python**（`trpc-agent-py`），不是 LangChain 框架本体，但 Knowledge 层基于 LangChain 组件
 - LLM：DeepSeek 官方 API（开发期写死 V4-Flash），OpenAI 兼容协议，通过 `OpenAIModel` 接入；**模型中立**，不绑定厂商
 - VLM：Qwen 官方 API（DashScope），开发期写死 Qwen3-VL-8B-Instruct（主力）/ Qwen3-VL-32B-Thinking（复杂图形）
@@ -34,11 +34,12 @@ Gaokao RAG：帮助高中学生备考的 AI 助手（核心目的），MVP 聚�
 ## 配置体系（config/logger 组合方案，2026-08-13 定）
 
 **分层原则**：
+
 - **敏感信息**（api-key/AppSecret）→ 环境变量（.env，gitignore）；**公开信息**（model/base_url/存储路径）→ `config.toml` 明文（可提交 git）
 - **桥接**：config.toml 里写 `${VAR}` 占位符，运行时由 `_expand()` 从环境变量替换（沿用 AlgoNotes config.py 的设计）
 - **组合方案**：框架 configs（RunConfig/重试/限制，管"Agent 怎么跑"）+ 自研 config.py（管"系统是什么"：模型/存储/QQ）——两者互补
-- **日志**：MVP 开发期用框架 DefaultLogger；V0.5 需要性能分析时移植 AlgoNotes 双通道 logger（app.log 运营 + perf.log 性能，JSON Lines，trace_id 注入——LangSmith 换 Langfuse）
-- config.toml 草案见 [数据模型](docs/data_model.md) 或实现时参照：llm/vlm/embedding（模型+base_url+`${KEY}`）/qq（AppID/Secret）/store（路径）/logging
+- **日志**：MVP 开发期**直接用框架 logger，不自研**：`from trpc_agent_sdk.log import logger`，函数式 API（`logger.info/debug/warning/error/fatal`，支持 `extra={}` 自定义字段、`with_fields()` 绑定上下文）；V0.5 需要性能分析时再移植 AlgoNotes 双通道 logger（app.log 运营 + perf.log 性能，JSON Lines，trace_id 注入——LangSmith 换 Langfuse），通过 `set_logger()` 全局替换（实现 `BaseLogger` 接口）
+- config.toml 草案见 [数据模型](docs/data_model.md) 或实现时参照：llm/vlm/embedding/mineru（模型+base_url+`${KEY}`）/qq（AppID/Secret）/store（路径）/logging
 
 ## 参考文档（先读这些再动手）
 
@@ -51,6 +52,7 @@ Gaokao RAG：帮助高中学生备考的 AI 助手（核心目的），MVP 聚�
 | `docs/vlm_strategy.md` | VLM 选型、Prompt、描述粒度 | src/api/ + src/ingestion/ |
 | `docs/mcp_interface.md` | MCP 工具清单 | scripts/ |
 | `docs/im_interface.md` | trpc-claw QQ 接入（nanobot 通道适配器扩展） | scripts/ + 部署 |
+| `docs/test.md` | **pytest 测试规范**（命名/fixture/mock/覆盖率——每个模块实现即测） | tests/ |
 | `docs/onboarding.md` | 协作者学习路径（含 AI 搜索关键词） | 非实现文档，新人先读 |
 
 ## 版本路线（详见 docs/roadmap.md）
@@ -68,7 +70,7 @@ flowchart LR
 
 ## 目录结构约定
 
-```
+```tree
 gaokao_rag/
 ├── config.toml                # 系统配置
 ├── src/
@@ -94,7 +96,7 @@ gaokao_rag/
 ## 代码规范
 
 - 所有异步操作使用 `async def`（tRPC-Agent 节点要求，防阻塞 EventLoop）
-- Python 3.12 语法
+- Python 3.13 语法
 - 类型注解完整
 - docstring 中文，说明参数和返回值
 - 配置从 `config.toml` + 环境变量读取，不硬编码
