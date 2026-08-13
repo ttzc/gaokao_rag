@@ -5,7 +5,7 @@
 ## 为什么用 pytest
 
 | 维度 | unittest | **pytest** |
-|------|----------|-----------|
+| ------ | ---------- | ----------- |
 | 安装 | 内置零依赖 | `pip install pytest`（轻量） |
 | 断言 | `self.assertEqual(...)` | `assert x == y`（原生语法） |
 | 参数化 | 繁琐 | `@pytest.mark.parametrize` 一行 |
@@ -17,7 +17,7 @@ pytest 兼容 unittest 风格，用 pytest 无损失只有增益。
 
 ## 目录结构
 
-```
+```tree
 gaokao_rag/
 ├── src/
 │   ├── config.py          # 被测模块
@@ -33,6 +33,7 @@ gaokao_rag/
 ```
 
 **命名规则**：
+
 - 测试文件：`test_<模块名>.py`，**加 `test_` 前缀**（避免与被测模块同名造成 import 冲突）
 - 子模块路径用下划线展平：`src/store/db.py` → `tests/test_store_db.py`
 - pytest 自动发现 `tests/` 下所有 `test_*.py`
@@ -56,7 +57,7 @@ addopts = "-v"
 ## 测试分层
 
 | 层级 | 内容 | 是否连外部服务 |
-|------|------|--------------|
+| ------ | ------ | -------------- |
 | **纯单元测试** | 配置解析、工具函数、纯逻辑 | ❌ 不连 |
 | **模块测试** | 存储层（SQLite 内存库）、摄入管线（mock VLM/LLM） | ❌ mock |
 | **集成测试** | 真实 API 调用（DeepSeek/Qwen） | ✅ 连，标 `@pytest.mark.integration` |
@@ -183,6 +184,7 @@ def test_real_deepseek_call():
 ```
 
 运行方式：
+
 ```bash
 pytest                                   # 只跑单元+模块（默认）
 pytest -m integration                    # 只跑集成
@@ -202,7 +204,7 @@ pytest --cov=src --cov-report=term-missing   # 覆盖率
 ## 覆盖率目标
 
 | 模块 | 目标 |
-|------|------|
+| ------ | ------ |
 | config.py（配置解析） | ≥ 90% |
 | store/（存储层） | ≥ 80% |
 | ingestion/（摄取管线） | ≥ 70%（LLM 调用 mock 后） |

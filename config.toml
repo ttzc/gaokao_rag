@@ -1,0 +1,55 @@
+# ============================================================
+# Gaokao RAG 系统配置
+# ============================================================
+# 敏感信息（API Key）使用 ${VAR} 占位符，来源见 .env
+# 公开信息（模型名、路径等）写在此文件中，可提交 git
+
+# ── 对话模型（DeepSeek 官方 API，OpenAI 兼容） ──────────────────
+[llm]
+model = "deepseek-v4-flash"
+base_url = "https://api.deepseek.com"
+api_key = "${DEEPSEEK_API_KEY}"
+temperature = 0.7
+max_tokens = 4096
+timeout = 60.0
+
+# ── 视觉语言模型（Qwen3-VL，DashScope，OpenAI 兼容） ──────────
+[vlm]
+model = "qwen3-vl-8b-instruct"
+model_think = "qwen3-vl-32b-instruct"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key = "${DASHSCOPE_API_KEY}"
+timeout = 120.0
+
+# 自动升级策略：复杂图形自动切换到 32B 模型的阈值
+image_size_threshold = 500000          # 图像文件大小阈值（字节）
+complexity_keywords = [               # 触发升级的题目关键词
+    "立体几何", "三棱锥", "四棱锥", "旋转体",
+    "组合", "叠加", "复合", "恒成立", "存在性",
+]
+
+# ── 嵌入模型（Qwen3-Embedding-4B，DashScope） ───────────────────
+[embedding]
+model = "qwen3-embedding-4b"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key = "${DASHSCOPE_API_KEY}"
+timeout = 60.0
+
+# ── PDF 解析兜底服务（MinerU2.5-Pro） ───────────────────────────
+[mineru]
+base_url = "https://api.mineru.ai/v1"
+api_key = "${MINERU_API_KEY}"
+timeout = 300.0
+max_pages = 50
+
+# ── 三层存储路径 ────────────────────────────────────────────────
+[store]
+raw_dir = "data/raw"
+processed_dir = "data/processed"
+chroma_dir = "data/chroma_db"
+sqlite_path = "data/gaokao.db"
+
+# ── QQ 机器人接入（trpc-claw） ──────────────────────────────────
+[qq]
+app_id = "${QQ_APP_ID}"
+app_secret = "${QQ_APP_SECRET}"

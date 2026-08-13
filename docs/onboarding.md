@@ -72,9 +72,9 @@
 
 ### 5. 其他辅助
 
-| 工具 | 用途 |
-| ---- | ---- |
-| MCP | 后续通过 MCP 调项目工具（开发接口），V1.0 才涉及 |
+| 工具 | 用途                                             |
+| ---- | ------------------------------------------------ |
+| MCP  | 后续通过 MCP 调项目工具（开发接口），V1.0 才涉及 |
 
 ## 阶段 0：Python 预热（约 1 周）
 
@@ -121,23 +121,23 @@
 
 ## 阶段 4：Agent 编排（约 1-2 周，V0.5 核心）
 
-| 知识点         | 要掌握什么                   | AI 搜索关键词                                      |
-| -------------- | ---------------------------- | -------------------------------------------------- |
-| TeamAgent      | Leader 自由委派多个子 Agent  | "TeamAgent 多 agent 协作"、"agent team 委派模式"   |
-| 子 Agent 分工  | 每个职责一个专业 Agent       | "agent 子代理 分工 设计"、"multi-agent 架构"       |
-| 委派策略       | Leader 按需决定调谁/顺序     | "agent leader delegation 委派"                     |
-| FunctionTool   | 把函数注册成工具给模型调用   | "function calling 函数调用"、"agent tool use 原理" |
-| Session/Memory | 多轮对话记忆                 | "agent session memory 会话记忆"                    |
+| 知识点         | 要掌握什么                  | AI 搜索关键词                                      |
+| -------------- | --------------------------- | -------------------------------------------------- |
+| TeamAgent      | Leader 自由委派多个子 Agent | "TeamAgent 多 agent 协作"、"agent team 委派模式"   |
+| 子 Agent 分工  | 每个职责一个专业 Agent      | "agent 子代理 分工 设计"、"multi-agent 架构"       |
+| 委派策略       | Leader 按需决定调谁/顺序    | "agent leader delegation 委派"                     |
+| FunctionTool   | 把函数注册成工具给模型调用  | "function calling 函数调用"、"agent tool use 原理" |
+| Session/Memory | 多轮对话记忆                | "agent session memory 会话记忆"                    |
 
 **过关标准**：搭一个 TeamAgent（Leader + 2-3 个子 Agent），让 Leader 自动委派任务给合适的子 Agent 并汇总结果。
 
 ## 阶段 5：存储层（约 1 周，V0.3/V0.4）
 
-| 知识点        | 要掌握什么       | AI 搜索关键词                                        |
-| ------------- | ---------------- | ---------------------------------------------------- |
-| SQLite 表设计 | 建表、外键、索引 | "SQLite 建表 外键 索引"                              |
-| 递归 CTE      | 树形结构查询     | "SQLite 递归 CTE 树"、"with recursive 语法"          |
-| Chroma        | 向量库基本操作   | "Chroma 向量数据库 python"、"chroma collection 用法" |
+| 知识点             | 要掌握什么                    | AI 搜索关键词                                           |
+| ------------------ | ----------------------------- | ------------------------------------------------------- |
+| SQLite 表设计      | 建表、外键、索引              | "SQLite 建表 外键 索引"                                 |
+| 递归 CTE           | 树形结构查询                  | "SQLite 递归 CTE 树"、"with recursive 语法"             |
+| Chroma             | 向量库基本操作                | "Chroma 向量数据库 python"、"chroma collection 用法"    |
 | Qwen3-Embedding-4B | 中文嵌入模型（DashScope API） | "Qwen3-Embedding 使用 教程"、"dashscope 文本向量化 API" |
 
 **过关标准**：SQLite 里建一棵知识点树并用递归查出来；Chroma 里增删查向量。
