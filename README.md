@@ -40,23 +40,7 @@
 
 ## 核心架构
 
-```mermaid
-flowchart TD
-    A[用户接口层<br/>trpc-claw: QQ（官方 API + 通道适配器）<br/>开发接口: CLI · MCP · FastAPI] --> B[Agent 编排层<br/>TeamAgent · Leader 自由委派]
-    
-    B --> C[意图识别 Agent]
-    B --> D[搜索信息 Agent<br/>Knowledge/RAG 混合检索]
-    B --> E[VLM 理解 Agent<br/>Qwen3-VL FunctionTool]
-    B --> F[聚合数据 Agent<br/>错题/作答统计]
-    B --> G[输出整理 Agent<br/>格式化 + 分片]
-    
-    B --> H[Session/Memory<br/>跨会话记忆]
-    
-    D --> I[三层存储]
-    I --> I1[文件层<br/>原始 PDF]
-    I --> I2[SQLite<br/>元数据 + 知识点图谱]
-    I --> I3[Chroma<br/>向量索引]
-```
+Gaokao RAG 基于 tRPC-Agent-Python 的 TeamAgent 多 Agent 协作模式构建（入口 → Agent → 存储三层结构，见 [架构设计](docs/architecture.md) 的架构图）。
 
 ## 数据来源
 

@@ -7,6 +7,7 @@ Gaokao RAG 的 Agent 层基于 tRPC-Agent-Python 的 **TeamAgent** 构建（多 
 **核心架构**：一个 **Team Leader**（LLM）接收用户请求，**自由委派**任务给 5 个专业子 Agent（意图识别/搜索信息/VLM 理解/聚合数据/输出整理），再汇总成员结果生成最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。
 
 **为什么用 TeamAgent 而非 GraphAgent**：
+
 - 职责解耦：每个子 Agent 独立测试/替换/升级（如换 VLM 模型只动 VLM Agent）
 - 复杂度可管理：每个 Agent 的 prompt 只聚焦一个职责
 - 灵活委派：Leader 按需调用，不同场景走不同成员组合
@@ -18,42 +19,79 @@ Gaokao RAG 的 Agent 层基于 tRPC-Agent-Python 的 **TeamAgent** 构建（多 
 
 ### 团队结构
 
+团队分**查询侧**（读数据，产生回答）和**摄入侧**（写数据，接收学生资料），共用同一个 Leader：
+
 ```mermaid
 flowchart TD
     U[用户请求] --> L[Team Leader<br/>自由委派 + 综合]
-    L --> A1[意图识别 Agent]
-    L --> A2[搜索信息 Agent]
-    L --> A3[VLM 理解 Agent]
-    L --> A4[聚合数据 Agent]
-    L --> A5[输出整理 Agent]
+    
+    subgraph 查询侧（读）
+        L --> A1[意图识别 Agent]
+        L --> A2[搜索信息 Agent]
+        L --> A3[VLM 理解 Agent]
+        L --> A4[聚合数据 Agent]
+        L --> A5[输出整理 Agent]
+    end
+    
+    subgraph 摄入侧（写）
+        L --> B1[文档识别 Agent]
+        L --> B2[结构识别 Agent]
+        L --> B3[知识整理 Agent]
+        L --> B4[入库决策 Agent]
+    end
+    
     A1 --> L
     A2 --> L
     A3 --> L
     A4 --> L
     A5 --> L
+    B1 --> L
+    B2 --> L
+    B3 --> L
+    B4 --> L
 ```
 
 ### 成员职责
 
+**查询侧（读）**：
+
 | 子 Agent | 职责 | 挂载能力 |
-|---------|------|---------|
-| **意图识别 Agent** | 判断用户意图（question/review/report/browse） | LLM 分类 |
+| --------- | ------ | --------- |
+| **意图识别 Agent** | 判断用户意图（question/review/report/browse/**ingest**） | LLM 分类 |
 | **搜索信息 Agent** | 混合检索（Chroma + SQLite，不分子意图） | LangchainKnowledgeSearchTool |
 | **VLM 理解 Agent** | 图形描述（有图才调用） | Qwen3-VL FunctionTool |
-| **聚合数据 Agent** | 错题/作答统计、周报聚合 | SQLite 查询工具 |
+| **聚合数据 Agent** | 错题/作答统计、周报聚合（**读写** SQLite：errors/exam_attempts 统计 + periodic_reports 落库） | SQLite 查询/写入工具 |
 | **输出整理 Agent** | 格式化 + 分片发送 | 纯 LLM |
+
+**摄入侧（写）**：
+
+| 子 Agent | 职责 | 挂载能力 |
+| --------- | ------ | --------- |
+| **文档识别 Agent** | 接收照片/PDF → 提取内容（图片走 VLM，PDF 走 PyMuPDF） | VLM + PyMuPDF 工具 |
+| **结构识别 Agent** | 区分讲解段 vs 题目段 → 生成题目清单（每题一句话概括） | LLM 分类 |
+| **知识整理 Agent** | 知识点开放式提取 → 动态树归位/合并/挂载（写 topics） | SQLite 写入工具 |
+| **入库决策 Agent** | 回显题目清单 → 收集学生选择（入库/错题/跳过）→ 写 questions/errors | SQLite 写入工具 |
+
+**设计要点**：
+
+- 查询侧与摄入侧**共用底层工具**（VLM、SQLite），但职责相反——查询侧读、摄入侧写
+- **批量摄入**（ima 导出 20 份 PDF）走 CLI 脚本 `scripts/ingest.py`（开发者初始化用），不占 Agent 团队
+- **即时摄入**（学生 QQ 发作业/错题照片）走摄入侧 Agent——这是学生侧唯一的资料录入入口
 
 ### 委派策略（Leader 自由决定）
 
 Leader 根据用户请求内容，自主决定：
-- **调谁**：题目查询 → 意图+搜索+(VLM)+输出；周报 → 意图+聚合+输出；复习 → 意图+聚合+搜索+输出
+
+- **调谁**：题目查询 → 意图+搜索+(VLM)+输出；周报 → 意图+聚合+输出；复习 → 意图+聚合+搜索+输出；**发题入库 → 意图+文档识别+结构识别+(知识整理)+入库决策**
 - **调几个**：简单问题可只走 1-2 个成员；复杂问题多成员协作
 - **什么顺序**：无固定模板，Leader 动态编排
 
 **示例**：
+
 - "椭圆离心率最值怎么求" → Leader 委派：意图识别 → 搜索信息 →（检测到图）VLM 理解 → 输出整理
 - "生成周报" → Leader 委派：意图识别 → 聚合数据 → 输出整理
 - "我的薄弱知识点" → Leader 委派：意图识别 → 聚合数据 →（找推荐题）搜索信息 → 输出整理
+- "帮我存这道题/这道题我不会" → Leader 委派：意图识别（ingest）→ 文档识别 → 结构识别 → 回显清单 → 入库决策 → 输出整理
 
 ### 实现要点
 
@@ -61,18 +99,25 @@ Leader 根据用户请求内容，自主决定：
 from trpc_agent_sdk.teams import TeamAgent
 from trpc_agent_sdk.agents import LlmAgent
 
-# 5 个专业子 Agent
+# 查询侧：5 个专业子 Agent
 intent_agent = LlmAgent(name="intent", model=model, instruction=INTENT_PROMPT)
 search_agent = LlmAgent(name="search", model=model, tools=[KnowledgeSearchTool()], ...)
 vlm_agent = LlmAgent(name="vlm", model=model, tools=[VLMUnderstandTool()], ...)
 aggregate_agent = LlmAgent(name="aggregate", model=model, tools=[ErrorStatsTool()], ...)
 format_agent = LlmAgent(name="format", model=model, instruction=FORMAT_PROMPT)
 
-# Team Leader 自由委派
+# 摄入侧：4 个专业子 Agent
+doc_agent = LlmAgent(name="doc_ingest", model=model, tools=[PDFExtractTool(), VLMImageTool()], ...)
+struct_agent = LlmAgent(name="struct", model=model, instruction=STRUCT_PROMPT)
+knowledge_agent = LlmAgent(name="knowledge_mgr", model=model, tools=[TopicWriteTool()], ...)
+store_agent = LlmAgent(name="store", model=model, tools=[QuestionWriteTool(), ErrorWriteTool()], ...)
+
+# Team Leader 自由委派（查询 + 摄入共用）
 gaokao_team = TeamAgent(
     name="gaokao_team",
     leader=LlmAgent(model=model, instruction=LEADER_PROMPT),
-    members=[intent_agent, search_agent, vlm_agent, aggregate_agent, format_agent],
+    members=[intent_agent, search_agent, vlm_agent, aggregate_agent, format_agent,
+             doc_agent, struct_agent, knowledge_agent, store_agent],
 )
 
 ### 实现注意事项
@@ -173,7 +218,7 @@ def route_choice(state: GaokaoState) -> str:
 **路由逻辑**：
 
 | 用户输入示例 | 意图 | 路由到 |
-|------------|------|-------|
+| ------------ | ------ | ------- |
 | "帮我看看这道椭圆题怎么做" | question | math_search → vlm → answer_gen |
 | "我的错题主要集中在哪些知识点" | review | review_gen |
 | "帮我生成这周的周报" | report | report_gen |
@@ -196,6 +241,7 @@ async def math_search_node(state: GaokaoState) -> dict:
 ```
 
 > **混合检索（设计说明）**：不区分"搜题目"还是"搜知识点"——题目（question chunk）和知识点讲解（knowledge_point chunk）在同一个 Collection，一起召回，由 LLM 综合组织答案：
+>
 > - 搜"离心率最值怎么求" → 可能命中题目 + 讲解，LLM 既给解法又总结方法
 > - 搜"什么是分离参数法" → 命中讲解为主，LLM 自动带上相关例题
 > - 搜题目也能总结方法，搜方法也要配例题——**两者天然互补，无需按意图拆分检索**
@@ -350,6 +396,7 @@ async def report_generate_node(state: GaokaoState) -> dict:
 ```
 
 **关键设计点**：
+
 - **统计快照落库**（`periodic_reports` 表）：报告生成时固化统计，历史报告不漂移
 - **幂等**：同一用户同一周期重复唤起 → 返回缓存，不重复生成；`--force` 可强制刷新
 - **趋势对比**：与上一周期对比，识别"恶化/改善/新增"的薄弱点——这对"针对性练习"是关键信号
@@ -440,6 +487,7 @@ memory_service = SqlMemoryService(db_path="data/gaokao.db")
 ```
 
 存储内容：
+
 - 用户的错题历史
 - 常错的知识点
 - 上次复习到了哪个知识点
@@ -521,7 +569,7 @@ app = create_fastapi_app(
 利用 tRPC-Agent 的 MCPToolset，暴露以下工具：
 
 | MCP 工具 | 描述 |
-|---------|------|
+| --------- | ------ |
 | `search_questions` | 按知识点/题型/年份检索题目 |
 | `get_question_detail` | 获取题目完整信息（含 VLM 描述） |
 | `get_error_stats` | 获取用户错题统计 |

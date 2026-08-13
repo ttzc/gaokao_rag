@@ -114,7 +114,8 @@ flowchart LR
 ### 任务
 
 - [ ] 集成 `LangchainKnowledge` + `AgenticLangchainKnowledgeSearchTool`
-- [ ] TeamAgent：Leader + 意图/搜索/VLM/聚合/输出子 Agent 协作（Leader prompt 按 [Agent 设计](agent_design.md) 三条铁律：完成标准/调用上限/prompt 自洽）
+- [ ] TeamAgent：Leader + **查询侧 5 个**（意图/搜索/VLM/聚合/输出）子 Agent 协作（Leader prompt 按 [Agent 设计](agent_design.md) 三条铁律：完成标准/调用上限/prompt 自洽）
+- [ ] **摄入侧 Agent**：文档识别/结构识别/知识整理/入库决策 4 个成员 + ingest 意图（学生 QQ 发照片 → 识别 → 回显 → 确认入库，见 [Agent 设计](agent_design.md)）
 - [ ] VLM 条件触发节点
 - [ ] 答案生成带溯源（引用"2026南昌一模 第15题"）
 - [ ] 复习建议节点（基于错题统计）
@@ -131,6 +132,7 @@ flowchart LR
 - [ ] 指令"这个月的月报"→ 返回月度报告，含与上月趋势对比
 - [ ] 同一周期重复生成 → 返回缓存，不重复计算
 - [ ] 多轮追问（"第二问呢"）上下文连贯
+- [ ] **发一张题目照片 → 识别 → 回显清单 → 确认后入库**（摄入侧 Agent 闭环）
 
 ## V1.0: 接口层（MVP 闭环，1-2 周）
 
