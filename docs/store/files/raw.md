@@ -12,18 +12,19 @@
 
 ```text
 data/
-├── raw/                      # raw_dir —— 原始文件（只读源，不可变）
-│   ├── pdfs/                 #   原始 PDF（哈希命名）
-│   │   └── 3f9a2c81.pdf      #     sha256[:16] + 扩展名
-│   ├── images/               #   题目图片（哈希命名）
-│   │   ├── uploaded/         #     学生 QQ 上传的照片
-│   │   │   └── a3f2e1c9.jpg
-│   │   └── extracted/        #     从 PDF 提取的插图
-│   │       └── b7d4e0f2.png
-│   └── homework/             #   作业照片（与 uploaded 同类可合并）
-├── processed/                # processed_dir —— 处理后中间产物（可重建）
-│   ├── text/                 #   清洗后的文本
-│   └── vlm_desc/             #   VLM 图形描述（中间缓存）
+├── files/                    # 文件层根目录（raw + processed）
+│   ├── raw/                  # raw_dir —— 原始文件（只读源，不可变）
+│   │   ├── pdfs/             #   原始 PDF（哈希命名）
+│   │   │   └── 3f9a2c81.pdf  #     sha256[:16] + 扩展名
+│   │   ├── images/           #   题目图片（哈希命名）
+│   │   │   ├── uploaded/     #     学生 QQ 上传的照片
+│   │   │   │   └── a3f2e1c9.jpg
+│   │   │   └── extracted/    #     从 PDF 提取的插图
+│   │   │       └── b7d4e0f2.png
+│   │   └── homework/         #   作业照片（与 uploaded 同类可合并）
+│   └── processed/            # processed_dir —— 处理后中间产物（可重建，见 processed.md）
+│       ├── text/             #   清洗后的文本
+│       └── vlm_desc/         #   VLM 图形描述（中间缓存）
 ├── chroma_db/                # chroma_dir —— Chroma 持久化
 └── gaokao.db                 # sqlite_path —— SQLite 索引
 ```
@@ -86,7 +87,8 @@ def resolve(disk_path: str) -> Path:
 
 ## 与其他文档的关系
 
-- 注册表：[store/db/files.md](db/files.md)（`title` / `file_path` / `sha256` 字段语义）
-- 表结构：[store/db/questions.md](db/questions.md)（`file_id` / `image_file_ids` / `raw_text`）
-- 配置：[config.toml `[store]` 段](../../config.toml)（`raw_dir` / `processed_dir`）
+- 注册表：[db/files.md](../db/files.md)（`title` / `file_path` / `sha256` 字段语义）
+- 表结构：[db/questions.md](../db/questions.md)（`file_id` / `image_file_ids` / `raw_text`）
+- 中间产物：[processed.md](processed.md)（`data/files/processed/`，可重建）
+- 配置：[config.toml `[store]` 段](../../../config.toml)（`raw_dir` / `processed_dir`）
 - 摄入管线：PDF/图片 → 本层落盘 → files 注册 → 下游提取（见 `docs/ingestion.md`）

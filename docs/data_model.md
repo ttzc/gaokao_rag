@@ -43,7 +43,6 @@ CREATE UNIQUE INDEX idx_files_sha ON files(sha256);   -- 同内容天然去重
 ```
 
 > **设计要点**：磁盘文件名 = sha256 哈希（去重 / 防冲突 / 防恶意名），**原文件名直接丢弃**；`title` 是语义标题（agent 从内容总结，用户可自定义），**挂在文件上而非题目上**——一份试卷改标题全局生效。图片（kind='image'）同样入库，题目通过 `image_file_ids` 引用。`source_file` 字段已废弃。
-
 > 详细文档见 [store/db/files.md](store/db/files.md)
 
 ### 2. 知识点树形表 `topics`
@@ -78,14 +77,14 @@ CREATE INDEX idx_topics_status ON topics(status);
 
 **路径枚举操作要点**：
 
-| 操作 | SQL / 做法 |
-| ---- | ---------- |
-| 取子树 | `WHERE path LIKE '1/2/3/%'`（走 path 索引） |
-| 取祖先链 | `path` split('/') 得到 id 序列 |
-| 插入 | `INSERT` 拿新 id → `path = 父path || id || '/'` |
-| 移动整棵子树 | `UPDATE topics SET path = 新前缀 || substr(path, len(旧前缀)+1) WHERE path LIKE 旧前缀 || '%'`（一次改完） |
-| 防环检查 | 新父 `path` 不以本节点 `path` 开头（O(1) 字符串比较） |
-| 合并 | source 子树 path 批量替换到 target 前缀 + aliases 并入 target |
+| 操作         | SQL / 做法                                                                                                 |
+| ------------ | ---------------------------------------------------------------------------------------------------------- |
+| 取子树       | `WHERE path LIKE '1/2/3/%'`（走 path 索引）                                                                |
+| 取祖先链     | `path` split('/') 得到 id 序列                                                                             |
+| 插入         | `INSERT` 拿新 id → `path = 父路径 \| id \| '/'`                                                            |
+| 移动整棵子树 | `UPDATE topics SET path = 新前缀 \| substr(path, LEN(旧前缀)+1) WHERE path LIKE 旧前缀 \| '%'`（一次改完） |
+| 防环检查     | 新父 `path` 不以本节点 `path` 开头（O(1) 字符串比较）                                                      |
+| 合并         | source 子树 path 批量替换到 target 前缀 + aliases 并入 target                                              |
 
 > 防环必须写在写入路径（`move_topic`/`create_topic`）内部，不能依赖 LLM 自觉；`path` 必须带尾斜杠，否则 `LIKE '1/2/3/%'` 会误匹配 `1/2/3/60` 这类 id 前缀撞车的节点。
 
@@ -323,10 +322,10 @@ collection = chroma_client.get_or_create_collection(
 
 一道题拆分为 3 种 chunk，独立入库：
 
-| chunk_type | 内容 | 检索场景 |
-| ----------- | ------ | --------- |
-| `question` | 题目文本 + VLM 图形描述 | 用户搜"椭圆离心率最值" |
-| `answer` | 标准答案 + 解析 | 用户看解析、对比解法 |
+| chunk_type        | 内容                         | 检索场景                 |
+| ----------------- | ---------------------------- | ------------------------ |
+| `question`        | 题目文本 + VLM 图形描述      | 用户搜"椭圆离心率最值"   |
+| `answer`          | 标准答案 + 解析              | 用户看解析、对比解法     |
 | `knowledge_point` | 知识点描述 + 公式 + 典型方法 | 用户问"什么是分离参数法" |
 
 ### Metadata 设计

@@ -105,7 +105,7 @@ Bot: 完成：
 
 **工具**：PyMuPDF `page.get_images()` + `page.get_image_rects()`
 
-**输出**：每张图像落盘 `data/raw/images/extracted/{sha256}.png` 并注册到 `files` 表（kind='image'）
+**输出**：每张图像落盘 `data/files/raw/images/extracted/{sha256}.png` 并注册到 `files` 表（kind='image'）
 
 **过滤**：
 - 排除装饰性图片（logo、水印）：面积 < 1000px² 的跳过
@@ -235,10 +235,10 @@ async def ingest_exam_attempt(file_id: int, user_statement: str) -> dict:
 
 ```bash
 # 摄取单个文件
-python scripts/ingest.py data/raw/试卷/2026_南昌一模.pdf
+python scripts/ingest.py data/files/raw/试卷/2026_南昌一模.pdf
 
 # 摄取整个目录
-python scripts/ingest.py data/raw/试卷/ --recursive
+python scripts/ingest.py data/files/raw/试卷/ --recursive
 
 # 从 ima 知识库导入
 python scripts/ingest.py --source ima --kb "高考2026" --folder "数学/试卷"
@@ -248,9 +248,9 @@ python scripts/ingest.py --source ima --kb "高考2026" --folder "数学/试卷"
 
 | ima 知识库位置 | 摄取目标 | source_type |
 |---------------|---------|-------------|
-| 知识/数学/试卷/* | data/raw/试卷/ | exam |
-| 知识/数学/专题/* | data/raw/专题/ | special_topic |
-| 知识/数学/资料/* | data/raw/资料/ | reference |
+| 知识/数学/试卷/* | data/files/raw/试卷/ | exam |
+| 知识/数学/专题/* | data/files/raw/专题/ | special_topic |
+| 知识/数学/资料/* | data/files/raw/资料/ | reference |
 | 知识/数学/错题* | errors 表（直接导入） | error_book |
 
 ## 数据源边界（明确不做的事）
@@ -289,5 +289,5 @@ Bot: 已识别题目：...
 ## 幂等性
 
 - 同一文件重复摄取 → 检测 `files.sha256` 已存在，跳过或 `--force` 覆盖
-- 增量摄取 → 只处理 `data/raw/` 中未摄取的新文件
+- 增量摄取 → 只处理 `data/files/raw/` 中未摄取的新文件
 - 摄取失败 → 记录到 `ingest_errors.log`，不影响其他文件

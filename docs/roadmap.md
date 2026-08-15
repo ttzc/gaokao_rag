@@ -29,14 +29,14 @@ flowchart LR
 - [ ] **核对文档 vs 源码 API 清单**（Quickstart 跑通后，对照各文档的 API 假设：OpenAIModel 三件套、`AgenticLangchainKnowledgeSearchTool`、nanobot `channels.qq`；发现对不上则改文档不改代码）
 - [ ] 验证 Qwen3-VL 多模态调用（OpenAI 协议图片输入）
 - [ ] 验证 Chroma + Qwen3-Embedding-4B 嵌入链路
-- [ ] 从 ima 知识库导出数学试卷 PDF 到 `data/raw/`
+- [ ] 从 ima 知识库导出数学试卷 PDF 到 `data/files/raw/`
 
 ### 验收标准
 
 - [ ] 本地能跑通一个"问天气"式的 LlmAgent
 - [ ] **TeamAgent 可用性结论明确**：Leader 委派跑通，或确认退回 GraphAgent 方案
 - [ ] VLM 能对一张数学图形图片返回文本描述
-- [ ] 至少 3 份试卷 PDF 已导入 `data/raw/`
+- [ ] 至少 3 份试卷 PDF 已导入 `data/files/raw/`
 
 ## V0.2: 数据准备（1-2 周）
 
@@ -52,13 +52,13 @@ flowchart LR
 ### 任务
 
 - [ ] 写脚本批量从 ima 导出 PDF（或手动导出）
-- [ ] 按 `data/raw/试卷/`、`data/raw/专题/` 分类整理
+- [ ] 按 `data/files/raw/试卷/`、`data/files/raw/专题/` 分类整理
 - [ ] 抽 2-3 份试卷人工检查 PDF 质量（文本可提取性、图像完整性）
 - [ ] 知识点树不做 seed——依赖 V0.3 摄取时的动态构建（见 [数据模型](data_model.md) 四步机制）
 
 ### 验收标准
 
-- [ ] `data/raw/` 下试卷 + 专题 ≥ 20 份 PDF
+- [ ] `data/files/raw/` 下试卷 + 专题 ≥ 20 份 PDF
 - [ ] 人工抽查 2-3 份试卷：文本可提取、图像完整（V0.3 摄取的输入就绪）
 
 ## V0.3: 摄取管线（2 周）

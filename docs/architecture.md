@@ -182,28 +182,13 @@ class GaokaoState(State):
 
 ### Layer 1: 文件存储
 
-```tree
-data/
-├── raw/                    # 原始 PDF 文件
-│   ├── 试卷/
-│   │   ├── 2026_南昌一模.pdf
-│   │   ├── 2026_深圳调研.pdf
-│   │   └── ...
-│   ├── 专题/
-│   │   ├── 圆锥曲线_1.pdf
-│   │   ├── 导数_1.pdf
-│   │   └── ...
-│   └── 错题/
-│       └── math_errors.json
-├── processed/              # 处理后的结构化数据
-│   ├── questions/          # 按题目拆分的 JSON
-│   └── images/             # 从 PDF 提取的图像
-└── chroma_db/              # Chroma 向量数据库
-```
+详见 [文件存储说明](store/files/raw.md)。
 
 ### Layer 2: SQLite 索引
 
 负责结构化查询和知识点图谱。详见 [数据模型文档](data_model.md)。
+
+> 每张表的详细设计见 [store/db/](store/db/)（8 份表文档：topics / knowledge_notes / questions / question_topics / errors / exam_attempts / review_plans / periodic_reports）
 
 ### Layer 3: Chroma 向量库
 
@@ -254,7 +239,7 @@ gaokao_rag/
 │   │   └── pipeline.py        #   管线编排（7 阶段串联）
 │   │
 │   ├── store/                 # 三层存储 + 知识点图谱
-│   │   ├── file_store.py      #   Layer 1：文件存储（原始 PDF 管理，详见 [store/raw.md](store/raw.md)）
+│   │   ├── file_store.py      #   Layer 1：文件存储（原始 PDF 管理，详见 [store/files/raw.md](store/files/raw.md)）
 │   │   ├── db/                #   Layer 2：SQLite 数据访问层（按表拆，共享连接）
 │   │   │   ├── __init__.py    #     连接管理（单例）+ schema 初始化
 │   │   │   ├── schema.py      #     9 张表 DDL + 索引
@@ -269,8 +254,6 @@ gaokao_rag/
 │   │   │   └── periodic_reports.py
 │   │   ├── vector_store.py    #   Layer 3：Chroma 向量库（3 种 chunk）
 │   │   └── __init__.py
-
-> 每张表的详细设计见 [store/db/](store/db/)（8 份表文档：topics / knowledge_notes / questions / question_topics / errors / exam_attempts / review_plans / periodic_reports）
 │   │
 │   ├── rag/                   # RAG Agent 与检索
 │   │   ├── agent.py           #   TeamAgent 编排（Leader + 5 子 Agent）
@@ -291,15 +274,18 @@ gaokao_rag/
 │   └── mcp_server.py          #   MCP Server 入口（stdio/SSE/HTTP）
 │
 ├── data/                      # 数据目录（gitignore）
-│   ├── raw/                   # 原始 PDF（试卷/专题/错题）
-│   │   ├── 试卷/
-│   │   ├── 专题/
-│   │   └── 错题/
-│   ├── processed/             # 处理后的结构化数据
-│   │   ├── questions/         # 按题目拆分的 JSON
-│   │   └── images/            # 从 PDF 提取的图像
-│   ├── chroma_db/             # Chroma 向量数据库
-│   └── gaokao.db              # SQLite 索引（9 张表）
+│   ├── files/                 # 文件层根目录（raw + processed）
+│   │   ├── raw/               # raw_dir：原始文件（只读源，不可变）
+│   │   │   ├── pdfs/          #   原始 PDF（哈希命名）
+│   │   │   ├── images/        #   题目图片（哈希命名）
+│   │   │   │   ├── uploaded/  #     学生 QQ 上传的照片
+│   │   │   │   └── extracted/ #     从 PDF 提取的插图
+│   │   │   └── homework/      #   作业照片
+│   │   └── processed/         # processed_dir：处理后中间产物（可重建）
+│   │       ├── text/          #   清洗后的文本
+│   │       └── vlm_desc/      #   VLM 图形描述（中间缓存）
+│   ├── chroma_db/             # chroma_dir：Chroma 持久化
+│   └── gaokao.db              # sqlite_path：SQLite 索引
 │
 └── tests/                     # 测试（V0.5 后补充）
 ```
