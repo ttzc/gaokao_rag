@@ -10,18 +10,19 @@
 
 ## 目录结构（config `[store]` 段）
 
+**默认（相对路径）**：
+
 ```text
 data/
 ├── files/                    # 文件层根目录（raw + processed）
 │   ├── raw/                  # raw_dir —— 原始文件（只读源，不可变）
 │   │   ├── pdfs/             #   原始 PDF（哈希命名）
 │   │   │   └── 3f9a2c81.pdf  #     sha256[:16] + 扩展名
-│   │   ├── images/           #   题目图片（哈希命名）
-│   │   │   ├── uploaded/     #     学生 QQ 上传的照片
-│   │   │   │   └── a3f2e1c9.jpg
-│   │   │   └── extracted/    #     从 PDF 提取的插图
-│   │   │       └── b7d4e0f2.png
-│   │   └── homework/         #   作业照片（与 uploaded 同类可合并）
+│   │   └── images/           #   学生上传的图片（哈希命名）
+│   │       ├── uploaded/     #     QQ 上传、作业拍照等（统一入口）
+│   │       │   └── a3f2e1c9.jpg
+│   │       └── extracted/    #     从 PDF 提取的插图
+│   │           └── b7d4e0f2.png
 │   └── processed/            # processed_dir —— 处理后中间产物（可重建，见 processed.md）
 │       ├── text/             #   清洗后的文本
 │       └── vlm_desc/         #   VLM 图形描述（中间缓存）
@@ -29,11 +30,32 @@ data/
 └── gaokao.db                 # sqlite_path —— SQLite 索引
 ```
 
+**数据导入/导出（绝对路径）**：
+
+```toml
+# config.toml
+[store]
+data_dir = "/mnt/external/gaokao_data"    # 绝对路径
+```
+
+此时目录结构位于外部存储，不占用项目空间：
+
+```text
+/mnt/external/gaokao_data/
+├── files/
+│   ├── raw/
+│   └── processed/
+├── chroma_db/
+└── gaokao.db
+```
+
+切换 `data_dir` 即切换数据仓库，配合数据库备份/恢复实现数据导入导出。
+
 ## 命名与去重（核心设计）
 
 ### 1. 磁盘 = 哈希命名，原文件名直接丢弃
 
-- **PDF 和图片统一哈希命名**：`{sha256[:16]}.{ext}`（如 `pdfs/3f9a2c81.pdf`）
+- **PDF 和图片统一哈希命名**：`{sha256[:16]}.{ext}`（如 `data/files/raw/pdfs/3f9a2c81.pdf`，相对项目根）
 - 原文件名**不保留**——用户上传的文件名大多是噪音（"新建文档.pdf" / "IMG_20260811.jpg"），无保留价值
 - 好处：同内容同文件（`files.sha256` UNIQUE 索引天然去重）、同名不覆盖、防恶意文件名、物理层可自由重组
 
@@ -90,5 +112,5 @@ def resolve(disk_path: str) -> Path:
 - 注册表：[db/files.md](../db/files.md)（`title` / `file_path` / `sha256` 字段语义）
 - 表结构：[db/questions.md](../db/questions.md)（`file_id` / `image_file_ids` / `raw_text`）
 - 中间产物：[processed.md](processed.md)（`data/files/processed/`，可重建）
-- 配置：[config.toml `[store]` 段](../../../config.toml)（`raw_dir` / `processed_dir`）
+- 配置：[config.toml `[store]` 段](../../../config.toml)（`data_dir`，子目录自动派生）
 - 摄入管线：PDF/图片 → 本层落盘 → files 注册 → 下游提取（见 `docs/ingestion.md`）

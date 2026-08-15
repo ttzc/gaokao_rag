@@ -277,10 +277,9 @@ gaokao_rag/
 │   ├── files/                 # 文件层根目录（raw + processed）
 │   │   ├── raw/               # raw_dir：原始文件（只读源，不可变）
 │   │   │   ├── pdfs/          #   原始 PDF（哈希命名）
-│   │   │   ├── images/        #   题目图片（哈希命名）
-│   │   │   │   ├── uploaded/  #     学生 QQ 上传的照片
-│   │   │   │   └── extracted/ #     从 PDF 提取的插图
-│   │   │   └── homework/      #   作业照片
+│   │   │   └── images/        #   学生上传图片（哈希命名）
+│   │   │       ├── uploaded/  #     QQ 上传、作业拍照等（统一入口）
+│   │   │       └── extracted/ #     从 PDF 提取的插图
 │   │   └── processed/         # processed_dir：处理后中间产物（可重建）
 │   │       ├── text/          #   清洗后的文本
 │   │       └── vlm_desc/      #   VLM 图形描述（中间缓存）

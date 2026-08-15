@@ -13,17 +13,20 @@ venv/
 .env
 .env.local
 
-# 数据目录（原始 PDF 和数据库不入库）
-data/raw/
-data/processed/
-data/chroma_db/
+# 数据目录（原始 PDF、数据库、向量库等不入库）
+data/
 *.db
 *.sqlite3
 
-# 测试与工具
+# 测试（pytest 缓存、覆盖率、日志等不入库；tests/ 源码保留）
 .pytest_cache/
+.pytest_tmp/
 .coverage
 htmlcov/
+.pytestdebug.log
+*.coverage
+
+# 工具缓存
 .mypy_cache/
 .ruff_cache/
 

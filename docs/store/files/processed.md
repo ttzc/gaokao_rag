@@ -1,6 +1,6 @@
 # 处理后中间产物（Layer 1.5：processed）
 
-> 对应 `data/files/processed/`（config `processed_dir`）。**可重建的中间产物**——清洗文本、VLM 描述缓存等，丢失后可从 `raw/` 重跑摄入管线再生成。
+> 对应 `data/files/processed/`（config `data_dir` 派生）。**可重建的中间产物**——清洗文本、VLM 描述缓存等，丢失后可从 `raw/` 重跑摄入管线再生成。
 
 ## 功能定位
 

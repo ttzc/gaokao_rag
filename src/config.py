@@ -173,24 +173,46 @@ class MinerUConfig(BaseModel):
 
 
 class StoreConfig(BaseModel):
-    """三层存储路径配置。"""
+    """三层存储路径配置。
 
-    raw_dir: str = Field(
-        default="data/raw",
-        description="原始文件目录（PDF、图片等）",
+    只需配置 ``data_dir``（数据目录根路径），其余路径按约定自动派生：
+    - raw 文件      → ``{data_dir}/files/raw``
+    - 处理后文件     → ``{data_dir}/files/processed``
+    - 向量数据库     → ``{data_dir}/chroma_db``
+    - SQLite 数据库  → ``{data_dir}/gaokao.db``
+
+    ``data_dir`` 可以是相对路径（相对于项目根目录）或绝对路径（如 ``/mnt/external/data``，
+    用于数据导入/导出场景）。绝对路径时所有派生路径直接使用，不再拼接项目根。
+    """
+
+    data_dir: str = Field(
+        default="data",
+        description="数据目录根路径（相对路径按项目根解析，绝对路径直接使用）",
     )
-    processed_dir: str = Field(
-        default="data/processed",
-        description="处理后结构化数据目录",
-    )
-    chroma_dir: str = Field(
-        default="data/chroma_db",
-        description="Chroma 向量数据库持久化目录",
-    )
-    sqlite_path: str = Field(
-        default="data/gaokao.db",
-        description="SQLite 数据库文件路径",
-    )
+
+    # ── 兼容旧代码的属性访问 ──────────────────────────────────────
+    # 保留 raw_dir / processed_dir / chroma_dir / sqlite_path 作为计算属性，
+    # 避免 file_store.py 等旧引用断裂。
+
+    @property
+    def raw_dir(self) -> str:
+        """原始文件目录（``{data_dir}/files/raw``）。"""
+        return f"{self.data_dir}/files/raw"
+
+    @property
+    def processed_dir(self) -> str:
+        """处理后结构化数据目录（``{data_dir}/files/processed``）。"""
+        return f"{self.data_dir}/files/processed"
+
+    @property
+    def chroma_dir(self) -> str:
+        """Chroma 向量数据库持久化目录（``{data_dir}/chroma_db``）。"""
+        return f"{self.data_dir}/chroma_db"
+
+    @property
+    def sqlite_path(self) -> str:
+        """SQLite 数据库文件路径（``{data_dir}/gaokao.db``）。"""
+        return f"{self.data_dir}/gaokao.db"
 
 
 class QQConfig(BaseModel):

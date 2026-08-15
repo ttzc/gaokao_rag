@@ -184,16 +184,30 @@ class TestMinerUConfig:
 
 
 class TestStoreConfig:
-    def test_default_paths(self) -> None:
+    def test_default_data_dir(self) -> None:
         s = StoreConfig()
-        assert s.raw_dir == "data/raw"
-        assert s.processed_dir == "data/processed"
+        assert s.data_dir == "data"
+
+    def test_derived_paths_from_default(self) -> None:
+        s = StoreConfig()
+        assert s.raw_dir == "data/files/raw"
+        assert s.processed_dir == "data/files/processed"
         assert s.chroma_dir == "data/chroma_db"
         assert s.sqlite_path == "data/gaokao.db"
 
-    def test_custom_paths(self) -> None:
-        s = StoreConfig(sqlite_path="/tmp/custom.db")
-        assert s.sqlite_path == "/tmp/custom.db"
+    def test_custom_data_dir(self) -> None:
+        s = StoreConfig(data_dir="/tmp/custom_data")
+        assert s.data_dir == "/tmp/custom_data"
+        assert s.raw_dir == "/tmp/custom_data/files/raw"
+        assert s.sqlite_path == "/tmp/custom_data/gaokao.db"
+
+    def test_absolute_data_dir_derived_paths(self) -> None:
+        """绝对路径 data_dir 的派生路径应保留绝对前缀。"""
+        s = StoreConfig(data_dir="/mnt/ssd/gaokao_data")
+        assert s.raw_dir == "/mnt/ssd/gaokao_data/files/raw"
+        assert s.processed_dir == "/mnt/ssd/gaokao_data/files/processed"
+        assert s.chroma_dir == "/mnt/ssd/gaokao_data/chroma_db"
+        assert s.sqlite_path == "/mnt/ssd/gaokao_data/gaokao.db"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -248,7 +262,7 @@ class TestAppConfig:
             'timeout = 90.0\n'
             '\n'
             '[store]\n'
-            'sqlite_path = "data/test.db"\n'
+            'data_dir = "data/test"\n'
         )
         cfg_file = tmp_path / "config.toml"
         cfg_file.write_text(toml_content, encoding="utf-8")
@@ -264,7 +278,8 @@ class TestAppConfig:
         assert app.vlm.temperature == 0.2
         assert app.vlm.max_tokens == 512
         assert app.vlm.timeout == 90.0
-        assert app.store.sqlite_path == "data/test.db"
+        assert app.store.data_dir == "data/test"
+        assert app.store.sqlite_path == "data/test/gaokao.db"
 
     def test_missing_config_toml_returns_defaults(
         self, tmp_path: Path

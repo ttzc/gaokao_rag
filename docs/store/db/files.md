@@ -14,7 +14,7 @@
 CREATE TABLE files (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     title       TEXT,                            -- 语义标题（agent 总结生成 / 用户自定义，可空=待生成）
-    file_path   TEXT UNIQUE NOT NULL,            -- 磁盘相对路径（哈希命名: pdfs/3f9a2c81.pdf）
+    file_path   TEXT UNIQUE NOT NULL,            -- 磁盘相对路径，基准=项目根（哈希命名: data/files/raw/pdfs/3f9a2c81.pdf）
     sha256      TEXT NOT NULL,                   -- 内容哈希（去重 + 完整性校验）
     size        INTEGER,                         -- 字节数
     kind        TEXT NOT NULL,                   -- "pdf" / "image"
@@ -30,7 +30,7 @@ CREATE UNIQUE INDEX idx_files_sha ON files(sha256);   -- 同内容天然去重
 
 ### 1. 磁盘哈希命名（物理层）
 
-- 磁盘文件名 = `sha256[:16]` + 扩展名（`pdfs/3f9a2c81.pdf`）
+- 磁盘文件名 = `sha256[:16]` + 扩展名（`data/files/raw/pdfs/3f9a2c81.pdf`，相对项目根）
 - 好处：**同内容同文件**（`sha256` UNIQUE 索引直接挡掉重复上传）、同名不覆盖、防恶意文件名、物理层可自由重组
 
 ### 2. title 语义标题（逻辑层）

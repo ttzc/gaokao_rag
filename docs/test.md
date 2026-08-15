@@ -86,10 +86,7 @@ def tmp_store(tmp_path):
     """临时存储目录 fixture（每个测试独立）。"""
     from src.config import StoreConfig
     return StoreConfig(
-        raw_dir=str(tmp_path / "raw"),
-        processed_dir=str(tmp_path / "processed"),
-        chroma_dir=str(tmp_path / "chroma"),
-        sqlite_path=str(tmp_path / "test.db"),
+        data_dir=str(tmp_path),
     )
 ```
 

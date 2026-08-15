@@ -42,12 +42,9 @@ api_key = "${MINERU_API_KEY}"
 timeout = 300.0
 max_pages = 50
 
-# ── 三层存储路径 ────────────────────────────────────────────────
+# ── 数据目录（子目录按约定自动派生） ──────────────────────────────
 [store]
-raw_dir = "data/raw"
-processed_dir = "data/processed"
-chroma_dir = "data/chroma_db"
-sqlite_path = "data/gaokao.db"
+data_dir = "data"
 
 # ── QQ 机器人接入（trpc-claw） ──────────────────────────────────
 [qq]
