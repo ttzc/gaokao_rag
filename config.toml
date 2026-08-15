@@ -15,8 +15,8 @@ timeout = 60.0
 
 # ── 视觉语言模型（Qwen3-VL，DashScope，OpenAI 兼容） ──────────
 [vlm]
-model = "qwen3-vl-8b-instruct"
-model_think = "qwen3-vl-32b-instruct"
+model = "qwen3.7-flash"
+model_think = "qwen3.7-plus"
 base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 api_key = "${DASHSCOPE_API_KEY}"
 timeout = 120.0

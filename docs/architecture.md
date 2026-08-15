@@ -19,7 +19,7 @@ flowchart TD
 
     B --> C[意图识别 Agent]
     B --> D[搜索信息 Agent<br/>Knowledge/RAG 混合检索]
-    B --> E[VLM 理解 Agent<br/>Qwen3-VL FunctionTool]
+    B --> E[VLM 理解 Agent<br/>VLM FunctionTool]
     B --> F[聚合数据 Agent<br/>错题/作答统计]
     B --> G[输出整理 Agent<br/>格式化 + 分片]
 
@@ -163,7 +163,7 @@ class GaokaoState(State):
 | --------- | ------ | --------- |
 | 意图识别 Agent | 判断学科 + 意图 | LLM 分类 |
 | 搜索信息 Agent | 混合检索（Chroma + SQLite） | LangchainKnowledgeSearchTool |
-| VLM 理解 Agent | 图形理解（有图才调） | Qwen3-VL FunctionTool |
+| VLM 理解 Agent | 图形理解（有图才调） | VLM FunctionTool |
 | 聚合数据 Agent | 错题/作答统计、周报聚合（**读写** SQLite：errors/exam_attempts 统计 + periodic_reports 落库） | SQLite 查询/写入工具 |
 | 输出整理 Agent | 格式化 + 分片发送 | 纯 LLM |
 
@@ -243,7 +243,7 @@ gaokao_rag/
 │   │
 │   ├── api/                   # 模型客户端层（OpenAI 兼容协议抽象）
 │   │   ├── llm.py             #   LLM 客户端 —— DeepSeek V4-Flash
-│   │   ├── vlm.py             #   VLM 客户端 —— Qwen3-VL-8B / 32B（DashScope）
+│   │   ├── vlm.py             #   VLM 客户端 —— Qwen3.7-Flash / Plus（DashScope）
 │   │   └── embedding.py       #   嵌入模型 —— Qwen3-Embedding-4B（DashScope）
 │   │
 │   ├── ingestion/             # 多模态摄取管线（PDF → 结构化数据）
@@ -313,8 +313,8 @@ gaokao_rag/
 | 用途 | 开发期默认模型 | 提供方 | 接入方式 |
 | ------ | -------------- | -------- | --------- |
 | 对话/推理 (LLM) | DeepSeek V4-Flash | DeepSeek 官方 API | OpenAIModel |
-| 图形理解 (VLM) | Qwen3-VL-8B-Instruct | Qwen 官方 API（DashScope） | OpenAIModel (多模态) |
-| 复杂图形推理 (VLM) | Qwen3-VL-32B-Thinking | Qwen 官方 API（DashScope） | OpenAIModel (多模态) |
+| 图形理解 (VLM) | Qwen3.7-Flash | Qwen 官方 API（DashScope） | OpenAIModel (多模态) |
+| 复杂图形推理 (VLM) | Qwen3.7-Plus | Qwen 官方 API（DashScope） | OpenAIModel (多模态) |
 | 文本嵌入 | Qwen3-Embedding-4B | Qwen 官方 API（DashScope） | 独立调用 |
 | PDF 解析 | MinerU2.5-Pro | 独立 API 调用 | 独立调用 |
 

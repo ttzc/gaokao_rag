@@ -121,15 +121,16 @@ QQ 开放平台提供沙箱配置——在正式发布前，可在沙箱中添�
 ### 环境变量
 
 ```bash
+# 所有 API Key 通过 .env 设置，config.toml 用 ${VAR} 引用
 # LLM（DeepSeek 官方 API，OpenAI 兼容）
-export TRPC_AGENT_API_KEY=xxx
-export TRPC_AGENT_BASE_URL=https://api.deepseek.com
-export TRPC_AGENT_MODEL_NAME=deepseek-v4-flash
+DEEPSEEK_API_KEY=xxx
 
 # VLM（Qwen 官方 DashScope API，OpenAI 兼容）
-export TRPC_AGENT_VLM_API_KEY=xxx
-export TRPC_AGENT_VLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-export TRPC_AGENT_VLM_MODEL_NAME=Qwen3-VL-8B-Instruct
+DASHSCOPE_API_KEY=xxx
+
+# QQ 机器人（trpc-claw 需要）
+QQ_APP_ID=xxx
+QQ_APP_SECRET=xxx
 ```
 
 ## 接入架构

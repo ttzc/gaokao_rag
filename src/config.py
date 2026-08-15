@@ -2,14 +2,13 @@
 # 配置管理模块：加载 config.toml，解析 ${VAR} 占位符，Pydantic 校验，暴露全局单例。
 #
 # 加载顺序：
-#   1. load_dotenv()        — 把 .env 读进 os.environ
-#   2. _expand()            — 把 config.toml 里的 ${VAR} 替换成环境变量值
-#   3. _load()              — 解析 TOML → Pydantic 校验 → AppConfig
-#   4. _sync_framework_env() — 把业务配置同步到 TRPC_AGENT_ 前缀，供框架读取
+#   1. load_dotenv()        — 把 .env 读进 os.environ（${VAR} 替换的前置）
+#   2. _load()              — 解析 config.toml → _expand_dict() 替换 ${VAR} → Pydantic 校验 → AppConfig
+#   3. config 单例初始化完成，供业务代码使用
 #
 # 用法：
 #     from src.config import config
-#     config.llm.model           # → "deepseek-chat"
+#     config.llm.model           # → "deepseek-v4-flash"
 #     config.vlm.base_url        # → "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ load_dotenv()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Part 2: 环境变量替换（${VAR} → 实际值）
+# Part 2: 环境变量替换函数（${VAR} → 实际值，供 _load() 内部调用）
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -102,11 +101,11 @@ class VLMConfig(BaseModel):
     """
 
     model: str = Field(
-        default="qwen3-vl-8b-instruct",
+        default="qwen3.7-flash",
         description="主力 VLM 模型（DashScope model ID）",
     )
     model_think: str = Field(
-        default="qwen3-vl-32b-instruct",
+        default="qwen3.7-plus",
         description="复杂图形推理增强模型（DashScope model ID）",
     )
     base_url: str = Field(
@@ -244,35 +243,3 @@ def _load(config_path: Path = Path("config.toml")) -> AppConfig:
 
 # 全局配置单例，模块导入时即初始化
 config: AppConfig = _load()
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Part 5: 框架环境变量桥接
-# ═══════════════════════════════════════════════════════════════════════════════
-#
-# tRPC-Agent 框架通过 TRPC_AGENT_ 前缀的环境变量读取模型配置。
-# 本模块的业务配置使用模块级命名（DEEPSEEK_ / DASHSCOPE_ / MINERU_），
-# 因此需要在模块加载时同步到框架约定的环境变量前缀。
-#
-# 同步策略：优先使用 config.toml 里的值（用户显式配置），
-#           缺失时回退到框架默认值（框架内部有默认兜底）。
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-def _sync_framework_env() -> None:
-    """将业务配置同步到 ``TRPC_AGENT_`` 环境变量前缀。
-
-    tRPC-Agent 框架在初始化时从 ``os.environ`` 读取这些变量，
-    因此必须在任何 ``trpc_agent_sdk`` 导入之前调用本函数。
-    """
-    # 主模型：用 LLM 的配置覆盖框架默认值
-    # 框架默认读 TRPC_AGENT_API_KEY / TRPC_AGENT_BASE_URL / TRPC_AGENT_MODEL_NAME
-    if config.llm.api_key and not config.llm.api_key.startswith("${"):
-        os.environ["TRPC_AGENT_API_KEY"] = config.llm.api_key
-    if config.llm.base_url:
-        os.environ["TRPC_AGENT_BASE_URL"] = config.llm.base_url
-    if config.llm.model:
-        os.environ["TRPC_AGENT_MODEL_NAME"] = config.llm.model
-
-
-_sync_framework_env()

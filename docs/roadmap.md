@@ -23,7 +23,7 @@ flowchart LR
 
 - [ ] 安装 Python 3.12
 - [ ] `pip install trpc-agent-py`
-- [ ] 配置 LLM API Key（DeepSeek 官方：`TRPC_AGENT_API_KEY` / `TRPC_AGENT_BASE_URL` / `TRPC_AGENT_MODEL_NAME`）+ VLM API Key（Qwen DashScope）
+- [ ] 配置 LLM API Key（DeepSeek 官方）+ VLM API Key（Qwen DashScope）——通过 `.env` 设置 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY`，`config.toml` 用 `${VAR}` 引用
 - [ ] 运行 tRPC-Agent 官方 quickstart 示例，验证模型调用
 - [ ] **验证 TeamAgent 可用性**（`trpc_agent_sdk.teams` 的 Leader 委派 API；若当前版本不可用，退回 GraphAgent——见 [Agent 设计](agent.md)）
 - [ ] **核对文档 vs 源码 API 清单**（Quickstart 跑通后，对照各文档的 API 假设：OpenAIModel 三件套、`AgenticLangchainKnowledgeSearchTool`、nanobot `channels.qq`；发现对不上则改文档不改代码）

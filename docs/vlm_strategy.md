@@ -65,11 +65,19 @@ flowchart LR
 
 | 模型 | model ID（DashScope 实际值） | 定位 | 使用场景 | 成本 |
 | ------ | ------ | ------ | --------- | ------ |
-| Qwen3-VL-8B-Instruct | `qwen3-vl-8b-instruct` | 主力 | 常见几何图、函数图像、坐标系 | 低 |
-| Qwen3-VL-32B-Thinking | `qwen3-vl-32b-instruct` | 推理增强 | 立体几何、含参数的函数组合图、复杂组合图、化学结构式 | 高 |
+| Qwen3.7-Flash | `qwen3.7-flash` | 主力 | 常见几何图、函数图像、坐标系 | 极低（¥0.2 / ¥0.8 每 1M tokens） |
+| Qwen3.7-Plus | `qwen3.7-plus` | 推理增强 | 立体几何、含参数的函数组合图、复杂组合图、化学结构式 | 低（¥0.4 / ¥1.6 每 1M tokens） |
 | MinerU2.5-Pro | - | PDF 解析 | 复杂版面试卷 PDF 的版面分析 | 按调用计费 |
 
-**注意**：DashScope 的 model ID 是小写格式（`qwen3-vl-8b-instruct`），与文档展示名 `Qwen3-VL-8B-Instruct` 有大小写差异。实现时以百炼控制台列出的 model ID 为准。
+**2026-08-15 选型更新**：主力从 `qwen3-vl-8b-instruct` 切换为 `qwen3.7-flash`，升级档从 `qwen3-vl-32b-instruct` 切换为 `qwen3.7-plus`。原因：
+
+1. 百炼官方视觉模型文档（2026-08-03 更新）已将 Qwen3-VL 系列标为"不再首选推荐"，主推 Qwen3.7 系列（推荐路径：从 `qwen3.7-plus` 起步，场景稳定后换 `qwen3.7-flash` 降本）
+2. **更便宜**：flash 输入 ¥0.2/1M（比 8B 的 ¥0.5 便宜 2.5 倍），plus ¥0.4/1M（比 32B 更便宜）
+3. **能力更强**：1M 上下文（8B/32B 为 131K）、单图最高 1600 万像素、支持 Function Calling 与结构化输出，官方称 flash"接近旗舰效果"。单张题图约 15.6k tokens（`h×w/1024+2`），落在 flash 最低价格档
+
+开源 `qwen3-vl-8b-instruct` / `qwen3-vl-32b-instruct` 保留为备选通道（模型中立/自部署场景），config 驱动模型名即可切换。
+
+**注意**：DashScope 的 model ID 是小写格式（`qwen3.7-flash`），与文档展示名 `Qwen3.7-Flash` 有大小写差异。实现时以百炼控制台列出的 model ID 为准。
 
 Base URL：`https://dashscope.aliyuncs.com/compatible-mode/v1`（OpenAI 兼容端点）。
 
@@ -79,7 +87,7 @@ Base URL：`https://dashscope.aliyuncs.com/compatible-mode/v1`（OpenAI 兼容�
 def select_vlm_model(image_path: str, question_text: str) -> str:
     """
     根据图像特征选择 VLM 模型。
-    默认 8B，检测到复杂场景升级 32B。
+    默认 flash，检测到复杂场景升级 plus。
     """
     # 启发式规则
     complexity_indicators = [
@@ -90,14 +98,14 @@ def select_vlm_model(image_path: str, question_text: str) -> str:
     
     for indicator in complexity_indicators:
         if indicator in question_text:
-            return "Qwen3-VL-32B-Thinking"
+            return "qwen3.7-plus"
     
     # 图像尺寸启发式：大图可能更复杂
     img_size = get_image_size(image_path)
     if img_size > 500_000:  # 500KB 以上
-        return "Qwen3-VL-32B-Thinking"
+        return "qwen3.7-plus"
     
-    return "Qwen3-VL-8B-Instruct"
+    return "qwen3.7-flash"
 ```
 
 ## Prompt 设计
@@ -168,7 +176,7 @@ def select_vlm_model(image_path: str, question_text: str) -> str:
 
 ```python
 response = await call_vlm(
-    model="Qwen3-VL-8B-Instruct",
+    model="qwen3.7-flash",
     image=image_path,
     prompt=prompt_template.format(question_text=question_text)
 )
@@ -225,7 +233,7 @@ VLM 在摄取阶段调用一次，描述存入数据库，查询时不重复调�
 
 1. **异步并发**：多张图并行调用 VLM（控制并发数，避免 API 限流）
 2. **缓存**：相同图像（hash 一致）不重复调用
-3. **分级处理**：先快速扫描所有图像（8B），标记需要复杂推理的，再批量调用 32B
+3. **分级处理**：先快速扫描所有图像（flash），标记需要复杂推理的，再批量调用 plus
 4. **断点续传**：记录已处理的图像路径，中断后从上次位置继续
 
 ## 质量评估

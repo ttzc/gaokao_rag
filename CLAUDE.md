@@ -26,7 +26,7 @@ Gaokao RAG：帮助高中学生备考的 AI 助手（核心目的），MVP 聚�
 - Python 3.13（由 uv 管理，与 `pyproject.toml` 一致）
 - Agent 框架：**tRPC-Agent-Python**（`trpc-agent-py`），不是 LangChain 框架本体，但 Knowledge 层基于 LangChain 组件
 - LLM：DeepSeek 官方 API（开发期写死 V4-Flash），OpenAI 兼容协议，通过 `OpenAIModel` 接入；**模型中立**，不绑定厂商
-- VLM：Qwen 官方 API（DashScope），开发期写死 Qwen3-VL-8B-Instruct（主力）/ Qwen3-VL-32B-Thinking（复杂图形）
+- VLM：Qwen 官方 API（DashScope），开发期写死 Qwen3.7-Flash（主力）/ Qwen3.7-Plus（复杂图形推理）；开源 Qwen3-VL-8B/32B 保留为备选通道（模型中立/自部署）
 - 嵌入：Qwen3-Embedding-4B（DashScope API，与 VLM 同厂商一套 Key）；向量库：Chroma；元数据索引：SQLite
 - PDF：PyMuPDF（主力）+ MinerU2.5-Pro（兜底）
 - **用户入口：trpc-claw（QQ 官方 API + nanobot 通道适配器扩展）**，CLI + MCP + FastAPI 保留为开发/外部 Agent 接口
@@ -100,7 +100,7 @@ gaokao_rag/
 - 类型注解完整
 - docstring 中文，说明参数和返回值
 - 配置从 `config.toml` + 环境变量读取，不硬编码
-- 环境变量前缀 `TRPC_AGENT_`（框架约定），业务自定义按模块命名（如 LLM、VLM、Embedding）
+- 业务环境变量按模块命名（如 `DEEPSEEK_API_KEY`、`DASHSCOPE_API_KEY`、`MINERU_API_KEY`），不与 OpenClaw 的 `TRPC_AGENT_` 前缀冲突
 
 ## 关键决策记录（想改先问）
 

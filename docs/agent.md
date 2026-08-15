@@ -59,7 +59,7 @@ flowchart TD
 | --------- | ------ | --------- |
 | **意图识别 Agent** | 判断用户意图（question/review/report/browse/**ingest**） | LLM 分类 |
 | **搜索信息 Agent** | 混合检索（Chroma + SQLite，不分子意图） | LangchainKnowledgeSearchTool |
-| **VLM 理解 Agent** | 图形描述（有图才调用） | Qwen3-VL FunctionTool |
+| **VLM 理解 Agent** | 图形描述（有图才调用） | VLM FunctionTool |
 | **聚合数据 Agent** | 错题/作答统计、周报聚合（**读写** SQLite：errors/exam_attempts 统计 + periodic_reports 落库） | SQLite 查询/写入工具 |
 | **输出整理 Agent** | 格式化 + 分片发送 | 纯 LLM |
 

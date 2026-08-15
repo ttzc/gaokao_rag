@@ -5,7 +5,6 @@
 - _expand / _expand_dict  占位符替换
 - LLMConfig / VLMConfig / EmbeddingConfig / MinerUConfig / StoreConfig / QQConfig  默认值与校验
 - AppConfig 从 TOML 加载
-- _sync_framework_env   框架环境变量桥接
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ from src.config import (
     _expand,
     _expand_dict,
     _load,
-    _sync_framework_env,
     config,
 )
 
@@ -103,10 +101,10 @@ class TestLLMConfig:
 
 class TestVLMConfig:
     def test_default_model(self) -> None:
-        assert VLMConfig().model == "qwen3-vl-8b-instruct"
+        assert VLMConfig().model == "qwen3.7-flash"
 
     def test_default_model_think(self) -> None:
-        assert VLMConfig().model_think == "qwen3-vl-32b-instruct"
+        assert VLMConfig().model_think == "qwen3.7-plus"
 
     def test_default_base_url(self) -> None:
         assert (
@@ -228,7 +226,7 @@ class TestAppConfig:
             'temperature = 0.5\n'
             '\n'
             '[vlm]\n'
-            'model = "qwen3-vl-8b-instruct"\n'
+            'model = "qwen3.7-flash"\n'
             'timeout = 90.0\n'
             '\n'
             '[store]\n'
@@ -244,7 +242,7 @@ class TestAppConfig:
         assert app.llm.base_url == "https://api.deepseek.com"
         assert app.llm.api_key == "sk-deepseek-test"
         assert app.llm.temperature == 0.5
-        assert app.vlm.model == "qwen3-vl-8b-instruct"
+        assert app.vlm.model == "qwen3.7-flash"
         assert app.vlm.timeout == 90.0
         assert app.store.sqlite_path == "data/test.db"
 
@@ -256,7 +254,7 @@ class TestAppConfig:
         app = _load(empty_path)
 
         assert app.llm.model == "deepseek-v4-flash"
-        assert app.vlm.model == "qwen3-vl-8b-instruct"
+        assert app.vlm.model == "qwen3.7-flash"
         assert app.mineru.max_pages == 50
 
     def test_malformed_toml_raises_runtime_error(
@@ -267,55 +265,3 @@ class TestAppConfig:
         bad_file.write_text("[llm\nmodel = \"broken\"\n", encoding="utf-8")
         with pytest.raises(RuntimeError, match="config.toml 解析失败"):
             _load(bad_file)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# _sync_framework_env
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class TestSyncFrameworkEnv:
-    """框架环境变量桥接。
-
-    注意：config 单例在模块导入时已初始化（被 conftest 的 fake_env 填入假 Key），
-    因此这里用 ``patch.object`` 直接模拟 config.llm 属性，而非 monkeypatch 环境变量。
-    """
-
-    def test_sets_three_vars(self) -> None:
-        """api_key 已配置（非占位符）时，同步三个 TRPC_AGENT_ 变量。"""
-        with patch.object(config.llm, "api_key", "sk-real-key"), \
-             patch.object(config.llm, "base_url", "https://api.deepseek.com"), \
-             patch.object(config.llm, "model", "deepseek-v4-flash"):
-            _sync_framework_env()
-
-        assert os.environ["TRPC_AGENT_API_KEY"] == "sk-real-key"
-        assert os.environ["TRPC_AGENT_BASE_URL"] == "https://api.deepseek.com"
-        assert os.environ["TRPC_AGENT_MODEL_NAME"] == "deepseek-v4-flash"
-
-    def test_skips_api_key_when_placeholder(self) -> None:
-        """api_key 仍是 ${VAR} 占位符时，不把占位符当真实 key 写入环境变量。"""
-        with patch.object(config.llm, "api_key", "${DEEPSEEK_API_KEY}"), \
-             patch.object(config.llm, "base_url", "https://api.deepseek.com"), \
-             patch.object(config.llm, "model", "deepseek-v4-flash"):
-            _sync_framework_env()
-
-        # base_url 和 model_name 仍然会写入
-        assert os.environ["TRPC_AGENT_BASE_URL"] == "https://api.deepseek.com"
-        assert os.environ["TRPC_AGENT_MODEL_NAME"] == "deepseek-v4-flash"
-        # api_key 不应该写入占位符
-        assert os.environ.get("TRPC_AGENT_API_KEY") != "${DEEPSEEK_API_KEY}"
-
-    def test_overrides_existing_trpc_vars(self) -> None:
-        """业务配置优先覆盖已有的 TRPC_AGENT_ 变量。"""
-        os.environ["TRPC_AGENT_API_KEY"] = "sk-old"
-        os.environ["TRPC_AGENT_BASE_URL"] = "http://old"
-        os.environ["TRPC_AGENT_MODEL_NAME"] = "old-model"
-
-        with patch.object(config.llm, "api_key", "sk-override"), \
-             patch.object(config.llm, "base_url", "https://api.deepseek.com"), \
-             patch.object(config.llm, "model", "deepseek-v4-flash"):
-            _sync_framework_env()
-
-        assert os.environ["TRPC_AGENT_API_KEY"] == "sk-override"
-        assert os.environ["TRPC_AGENT_BASE_URL"] == "https://api.deepseek.com"
-        assert os.environ["TRPC_AGENT_MODEL_NAME"] == "deepseek-v4-flash"
