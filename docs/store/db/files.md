@@ -30,7 +30,7 @@ CREATE UNIQUE INDEX idx_files_sha ON files(sha256);   -- 同内容天然去重
 
 ### 1. 磁盘哈希命名（物理层）
 
-- 磁盘文件名 = `sha256[:16]` + 扩展名（`data/files/raw/pdfs/3f9a2c81.pdf`，相对项目根）
+- 磁盘文件名 = 完整 `sha256`（64 位 hex）+ 扩展名（`data/files/raw/pdfs/<sha256>.pdf`，相对项目根）
 - 好处：**同内容同文件**（`sha256` UNIQUE 索引直接挡掉重复上传）、同名不覆盖、防恶意文件名、物理层可自由重组
 
 ### 2. title 语义标题（逻辑层）

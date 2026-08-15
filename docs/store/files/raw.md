@@ -17,7 +17,7 @@ data/
 ├── files/                    # 文件层根目录（raw + processed）
 │   ├── raw/                  # raw_dir —— 原始文件（只读源，不可变）
 │   │   ├── pdfs/             #   原始 PDF（哈希命名）
-│   │   │   └── 3f9a2c81.pdf  #     sha256[:16] + 扩展名
+│   │   │   └── <sha256>.pdf   #     完整 sha256 + 扩展名
 │   │   └── images/           #   学生上传的图片（哈希命名）
 │   │       ├── uploaded/     #     QQ 上传、作业拍照等（统一入口）
 │   │       │   └── a3f2e1c9.jpg
@@ -55,7 +55,7 @@ data_dir = "/mnt/external/gaokao_data"    # 绝对路径
 
 ### 1. 磁盘 = 哈希命名，原文件名直接丢弃
 
-- **PDF 和图片统一哈希命名**：`{sha256[:16]}.{ext}`（如 `data/files/raw/pdfs/3f9a2c81.pdf`，相对项目根）
+- **PDF 和图片统一哈希命名**：`{sha256}.{ext}`（完整 64 位，如 `data/files/raw/pdfs/<sha256>.pdf`，相对项目根）
 - 原文件名**不保留**——用户上传的文件名大多是噪音（"新建文档.pdf" / "IMG_20260811.jpg"），无保留价值
 - 好处：同内容同文件（`files.sha256` UNIQUE 索引天然去重）、同名不覆盖、防恶意文件名、物理层可自由重组
 

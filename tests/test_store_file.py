@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from src.config import config
 from src.store.file_store import FileStore
 
 
@@ -18,15 +19,14 @@ def store(tmp_path: Path) -> FileStore:
 
 class TestInit:
 
-    def test_base_is_project_root_relative(self):
-        store = FileStore()
-        # base = _PROJECT_ROOT / data/files/raw，parents: raw → files → data → project_root
+    def test_base_is_project_root_relative(self, tmp_path: Path):
+        store = FileStore(base_dir=str(tmp_path))
         assert store.base.name == "raw"
         assert store.base.parent.name == "files"
         assert store.base.parent.parent.name == "data"
 
-    def test_creates_all_subdirs(self):
-        store = FileStore()
+    def test_creates_all_subdirs(self, tmp_path: Path):
+        store = FileStore(base_dir=str(tmp_path))
         expected = [
             "pdfs",
             "images/uploaded",
@@ -38,9 +38,9 @@ class TestInit:
             target = store.base / rel
             assert target.is_dir(), f"目录未创建: {target}"
 
-    def test_idempotent_mkdir(self):
-        store = FileStore()
-        store2 = FileStore()
+    def test_idempotent_mkdir(self, tmp_path: Path):
+        store = FileStore(base_dir=str(tmp_path))
+        store2 = FileStore(base_dir=str(tmp_path))
         assert store2.base == store.base
 
 
@@ -250,91 +250,123 @@ class TestGuessExt:
 
 
 # ── 绝对路径 data_dir（外部存储 / 数据导入导出） ─────────────────
+# 真实构造：monkeypatch config.store.data_dir 为绝对路径，直接 FileStore()
 
 class TestAbsoluteDataDir:
 
-    @staticmethod
-    def _make_external_store(tmp_path: Path) -> FileStore:
-        """模拟绝对路径 data_dir：文件写在 external_data/ 下，effective_root 为其父目录。
+    def _external_dir(self, tmp_path: Path) -> str:
+        """在 tmp 下创建绝对路径 data_dir，返回其字符串值。"""
+        d = tmp_path / "gaokao_data"
+        d.mkdir()
+        return str(d)
 
-        目录布局：
-            tmp_path/              ← effective_root（data_dir 的父目录）
-            ├── external_data/    ← 模拟 data_dir（raw 和 processed 都在这里）
-            │   ├── files/raw/
-            │   └── files/processed/
-        """
-        external = tmp_path / "external_data"
-        # base_dir = tmp_path，raw_dir 解析为 tmp_path / "data/files/raw"
-        store = FileStore(base_dir=str(tmp_path))
-        # 手动将 base 指向 external，模拟 data_dir = str(external) 的效果
-        store.base = external.resolve()
-        store._subdirs = {
-            "raw_pdf":           store.base / "pdfs",
-            "raw_img_uploaded":  store.base / "images" / "uploaded",
-            "raw_img_extracted": store.base / "images" / "extracted",
-            "processed_text":    store.base.parent / "processed" / "text",
-            "processed_vlm_desc": store.base.parent / "processed" / "vlm_desc",
-        }
-        for d in store._subdirs.values():
-            d.mkdir(parents=True, exist_ok=True)
-        return store
+    def test_returns_true_absolute_path_on_save(self, tmp_path: Path, monkeypatch):
+        """外部存储模式下 save_raw 应返回真绝对路径（含盘符/根）。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
+        path = store.save_raw(b"%PDF-1.4 external pdf", kind="pdf")
+        assert Path(path).is_absolute(), f"Expected absolute path, got: {path}"
+        assert Path(path).is_relative_to(tmp_path), f"Path should be under tmp: {path}"
 
-    def test_external_data_dir_creates_subdirs(self, tmp_path: Path):
-        """外部 data_dir 时，所有子目录应正确创建。"""
-        store = self._make_external_store(tmp_path)
-        expected_dirs = [
-            "pdfs",
-            "images/uploaded",
-            "images/extracted",
-            "../processed/text",
-            "../processed/vlm_desc",
-        ]
-        for rel in expected_dirs:
-            target = store.base / rel
-            assert target.is_dir(), f"目录未创建: {target}"
+    def test_absolute_path_contains_files_raw_pdfs(self, tmp_path: Path, monkeypatch):
+        """绝对路径应包含完整的 files/raw/pdfs/ 层级。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
+        path = store.save_raw(b"%PDF-1.4 test", kind="pdf")
+        assert "files/raw/pdfs/" in path, f"Missing expected segment in: {path}"
 
-    def test_external_data_dir_save_raw(self, tmp_path: Path):
-        """外部 data_dir 时，save_raw 写入 external 目录。"""
-        store = self._make_external_store(tmp_path)
-        path = store.save_raw(b"%PDF-1.4 test pdf", kind="pdf")
-        # 文件在 external_data/pdfs/ 下
-        assert "pdfs/" in path
-        assert path.endswith(".pdf")
-        # path 是 effective_root 相对路径，用 _resolve 验证磁盘上存在
-        assert store._resolve(path).exists()
+    def test_absolute_path_file_exists_on_disk(self, tmp_path: Path, monkeypatch):
+        """返回的绝对路径指向的文件真实存在于磁盘。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
+        content = b"%PDF-1.4 roundtrip"
+        path = store.save_raw(content, kind="pdf")
+        assert Path(path).exists(), f"File not found at: {path}"
+        assert Path(path).read_bytes() == content
 
-    def test_external_data_dir_save_processed(self, tmp_path: Path):
-        """外部 data_dir 时，save_processed 写入 processed 目录。"""
-        store = self._make_external_store(tmp_path)
+    def test_save_image_absolute_path(self, tmp_path: Path, monkeypatch):
+        """外部存储模式下的图片上传也返回绝对路径。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
+        jpg = b"\xff\xd8\xff\xe0\x00\x10JFIF"
+        path = store.save_raw(jpg, kind="image", subdir="uploaded")
+        assert Path(path).is_absolute()
+        assert "images/uploaded/" in path
+
+    def test_save_processed_absolute_path(self, tmp_path: Path, monkeypatch):
+        """外部存储模式下的 processed 文件也返回绝对路径。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
         path = store.save_processed(b"hello", category="text", name="test.txt")
+        assert Path(path).is_absolute()
         assert "processed/text/test.txt" in path
-        # path 是 effective_root 相对路径，用 _resolve 验证磁盘上存在
-        assert store._resolve(path).exists()
 
-    def test_external_data_dir_roundtrip(self, tmp_path: Path):
-        """外部 data_dir 时，write → read 路径闭环。"""
-        store = self._make_external_store(tmp_path)
-        path = store.save_raw(b"%PDF-1.4 roundtrip", kind="pdf")
-        assert store.read(path) == b"%PDF-1.4 roundtrip"
+    def test_list_raw_returns_absolute_paths(self, tmp_path: Path, monkeypatch):
+        """外部存储模式 list_raw 返回绝对路径列表。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
+        store.save_raw(b"%PDF-1.4 doc", kind="pdf")
+        paths = store.list_raw("pdf")
+        assert len(paths) == 1
+        assert Path(paths[0]).is_absolute()
 
-    def test_external_data_dir_delete(self, tmp_path: Path):
-        """外部 data_dir 时，delete 正常工作。"""
-        store = self._make_external_store(tmp_path)
+    def test_delete_works_with_absolute_return(self, tmp_path: Path, monkeypatch):
+        """用 save_raw 返回的绝对路径调用 delete 应正常删除。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
         path = store.save_raw(b"data", kind="pdf")
         assert store.delete(path) is True
-        assert not store.exists(path)
+        assert not Path(path).exists()
 
-    def test_external_data_dir_files_under_base(self, tmp_path: Path):
-        """外部 data_dir 时，所有文件都在 external_data/ 目录树下。"""
-        store = self._make_external_store(tmp_path)
+    def test_read_works_with_absolute_return(self, tmp_path: Path, monkeypatch):
+        """用 save_raw 返回的绝对路径调用 read 应正常读取。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
+        content = b"%PDF-1.4 readback"
+        path = store.save_raw(content, kind="pdf")
+        assert store.read(path) == content
+
+    def test_processed_read_roundtrip(self, tmp_path: Path, monkeypatch):
+        """外部模式下 save_processed 返回的绝对路径可被 read 消费。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
+        content = b"cleaned math problem text"
+        path = store.save_processed(content, category="text", name="q_001.txt")
+        assert Path(path).is_absolute()
+        assert store.read(path) == content
+
+    def test_processed_delete_roundtrip(self, tmp_path: Path, monkeypatch):
+        """外部模式下 save_processed 返回的绝对路径可被 delete 消费。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
+        path = store.save_processed(b"vlm desc", category="vlm_desc", name="q_001_vlm.txt")
+        assert store.delete(path) is True
+        assert not Path(path).exists()
+
+    def test_all_files_under_data_dir(self, tmp_path: Path, monkeypatch):
+        """外部存储模式下所有文件都落在 data_dir 目录树下。"""
+        abs_data_dir = self._external_dir(tmp_path)
+        monkeypatch.setattr(config.store, "data_dir", abs_data_dir)
+        store = FileStore()
         store.save_raw(b"%PDF-1.4", kind="pdf")
         store.save_raw(b"\xff\xd8\xff", kind="image", subdir="uploaded")
         store.save_processed(b"text", category="text", name="t.txt")
         store.save_processed(b"vlm", category="vlm_desc", name="v.txt")
-
-        # 所有 raw 文件在 external_data/ 下
-        raw_files = store.list_raw("pdf") + store.list_raw("image_uploaded")
-        assert all("external_data/" in f for f in raw_files)
-        # 所有 processed 文件也在 external_data 的同级
-        proc_files = store.list_processed("text") + store.list_processed("vlm_desc")
-        assert all("processed/" in f for f in proc_files)
+        # 所有文件的路径都应在 data_dir 下
+        for p_str in (
+            store.list_raw("pdf") + store.list_raw("image_uploaded")
+            + store.list_processed("text") + store.list_processed("vlm_desc")
+        ):
+            assert Path(p_str).is_absolute()
+            assert Path(p_str).is_relative_to(abs_data_dir), \
+                f"{p_str} should be under {abs_data_dir}"
