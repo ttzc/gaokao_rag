@@ -116,6 +116,8 @@ class VLMConfig(BaseModel):
         default="${DASHSCOPE_API_KEY}",
         description="DashScope API Key，通过环境变量引用",
     )
+    temperature: float = Field(default=0.1, ge=0.0, le=2.0, description="VLM 生成温度（描述任务宜低）")
+    max_tokens: int = Field(default=1024, gt=0, description="VLM 单次生成最大 token 数")
     timeout: float = Field(default=120.0, gt=0, description="VLM 调用超时（秒），图形理解较慢")
 
     # 自动升级阈值
@@ -220,12 +222,16 @@ class AppConfig(BaseModel):
 # Part 4: 加载并校验 config.toml
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# 默认 config.toml 路径：相对于本文件所在目录的父级（即项目根），
+# 不依赖 CWD。部署、脚本等场景从任意目录 import 都能正确找到配置文件。
+_CONFIG_PATH: Path = Path(__file__).resolve().parent.parent / "config.toml"
 
-def _load(config_path: Path = Path("config.toml")) -> AppConfig:
+
+def _load(config_path: Path = _CONFIG_PATH) -> AppConfig:
     """加载并校验 ``config.toml``，文件不存在时使用全量默认值。
 
     Args:
-        config_path: 配置文件路径，默认当前目录下的 ``config.toml``。
+        config_path: 配置文件路径，默认 ``<项目根>/config.toml``（相对于本文件解析）。
                      测试等场景可注入临时文件路径。
     """
     if not config_path.exists():

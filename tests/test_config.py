@@ -120,6 +120,22 @@ class TestVLMConfig:
         assert "立体几何" in kw
         assert "恒成立" in kw
 
+    def test_default_temperature(self) -> None:
+        """VLM 描述任务默认 temperature=0.1（低随机性，减少幻觉）。"""
+        assert VLMConfig().temperature == 0.1
+
+    def test_default_max_tokens(self) -> None:
+        """VLM 描述任务默认 max_tokens=1024。"""
+        assert VLMConfig().max_tokens == 1024
+
+    def test_temperature_validation(self) -> None:
+        with pytest.raises(ValidationError):
+            VLMConfig(temperature=-0.1)
+
+    def test_max_tokens_validation(self) -> None:
+        with pytest.raises(ValidationError):
+            VLMConfig(max_tokens=0)
+
     def test_custom_keywords(self) -> None:
         custom = VLMConfig(complexity_keywords=["自定义关键词"])
         assert custom.complexity_keywords == ["自定义关键词"]
@@ -227,6 +243,8 @@ class TestAppConfig:
             '\n'
             '[vlm]\n'
             'model = "qwen3.7-flash"\n'
+            'temperature = 0.2\n'
+            'max_tokens = 512\n'
             'timeout = 90.0\n'
             '\n'
             '[store]\n'
@@ -243,6 +261,8 @@ class TestAppConfig:
         assert app.llm.api_key == "sk-deepseek-test"
         assert app.llm.temperature == 0.5
         assert app.vlm.model == "qwen3.7-flash"
+        assert app.vlm.temperature == 0.2
+        assert app.vlm.max_tokens == 512
         assert app.vlm.timeout == 90.0
         assert app.store.sqlite_path == "data/test.db"
 

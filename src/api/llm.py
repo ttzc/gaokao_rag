@@ -10,12 +10,20 @@
 
 from trpc_agent_sdk.log import logger
 from trpc_agent_sdk.models import LLMModel, OpenAIModel, shared_http_client_provider_factory
+from trpc_agent_sdk.types import GenerateContentConfig
 
 from src.config import config
 
-# 模块级单例，首次调用 get_llm_model() 时初始化。
-# Python 模块导入顺序保证只赋值一次（GIL 保护单次赋值原子性）。
+# ═══════════════════════════════════════════════════════════════════════════════
+# 模块级单例
+# ═══════════════════════════════════════════════════════════════════════════════
+
 _model: LLMModel | None = None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 模型适配类
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class DeepSeekModel(OpenAIModel):
@@ -32,6 +40,11 @@ class DeepSeekModel(OpenAIModel):
     @classmethod
     def supported_models(cls) -> list[str]:
         return ["deepseek-v4-flash", "deepseek-v4-pro"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 核心 API
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 def get_llm_model() -> LLMModel:
@@ -53,7 +66,7 @@ def get_llm_model() -> LLMModel:
             f"LLM api_key 未解析（仍是 '{cfg.api_key}'），"
             "请检查 .env 中是否设置了 DEEPSEEK_API_KEY"
         )
-    if (cfg.model not in DeepSeekModel.supported_models()):
+    if cfg.model not in DeepSeekModel.supported_models():
         raise RuntimeError(
             f"LLM model '{cfg.model}' 不在支持列表 {DeepSeekModel.supported_models()} 中，"
             "请检查 config.toml 中 llm.model 配置"
@@ -62,7 +75,12 @@ def get_llm_model() -> LLMModel:
         model_name=cfg.model,
         api_key=cfg.api_key,
         base_url=cfg.base_url,
-        http_client_provider_factory=shared_http_client_provider_factory
+        http_client_provider_factory=shared_http_client_provider_factory,
+        client_args={"timeout": cfg.timeout},
+        generate_content_config=GenerateContentConfig(
+            temperature=cfg.temperature,
+            max_output_tokens=cfg.max_tokens,
+        ),
     )
-    logger.info(f"Init llm model: {cfg.model}")
+    logger.info(f"Init llm model: {cfg.model} (temp={cfg.temperature}, max_tokens={cfg.max_tokens}, timeout={cfg.timeout}s)")
     return _model
