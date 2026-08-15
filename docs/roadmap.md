@@ -105,7 +105,7 @@ flowchart LR
 
 - [ ] 知识点树查询：输入"解析几何"返回全部子知识点
 - [ ] 题目过滤：按"2026年 南昌 圆锥曲线 解答题"精确过滤
-- [ ] 8 张表全部建齐（topics / knowledge_notes / questions / question_topics / errors / exam_attempts / review_plans / periodic_reports）
+- [ ] 9 张表全部建齐（files / topics / knowledge_notes / questions / question_topics / errors / exam_attempts / review_plans / periodic_reports）
 
 ## V0.5: RAG Agent（2 周）
 

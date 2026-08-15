@@ -63,7 +63,7 @@ async def get_question_detail(doc_id: str) -> dict:
 | 工具名 | 描述 | 参数 |
 |--------|------|------|
 | `add_error` | 记录错题（用户口述错因 → LLM 生成错因总结后入库） | `question_id`、`error_type`、`user_reflection`（用户口述）、`error_summary`（LLM 生成） |
-| `add_exam_attempt` | 记录整卷作答（用户口述 → LLM 解析逐题对错 + 整卷分析后入库） | `source_file`、`user_statement`（口述，可含成绩单图片）、`attempt_date` |
+| `add_exam_attempt` | 记录整卷作答（用户口述 → LLM 解析逐题对错 + 整卷分析后入库） | `file_id`（files 表）、`user_statement`（口述，可含成绩单图片）、`attempt_date` |
 | `get_error_stats` | 获取错题统计 | `user_id`（可选，MVP 默认单一用户） |
 | `generate_review_plan` | 生成复习计划 | `user_id`、`focus_topics`（可选聚焦知识点） |
 | `get_review_plan` | 获取已有复习计划 | `user_id` |

@@ -11,7 +11,7 @@ CREATE TABLE knowledge_notes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     doc_id          TEXT UNIQUE NOT NULL,          -- 与 Chroma knowledge_point chunk 对应
     topic_id        INTEGER REFERENCES topics(id),  -- 关联知识点树节点（可空，识别不出先挂 NULL）
-    source_file     TEXT NOT NULL,                  -- 来源: "专题/圆锥曲线_1.pdf" / "homework:2026-08-11"
+    file_id         INTEGER REFERENCES files(id),  -- 所属资料/试卷（files 表，可空=散资料无来源）
     title           TEXT,                           -- 讲解标题（如"分离参数法"）
     content         TEXT NOT NULL,                  -- 讲解文本
     examples        TEXT,                           -- 关联例题引用 JSON: [question_id]
@@ -19,7 +19,7 @@ CREATE TABLE knowledge_notes (
 );
 
 CREATE INDEX idx_notes_topic ON knowledge_notes(topic_id);
-CREATE INDEX idx_notes_source ON knowledge_notes(source_file);
+CREATE INDEX idx_notes_file ON knowledge_notes(file_id);
 ```
 
 ## 关键设计点

@@ -213,7 +213,7 @@ data/
 {
     "doc_id": "q_001_question",     # 与 SQLite questions.doc_id 对应
     "source_type": "exam",
-    "source_file": "2026_南昌一模.pdf",
+    "title": "2026 南昌一模数学卷",   # 语义标题（files.title 快照，检索可读）
     "subject": "数学",
     "exam_region": "南昌",
     "exam_year": 2026,
@@ -223,7 +223,7 @@ data/
     "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），树展开后用于过滤
     "chunk_type": "question",
     "has_image": True,
-    "image_paths": "[\"/path/to/img1.png\"]",  # 图像路径 JSON
+    "image_file_ids": "[1, 2]",   # 题目图片 files.id 数组 JSON
     "vlm_descriptions": "[\"...\"]",           # VLM 生成的图形描述 JSON
 }
 ```
@@ -254,10 +254,11 @@ gaokao_rag/
 │   │   └── pipeline.py        #   管线编排（7 阶段串联）
 │   │
 │   ├── store/                 # 三层存储 + 知识点图谱
-│   │   ├── file_store.py      #   Layer 1：文件存储（原始 PDF 管理）
+│   │   ├── file_store.py      #   Layer 1：文件存储（原始 PDF 管理，详见 [store/raw.md](store/raw.md)）
 │   │   ├── db/                #   Layer 2：SQLite 数据访问层（按表拆，共享连接）
 │   │   │   ├── __init__.py    #     连接管理（单例）+ schema 初始化
-│   │   │   ├── schema.py      #     8 张表 DDL + 索引
+│   │   │   ├── schema.py      #     9 张表 DDL + 索引
+│   │   │   ├── files.py       #     文件注册表（title + 哈希路径 + sha256 去重）
 │   │   │   ├── topics.py      #     知识点树：CRUD + 路径枚举/防环/状态机/展开（独特逻辑集中）
 │   │   │   ├── knowledge_notes.py
 │   │   │   ├── questions.py
@@ -298,7 +299,7 @@ gaokao_rag/
 │   │   ├── questions/         # 按题目拆分的 JSON
 │   │   └── images/            # 从 PDF 提取的图像
 │   ├── chroma_db/             # Chroma 向量数据库
-│   └── gaokao.db              # SQLite 索引（8 张表）
+│   └── gaokao.db              # SQLite 索引（9 张表）
 │
 └── tests/                     # 测试（V0.5 后补充）
 ```

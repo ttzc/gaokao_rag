@@ -11,7 +11,7 @@ CREATE TABLE questions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     doc_id          TEXT UNIQUE NOT NULL,          -- 与 Chroma chunk 的 doc_id 对应
     source_type     TEXT NOT NULL,                  -- "exam" / "special_topic" / "homework" / "error_book"
-    source_file     TEXT NOT NULL,                  -- 源文件名（作业可标 "homework:2026-08-11"）
+    file_id         INTEGER REFERENCES files(id),  -- 所属试卷/作业（files 表；标题经 join 获取，不冗余）
     exam_region     TEXT,                            -- 考区: "南昌" / "深圳" / "全国卷I" ...
     exam_year       INTEGER,                         -- 年份
     exam_month      TEXT,                            -- 月份: "二月" / "三月" ...
@@ -22,13 +22,13 @@ CREATE TABLE questions (
     answer_text     TEXT,                            -- 标准答案
     analysis_text   TEXT,                            -- 解析
     has_image       BOOLEAN DEFAULT 0,              -- 是否含图
-    image_paths     TEXT,                            -- 图像路径 JSON 数组
+    image_file_ids  TEXT,                            -- 题目图片 files.id 数组 JSON（经 files 表取路径）
     vlm_descriptions TEXT,                           -- VLM 生成的图形描述 JSON 数组
     raw_text        TEXT,                            -- 原始提取文本（备份）
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
-CREATE INDEX idx_questions_source ON questions(source_type, source_file);
+CREATE INDEX idx_questions_source ON questions(source_type, file_id);
 CREATE INDEX idx_questions_exam ON questions(exam_region, exam_year);
 CREATE INDEX idx_questions_type ON questions(question_type);
 CREATE INDEX idx_questions_difficulty ON questions(difficulty);

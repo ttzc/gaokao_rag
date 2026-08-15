@@ -22,7 +22,31 @@ Gaokao RAG 的数据模型分为两部分：
 
 ## SQLite Schema
 
-### 1. 知识点树形表 `topics`
+### 1. 文件注册表 `files`
+
+所有源文件（PDF / 题目图片）的**统一注册表**：磁盘存哈希命名文件，数据库记录语义标题（`title`）+ 磁盘路径（`file_path`）。业务表（questions / knowledge_notes / exam_attempts）通过 `file_id` 引用，不再各自存来源。
+
+```sql
+CREATE TABLE files (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT,                            -- 语义标题（agent 总结生成 / 用户自定义，可空=待生成）
+    file_path   TEXT UNIQUE NOT NULL,            -- 磁盘相对路径（哈希命名: pdfs/3f9a2c81.pdf）
+    sha256      TEXT NOT NULL,                   -- 内容哈希（去重 + 完整性校验）
+    size        INTEGER,                         -- 字节数
+    kind        TEXT NOT NULL,                   -- "pdf" / "image"
+    source_hint TEXT,                            -- 原始来源备注（可选: "QQ 上传" / "ima 导出"）
+    created_at  TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_files_kind ON files(kind);
+CREATE UNIQUE INDEX idx_files_sha ON files(sha256);   -- 同内容天然去重
+```
+
+> **设计要点**：磁盘文件名 = sha256 哈希（去重 / 防冲突 / 防恶意名），**原文件名直接丢弃**；`title` 是语义标题（agent 从内容总结，用户可自定义），**挂在文件上而非题目上**——一份试卷改标题全局生效。图片（kind='image'）同样入库，题目通过 `image_file_ids` 引用。`source_file` 字段已废弃。
+
+> 详细文档见 [store/db/files.md](store/db/files.md)
+
+### 2. 知识点树形表 `topics`
 
 > 详细文档见 [store/db/topics.md](store/db/topics.md)
 
@@ -80,7 +104,7 @@ CREATE INDEX idx_topics_status ON topics(status);
 - 扩科（理化生）无需重造树，数据喂进来树自己长
 - **MVP 单用户**：不存在多用户隔离，树就是这一个用户的知识树
 
-### 2. 知识点讲解表 `knowledge_notes`
+### 3. 知识点讲解表 `knowledge_notes`
 
 > 详细文档见 [store/db/knowledge_notes.md](store/db/knowledge_notes.md)
 
@@ -91,7 +115,7 @@ CREATE TABLE knowledge_notes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     doc_id          TEXT UNIQUE NOT NULL,          -- 与 Chroma knowledge_point chunk 对应
     topic_id        INTEGER REFERENCES topics(id),  -- 关联知识点树节点（可空，识别不出先挂 NULL）
-    source_file     TEXT NOT NULL,                  -- 来源: "专题/圆锥曲线_1.pdf" / "homework:2026-08-11"
+    file_id         INTEGER REFERENCES files(id),  -- 所属资料/试卷（files 表，可空=散题无来源）
     title           TEXT,                           -- 讲解标题（如"分离参数法"）
     content         TEXT NOT NULL,                  -- 讲解文本
     examples        TEXT,                           -- 关联例题引用 JSON: [question_id]
@@ -99,14 +123,14 @@ CREATE TABLE knowledge_notes (
 );
 
 CREATE INDEX idx_notes_topic ON knowledge_notes(topic_id);
-CREATE INDEX idx_notes_source ON knowledge_notes(source_file);
+CREATE INDEX idx_notes_file ON knowledge_notes(file_id);
 ```
 
 **与 Chroma 的关系**：content 向量化 → `knowledge_point` chunk，`doc_id` 桥接（同 questions 模式）。
 
 **检索价值**：用户问"什么是分离参数法" → 命中 knowledge_point chunk → 返回讲解内容 + 关联例题。复习建议可链接到具体讲解（"先看圆锥曲线讲义：分离参数法"）。
 
-### 3. 题目表 `questions`
+### 4. 题目表 `questions`
 
 > 详细文档见 [store/db/questions.md](store/db/questions.md)
 
@@ -115,7 +139,7 @@ CREATE TABLE questions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     doc_id          TEXT UNIQUE NOT NULL,          -- 与 Chroma chunk 的 doc_id 对应
     source_type     TEXT NOT NULL,                  -- "exam" / "special_topic" / "homework" / "error_book"
-    source_file     TEXT NOT NULL,                  -- 源文件名（作业可标 "homework:2026-08-11"）
+    file_id         INTEGER REFERENCES files(id),  -- 所属试卷/作业（files 表；标题经 join 获取，不冗余）
     exam_region     TEXT,                            -- 考区: "南昌" / "深圳" / "全国卷I" ...
     exam_year       INTEGER,                         -- 年份
     exam_month      TEXT,                            -- 月份: "二月" / "三月" ...
@@ -126,19 +150,19 @@ CREATE TABLE questions (
     answer_text     TEXT,                            -- 标准答案
     analysis_text   TEXT,                            -- 解析
     has_image       BOOLEAN DEFAULT 0,              -- 是否含图
-    image_paths     TEXT,                            -- 图像路径 JSON 数组
+    image_file_ids  TEXT,                            -- 题目图片 files.id 数组 JSON（经 files 表取路径）
     vlm_descriptions TEXT,                           -- VLM 生成的图形描述 JSON 数组
     raw_text        TEXT,                            -- 原始提取文本（备份）
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
-CREATE INDEX idx_questions_source ON questions(source_type, source_file);
+CREATE INDEX idx_questions_source ON questions(source_type, file_id);
 CREATE INDEX idx_questions_exam ON questions(exam_region, exam_year);
 CREATE INDEX idx_questions_type ON questions(question_type);
 CREATE INDEX idx_questions_difficulty ON questions(difficulty);
 ```
 
-### 4. 题目-知识点关联表 `question_topics`
+### 5. 题目-知识点关联表 `question_topics`
 
 > 详细文档见 [store/db/question_topics.md](store/db/question_topics.md)
 
@@ -159,7 +183,7 @@ CREATE INDEX idxt_qt_topic ON question_topics(topic_id);
 
 > **标注流程**：摄取时由 LLM 读取题目文本，输出知识点**名字**列表（含同义表述），通过 `search_topic`（name/aliases 模糊查）归位获取 `topic_id`；未命中则新建节点（pending）。
 
-### 5. 错题记录表 `errors`
+### 6. 错题记录表 `errors`
 
 > 详细文档见 [store/db/errors.md](store/db/errors.md)
 
@@ -189,7 +213,7 @@ CREATE INDEX idx_errors_type ON errors(error_type);
 > - `error_summary`：LLM 基于口述 + 题目上下文生成的结构化总结（错因归类、知识缺口、改进建议）
 > - 周报/复习建议优先消费 `error_summary`（结构化、可比对），`user_reflection` 作为原始依据保留
 
-### 6. 复习计划表 `review_plans`
+### 7. 复习计划表 `review_plans`
 
 > 详细文档见 [store/db/review_plans.md](store/db/review_plans.md)
 
@@ -208,7 +232,7 @@ CREATE TABLE review_plans (
 CREATE INDEX idx_review_user ON review_plans(user_id);
 ```
 
-### 7. 试卷作答记录表 `exam_attempts`
+### 8. 试卷作答记录表 `exam_attempts`
 
 > 详细文档见 [store/db/exam_attempts.md](store/db/exam_attempts.md)
 
@@ -218,7 +242,7 @@ CREATE INDEX idx_review_user ON review_plans(user_id);
 CREATE TABLE exam_attempts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id         TEXT NOT NULL,                  -- 用户标识（MVP 固定单一用户）
-    source_file     TEXT NOT NULL,                  -- 关联试卷: "2026_南昌一模.pdf"
+    file_id         INTEGER NOT NULL REFERENCES files(id),  -- 关联试卷（files 表，title 经 join 获取）
     attempt_date    TEXT NOT NULL,                  -- 作答日期
     total_score     REAL,                           -- 卷面得分
     max_score       REAL,                           -- 满分（如 150）
@@ -229,7 +253,7 @@ CREATE TABLE exam_attempts (
 );
 
 CREATE INDEX idx_attempts_user_date ON exam_attempts(user_id, attempt_date);
-CREATE INDEX idx_attempts_source ON exam_attempts(source_file);
+CREATE INDEX idx_attempts_file ON exam_attempts(file_id);
 ```
 
 > **作答录入（关键交互）**：与错题录入一致——**用户口述 + LLM 解析**，不依赖识别手写成绩单：
@@ -238,7 +262,7 @@ CREATE INDEX idx_attempts_source ON exam_attempts(source_file);
 > - LLM 解析为 `question_results`（按题号匹配 questions 表）+ `total_score` + `answer_summary`
 > - 周报可聚合：`exam_attempts` 算整体正确率/失分题型，`errors` 算薄弱知识点，两者互补
 
-### 8. 周期报告表 `periodic_reports`
+### 9. 周期报告表 `periodic_reports`
 
 > 详细文档见 [store/db/periodic_reports.md](store/db/periodic_reports.md)
 
@@ -313,7 +337,7 @@ collection = chroma_client.get_or_create_collection(
 {
     "doc_id": "q_001_question",     # 与 SQLite questions.doc_id 对应
     "source_type": "exam",
-    "source_file": "2026_南昌一模.pdf",
+    "title": "2026 南昌一模数学卷",   # 语义标题（files.title 快照，检索可读）
     "subject": "数学",
     "exam_region": "南昌",
     "exam_year": 2026,

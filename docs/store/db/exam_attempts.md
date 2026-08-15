@@ -10,7 +10,7 @@
 CREATE TABLE exam_attempts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id         TEXT NOT NULL,                  -- 用户标识（MVP 固定单一用户）
-    source_file     TEXT NOT NULL,                  -- 关联试卷: "2026_南昌一模.pdf"
+    file_id         INTEGER NOT NULL REFERENCES files(id),  -- 关联试卷（files 表，title 经 join 获取）
     attempt_date    TEXT NOT NULL,                  -- 作答日期
     total_score     REAL,                           -- 卷面得分
     max_score       REAL,                           -- 满分（如 150）
@@ -21,7 +21,7 @@ CREATE TABLE exam_attempts (
 );
 
 CREATE INDEX idx_attempts_user_date ON exam_attempts(user_id, attempt_date);
-CREATE INDEX idx_attempts_source ON exam_attempts(source_file);
+CREATE INDEX idx_attempts_file ON exam_attempts(file_id);
 ```
 
 ## 关键设计点

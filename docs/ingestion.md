@@ -105,7 +105,7 @@ Bot: 完成：
 
 **工具**：PyMuPDF `page.get_images()` + `page.get_image_rects()`
 
-**输出**：每张图像保存为 `data/processed/images/{source_file}_{page}_{index}.png`
+**输出**：每张图像落盘 `data/raw/images/extracted/{sha256}.png` 并注册到 `files` 表（kind='image'）
 
 **过滤**：
 - 排除装饰性图片（logo、水印）：面积 < 1000px² 的跳过
@@ -210,13 +210,13 @@ async def tag_knowledge_points(question_text: str, vlm_desc: str = "") -> list[d
 试卷切分入库后，学生可能做完整张卷子并报告作答情况。**不识别手写成绩单**（同错题原则），改为用户口述 + LLM 解析：
 
 ```python
-async def ingest_exam_attempt(source_file: str, user_statement: str) -> dict:
+async def ingest_exam_attempt(file_id: int, user_statement: str) -> dict:
     """
-    输入：试卷文件 + 用户口述（如"选择错2个填空错1个，导数大题没写出来，总分68"）
+    输入：试卷 file_id（files 表）+ 用户口述（如"选择错2个填空错1个，导数大题没写出来，总分68"）
     输出：写入 exam_attempts 表
     """
-    # ① 按 source_file 找到试卷的所有题目（questions 表）
-    questions = query_questions_by_source(source_file)
+    # ① 按 file_id 找到试卷的所有题目（questions 表）
+    questions = query_questions_by_file(file_id)
     
     # ② LLM 解析口述 → 逐题对错 + 总分
     parsed = await llm_parse_attempt_statement(user_statement, questions)
@@ -226,7 +226,7 @@ async def ingest_exam_attempt(source_file: str, user_statement: str) -> dict:
     summary = await llm_generate_attempt_summary(parsed, questions)
     
     # ④ 入库
-    return save_exam_attempt(source_file=source_file, **parsed, answer_summary=summary)
+    return save_exam_attempt(file_id=file_id, **parsed, answer_summary=summary)
 ```
 
 **说明**：`question_results` 用 `question_id` 关联已入库的题目，周报可据此聚合"哪些题型失分最多"。
@@ -278,16 +278,16 @@ Bot: 已识别题目：...
 ```
 
 **三分支处理**：
-1. **入库** → 走标准题目摄入管线，`source_type=homework`，`source_file="homework:2026-08-11"`，参与检索与知识点关联
+1. **入库** → 走标准题目摄入管线，`source_type=homework`，文件注册到 `files` 表（title 由 agent 总结，如"2026-08-11 作业"），参与检索与知识点关联
 2. **不存** → 只当次解答，不落库（省存储，适合一次性问题）
 3. **错题** → 走 errors 流程（口述错因 + error_summary），与拍照错题完全一致
 
-**作业整体情况**（对几错几，可选）→ 轻量进 `exam_attempts` 表：`source_file="homework:2026-08-11"`，`total_score/max_score` 可空（作业无满分），`question_results` 存对错。供周报统计"本周练习量/平均正确率"。
+**作业整体情况**（对几错几，可选）→ 轻量进 `exam_attempts` 表：`file_id` 指向作业文件（files 表），`total_score/max_score` 可空（作业无满分），`question_results` 存对错。供周报统计"本周练习量/平均正确率"。
 
 **与试卷摄入的区别**：无固定结构 → 不走 PDF 切分；单题/少量题 → 走轻量识别路径（VLM 直接识别照片中的题目，不需要题号正则）。
 
 ## 幂等性
 
-- 同一文件重复摄取 → 检测 `source_file` 已存在，跳过或 `--force` 覆盖
+- 同一文件重复摄取 → 检测 `files.sha256` 已存在，跳过或 `--force` 覆盖
 - 增量摄取 → 只处理 `data/raw/` 中未摄取的新文件
 - 摄取失败 → 记录到 `ingest_errors.log`，不影响其他文件

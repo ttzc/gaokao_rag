@@ -286,10 +286,10 @@ async def vlm_understand_node(state: GaokaoState) -> dict:
     """
     descriptions = []
     for doc in state["retrieved_docs"]:
-        if doc.get("has_image") and doc.get("image_paths"):
-            for img_path in doc["image_paths"]:
+        if doc.get("has_image") and doc.get("image_file_ids"):
+            for file_id in doc["image_file_ids"]:   # files 表 id，路径经 files 表解析
                 desc = await vlm_understand_image(
-                    img_path, 
+                    file_id, 
                     doc["content"]  # 题目文本作为上下文
                 )
                 descriptions.append(desc)
