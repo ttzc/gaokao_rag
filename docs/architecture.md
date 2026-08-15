@@ -220,8 +220,7 @@ data/
     "exam_month": "三月",
     "question_type": "解答题",
     "difficulty": 4,
-    "topic_code": "math.conics.eccentricity",   # 一级编码用于粗过滤
-    "topic_codes": "math.conics,math.conics.eccentricity",  # 全部相关编码，逗号分隔
+    "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），树展开后用于过滤
     "chunk_type": "question",
     "has_image": True,
     "image_paths": "[\"/path/to/img1.png\"]",  # 图像路径 JSON
@@ -256,9 +255,21 @@ gaokao_rag/
 │   │
 │   ├── store/                 # 三层存储 + 知识点图谱
 │   │   ├── file_store.py      #   Layer 1：文件存储（原始 PDF 管理）
-│   │   ├── sql_store.py       #   Layer 2：SQLite 索引（8 张表）
+│   │   ├── db/                #   Layer 2：SQLite 数据访问层（按表拆，共享连接）
+│   │   │   ├── __init__.py    #     连接管理（单例）+ schema 初始化
+│   │   │   ├── schema.py      #     8 张表 DDL + 索引
+│   │   │   ├── topics.py      #     知识点树：CRUD + 路径枚举/防环/状态机/展开（独特逻辑集中）
+│   │   │   ├── knowledge_notes.py
+│   │   │   ├── questions.py
+│   │   │   ├── question_topics.py
+│   │   │   ├── errors.py
+│   │   │   ├── exam_attempts.py
+│   │   │   ├── review_plans.py
+│   │   │   └── periodic_reports.py
 │   │   ├── vector_store.py    #   Layer 3：Chroma 向量库（3 种 chunk）
-│   │   └── knowledge_tree.py  #   知识点图谱（邻接表 + 动态构建 + 递归 CTE）
+│   │   └── __init__.py
+
+> 每张表的详细设计见 [store/db/](store/db/)（8 份表文档：topics / knowledge_notes / questions / question_topics / errors / exam_attempts / review_plans / periodic_reports）
 │   │
 │   ├── rag/                   # RAG Agent 与检索
 │   │   ├── agent.py           #   TeamAgent 编排（Leader + 5 子 Agent）

@@ -106,7 +106,7 @@ gaokao_rag/
 
 1. **项目愿景全科，MVP 聚焦数学单科** —— 学科是一级架构维度（存储/路由/图谱均含 subject 字段），MVP 只实现数学，扩科是数据+配置问题而非架构问题
 2. **VLM 摄取时调用** —— 描述入库，查询时不重复调用
-3. **知识点树形结构 + 动态构建** —— 邻接表 + 递归 CTE，非扁平 tag；**树是数据驱动的**（LLM 开放式提取 → 归位/合并/挂载），非预定义 seed；**MVP 单用户一棵树**
+3. **知识点树形结构 + 动态构建** —— 路径枚举（Materialized Path：path 列 + 尾斜杠，防环 O(1)、子树前缀查询、移动批量替换），非扁平 tag；**树是数据驱动的**（LLM 开放式提取 → 归位/合并/挂载），非预定义 seed；**MVP 单用户一棵树**
 4. **Chroma 单 Collection + metadata 过滤** —— 不按学科分 Collection
 5. **tRPC-Agent 的 AgenticLangchainKnowledgeSearchTool** —— 让 LLM 自动构建过滤条件，不手写路由
 6. **用户入口是 IM（QQ 主力）而非 MCP/CLI** —— 高考生零学习成本、无电脑也能用；TeamAgent 作为主 Agent 直接注册进 trpc-claw；QQ 通道走**官方 API（AppID/AppSecret）+ nanobot 原生 QQ channel + trpc-claw `_qq.py` 适配器扩展**（2026-08 调研修正：社区版 OpenClaw 的 `openclaw-qqbot` 插件与 trpc-claw 不兼容）；无封号风险

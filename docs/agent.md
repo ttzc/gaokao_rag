@@ -69,7 +69,7 @@ flowchart TD
 | --------- | ------ | --------- |
 | **文档识别 Agent** | 接收照片/PDF → 提取内容（图片走 VLM，PDF 走 PyMuPDF） | VLM + PyMuPDF 工具 |
 | **结构识别 Agent** | 区分讲解段 vs 题目段 → 生成题目清单（每题一句话概括） | LLM 分类 |
-| **知识整理 Agent** | 知识点开放式提取 → 动态树归位/合并/挂载（写 topics） | SQLite 写入工具 |
+| **知识整理 Agent** | 知识点开放式提取 → 动态树归位/合并/挂载（写 topics） | 树维护工具（knowledge_tree FunctionTool） |
 | **入库决策 Agent** | 回显题目清单 → 收集学生选择（入库/错题/跳过）→ 写 questions/errors | SQLite 写入工具 |
 
 **设计要点**：
@@ -77,6 +77,36 @@ flowchart TD
 - 查询侧与摄入侧**共用底层工具**（VLM、SQLite），但职责相反——查询侧读、摄入侧写
 - **批量摄入**（ima 导出 20 份 PDF）走 CLI 脚本 `scripts/ingest.py`（开发者初始化用），不占 Agent 团队
 - **即时摄入**（学生 QQ 发作业/错题照片）走摄入侧 Agent——这是学生侧唯一的资料录入入口
+
+### 知识整理 Agent 详解（动态树维护）
+
+摄入链路的"树管家"。树的核心逻辑（路径枚举、防环、状态机）封装在 `store/db/topics.py`（独立模块，可单独测试），本 Agent 通过 FunctionTool 调用，**模块独立、Agent 不独立**——避免两个 Agent 管一棵树的职责重叠。
+
+**动态构建四步**（与 `topics` 表设计对应）：
+
+1. **开放式提取**：LLM 读取题目/讲解段，提取知识点名（不预定义候选集，允许树外新节点）
+2. **查树归位**：`search_topic` 按 name/aliases 查——命中复用已有节点；未命中 `create_topic` 新建（挂根，status=pending）
+3. **语义合并**：同义/近义表述（"离心率" vs "e=c/a"）`merge_topic` 归并到同一节点，**旧名归档进 aliases**（防树膨胀 + 保检索）
+4. **挂载父节点**：`move_topic` 判定层级挂载（status=pending → active）
+
+**Tool 清单（8 个，挂在本 Agent）**：
+
+| Tool | 签名 | 用途 | 内建约束 |
+| ---- | ---- | ---- | -------- |
+| `search_topic` | (keyword, subject) → [node] | 按名字/别名模糊查节点 | 归位第一步，防重复创建 |
+| `get_topic_subtree` | (node_id) → 子树 | 浏览/校验 | path 前缀查询 |
+| `get_topic_ancestors` | (node_id) → 祖先链 | 挂载前校验 | 防环辅助 |
+| `list_topics` | (subject, level, status) | tag 浏览/调试 | 按状态过滤 |
+| `create_topic` | (name, parent_id, subject) → id | 新增节点 | 内部先 search 去重；新节点 status=pending |
+| `add_alias` | (node_id, alias) | 同义表述归并 | 别名查重（防别名挂两个节点）|
+| `merge_topic` | (source_id, target_id) | 语义合并 | 旧名→target aliases；merged 节点锁死 |
+| `move_topic` | (node_id, new_parent_id) | 挂载/移动 | **防环强制**：新父 path 不以自身 path 开头（O(1)）|
+
+**软删**：不提供 `delete_topic`（真删要级联处理子树 + 题目引用 + metadata），只用 `deactivate_topic`（status → inactive）。
+
+**检索侧配合（树展开上卷）**：查询侧不走 Agent 调树——检索时直接调 `store/db/topics.py` 的 `expand_tag_names(node)`，取子树所有节点 name+aliases 并集作为过滤词，交给 `AgenticLangchainKnowledgeSearchTool` 对 `metadata.topic_tags` 做匹配，实现"问圆锥曲线 → 搜到椭圆/双曲线/抛物线的题"。
+
+**4 条内建约束（写在 tool 内部，不依赖 LLM 自觉）**：防环（挂载前 O(1) path 比较）/ 防重（create 前强制 search，name+aliases 全局唯一）/ 合并幂等（merged 节点不可再操作）/ 软删（只 deactivate 不真删）。
 
 ### 委派策略（Leader 自由决定）
 
@@ -311,7 +341,7 @@ async def review_generate_node(state: GaokaoState) -> dict:
     
     # 从 SQLite 查询错题分布
     error_stats = query_error_distribution(user_id)
-    # {topic_code: error_count, ...}
+    # {topic_name: error_count, ...}
     # 可选增强：附带 error_summary 列表（LLM 生成的错因总结），
     # 让复习建议基于"具体错因"而非仅"错题数量"
     

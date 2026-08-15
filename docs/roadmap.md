@@ -93,7 +93,7 @@ flowchart LR
 
 ### 任务
 
-- [ ] 实现 `topics` 树形表（动态构建字段：aliases / status / merged_into）+ 递归 CTE 查询
+- [ ] 实现 `topics` 树形表（路径枚举：path 列 + 动态构建字段 aliases / status / merged_into，防环 + 子树前缀查询）
 - [ ] 实现 `questions` / `question_topics` / `knowledge_notes` 表
 - [ ] 实现 `errors`（含 error_summary 错因总结）/ `exam_attempts`（整卷作答）表
 - [ ] 实现 `review_plans` / `periodic_reports`（周报快照，UNIQUE 幂等）表

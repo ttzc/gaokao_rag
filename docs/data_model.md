@@ -24,19 +24,20 @@ Gaokao RAG 的数据模型分为两部分：
 
 ### 1. 知识点树形表 `topics`
 
-采用邻接表模型，支持树形层级。**树是数据驱动的动态结构**（非预定义写死，见下方"动态构建"说明）：
+> 详细文档见 [store/db/topics.md](store/db/topics.md)
+
+采用**路径枚举（Materialized Path）**模型，每个节点用 `path` 列记录从根到自身的完整 id 路径（如 `1/2/3/`，根节点 = `1/`）。子树查询走前缀匹配（`LIKE '1/2/%'`），防环靠 O(1) 路径比较，移动/合并靠前缀批量替换——比邻接表 + 递归 CTE 更契合"频繁演化"的动态树。**树是数据驱动的动态结构**（非预定义写死，见下方"动态构建"说明）：
 
 ```sql
 CREATE TABLE topics (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    parent_id   INTEGER REFERENCES topics(id),   -- NULL = 根节点
-    name        TEXT NOT NULL,                    -- 知识点名称（LLM 提取）
-    code        TEXT,                             -- 知识点编码，如 "math.conics.eccentricity"（自动生成或可空）
+    path        TEXT NOT NULL,                    -- 路径枚举: '1/2/3/'（必须尾斜杠，防 id 前缀撞车），根 = '1/'
+    name        TEXT NOT NULL,                    -- 知识点名称（LLM 提取，即 tag，同名/同义靠 aliases 归并）
     subject     TEXT NOT NULL,                    -- 学科: "数学" / "物理" / ...
-    level       INTEGER NOT NULL,                 -- 层级: 0=根, 1=一级, 2=二级, 3=叶子
+    level       INTEGER NOT NULL,                 -- 层级: 0=根, 1=一级, 2=二级, 3=叶子（可直接子节点过滤）
     description TEXT,                             -- 知识点描述（跨题目聚合）
     -- 动态构建字段
-    aliases     TEXT,                             -- 同义表述 JSON: ["离心率", "e=c/a"]
+    aliases     TEXT,                             -- 同义表述 JSON: ["离心率", "e=c/a"]（合并/改名时旧名归档于此）
     source_count INTEGER DEFAULT 0,               -- 关联题目数（树生长统计）
     confidence  REAL,                             -- 节点可信度（LLM 挂载置信度）
     status      TEXT DEFAULT 'active',            -- active / merged / pending（待归位）
@@ -44,11 +45,25 @@ CREATE TABLE topics (
     created_at  TEXT DEFAULT (datetime('now'))
 );
 
-CREATE INDEX idx_topics_parent ON topics(parent_id);
+CREATE INDEX idx_topics_path ON topics(path);
 CREATE INDEX idx_topics_subject ON topics(subject);
-CREATE INDEX idx_topics_code ON topics(code);
 CREATE INDEX idx_topics_status ON topics(status);
 ```
+
+> **tag 语义（名字即 tag）**：树上任意节点的 `name`（含 `aliases`）都是可用的 tag。Chroma metadata 存**名字快照**（`topic_tags`，见下文），树结构演化（合并/移动/改名）不影响已入库 metadata——合并/改名时旧名归档进 `aliases`，检索按"name + aliases"并集匹配即可。~~`code`（知识点编码）~~ 已砍掉：名字即身份，无需额外编码层。
+
+**路径枚举操作要点**：
+
+| 操作 | SQL / 做法 |
+| ---- | ---------- |
+| 取子树 | `WHERE path LIKE '1/2/3/%'`（走 path 索引） |
+| 取祖先链 | `path` split('/') 得到 id 序列 |
+| 插入 | `INSERT` 拿新 id → `path = 父path || id || '/'` |
+| 移动整棵子树 | `UPDATE topics SET path = 新前缀 || substr(path, len(旧前缀)+1) WHERE path LIKE 旧前缀 || '%'`（一次改完） |
+| 防环检查 | 新父 `path` 不以本节点 `path` 开头（O(1) 字符串比较） |
+| 合并 | source 子树 path 批量替换到 target 前缀 + aliases 并入 target |
+
+> 防环必须写在写入路径（`move_topic`/`create_topic`）内部，不能依赖 LLM 自觉；`path` 必须带尾斜杠，否则 `LIKE '1/2/3/%'` 会误匹配 `1/2/3/60` 这类 id 前缀撞车的节点。
 
 **动态构建（数据驱动，MVP 单用户一棵树）**：
 
@@ -66,6 +81,8 @@ CREATE INDEX idx_topics_status ON topics(status);
 - **MVP 单用户**：不存在多用户隔离，树就是这一个用户的知识树
 
 ### 2. 知识点讲解表 `knowledge_notes`
+
+> 详细文档见 [store/db/knowledge_notes.md](store/db/knowledge_notes.md)
 
 存储讲义/学习资料中的**知识点讲解段**（概念、公式、典型方法）。本质是**纯文本 RAG**——比带图的题目还简单，不需要 VLM，文本切块向量化即可。
 
@@ -90,6 +107,8 @@ CREATE INDEX idx_notes_source ON knowledge_notes(source_file);
 **检索价值**：用户问"什么是分离参数法" → 命中 knowledge_point chunk → 返回讲解内容 + 关联例题。复习建议可链接到具体讲解（"先看圆锥曲线讲义：分离参数法"）。
 
 ### 3. 题目表 `questions`
+
+> 详细文档见 [store/db/questions.md](store/db/questions.md)
 
 ```sql
 CREATE TABLE questions (
@@ -121,6 +140,8 @@ CREATE INDEX idx_questions_difficulty ON questions(difficulty);
 
 ### 4. 题目-知识点关联表 `question_topics`
 
+> 详细文档见 [store/db/question_topics.md](store/db/question_topics.md)
+
 多对多关系——一道题可能涉及多个知识点：
 
 ```sql
@@ -136,9 +157,11 @@ CREATE INDEX idx_qt_question ON question_topics(question_id);
 CREATE INDEX idxt_qt_topic ON question_topics(topic_id);
 ```
 
-> **标注流程**：摄取时由 LLM 读取题目文本，输出知识点编码列表，再通过 `code` 查表获取 `topic_id`。
+> **标注流程**：摄取时由 LLM 读取题目文本，输出知识点**名字**列表（含同义表述），通过 `search_topic`（name/aliases 模糊查）归位获取 `topic_id`；未命中则新建节点（pending）。
 
 ### 5. 错题记录表 `errors`
+
+> 详细文档见 [store/db/errors.md](store/db/errors.md)
 
 ```sql
 CREATE TABLE errors (
@@ -168,6 +191,8 @@ CREATE INDEX idx_errors_type ON errors(error_type);
 
 ### 6. 复习计划表 `review_plans`
 
+> 详细文档见 [store/db/review_plans.md](store/db/review_plans.md)
+
 ```sql
 CREATE TABLE review_plans (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,6 +209,8 @@ CREATE INDEX idx_review_user ON review_plans(user_id);
 ```
 
 ### 7. 试卷作答记录表 `exam_attempts`
+
+> 详细文档见 [store/db/exam_attempts.md](store/db/exam_attempts.md)
 
 支撑「整卷作答情况」——记录一次完整模考/作业的总体表现（总分、正确率、逐题对错、用时）。与 `errors` 分工：errors 回答"这题为什么错"（题目粒度），exam_attempts 回答"这张卷整体考得怎样"（卷子粒度）。
 
@@ -212,6 +239,8 @@ CREATE INDEX idx_attempts_source ON exam_attempts(source_file);
 > - 周报可聚合：`exam_attempts` 算整体正确率/失分题型，`errors` 算薄弱知识点，两者互补
 
 ### 8. 周期报告表 `periodic_reports`
+
+> 详细文档见 [store/db/periodic_reports.md](store/db/periodic_reports.md)
 
 支撑「周报 / 月报」功能。报告生成后落库，可回溯、可对比、可缓存（同一周期不重复生成）：
 
@@ -290,12 +319,13 @@ collection = chroma_client.get_or_create_collection(
     "exam_year": 2026,
     "question_type": "解答题",
     "difficulty": 4,
-    "topic_code": "math.conics.eccentricity",   # 一级编码用于粗过滤
-    "topic_codes": "math.conics,math.conics.eccentricity",  # 全部相关编码，逗号分隔
+    "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），逗号分隔
     "chunk_type": "question",
     "has_image": True,
 }
 ```
+
+> **tag 快照与树的上卷**：`topic_tags` 是摄入时的名字快照（人话、可读）。检索时通过**树展开**做上卷——用户问父节点（"圆锥曲线"）时，取子树所有节点的 name + aliases 并集作为过滤词（"椭圆,双曲线,抛物线,离心率,…"），`topic_tags` 命中任一即召回。树结构演化后只需重新计算展开集合，metadata 不需要改。
 
 ## tRPC-Agent Knowledge 集成
 
@@ -303,13 +333,13 @@ collection = chroma_client.get_or_create_collection(
 
 ```python
 # 用户问 "帮我找2026年南昌一模的圆锥曲线题"
-# LLM 自动生成 dynamic_filter:
+# LLM 自动构建 dynamic_filter（圆锥曲线 → 树展开为子孙节点名字并集）:
 {
     "operator": "and",
     "value": [
         {"field": "metadata.exam_region", "operator": "eq", "value": "南昌"},
         {"field": "metadata.exam_year", "operator": "eq", "value": 2026},
-        {"field": "metadata.topic_code", "operator": "like", "value": "math.conics%"}
+        {"field": "metadata.topic_tags", "operator": "like", "value": "椭圆|双曲线|抛物线|离心率"}
     ]
 }
 ```
