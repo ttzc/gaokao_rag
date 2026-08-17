@@ -44,7 +44,7 @@ CREATE INDEX idx_errors_type ON errors(error_type);
 ## 常见操作
 
 - 录入：`user_id + question_id`（或 source_text 兜底）→ 口述 → LLM 生成 error_summary（事务内）
-- 聚合：按 `error_type` / 按知识点（经 question_topics 的 `topic_name` 匹配）统计
+- 聚合：按 `error_type` / 按知识点（经 question_topics 的 `topic_name` 匹配）/ **按学科（join questions.subject，无需冗余）**统计
 - 更新：错同题 +1 次、标记 resolved
 
 ## 与其他表的关系
