@@ -153,7 +153,7 @@ aggregate_agent = LlmAgent(
 | `get_error_stats` / `generate_review_plan` | 聚合数据 Agent | SQLite 错题统计 |
 | `generate_periodic_report` | 聚合数据 Agent | 错题聚合 + LLM 建议 |
 | `add_error` | 聚合数据 Agent | 错题录入 |
-| VLM 理解 | VLM 理解 Agent | FunctionTool 封装 Qwen3-VL 调用 |
+| VLM 理解 | VLM 理解 Agent | FunctionTool 封装 VLM 调用 |
 
 ```python
 from trpc_agent_sdk.tools import FunctionTool

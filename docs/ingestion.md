@@ -119,7 +119,7 @@ Bot: 完成：
 ```python
 async def vlm_understand_image(image_path: str, question_text: str) -> str:
     """
-    调用 Qwen3-VL，传入图像 + 题目文字，
+    调用 Qwen3.7（VLM），传入图像 + 题目文字，
     返回图形的结构化文本描述。
     """
     # 默认用 8B，检测到复杂图形升级 32B

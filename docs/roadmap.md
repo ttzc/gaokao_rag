@@ -27,7 +27,7 @@ flowchart LR
 - [ ] 运行 tRPC-Agent 官方 quickstart 示例，验证模型调用
 - [ ] **验证 TeamAgent 可用性**（`trpc_agent_sdk.teams` 的 Leader 委派 API；若当前版本不可用，退回 GraphAgent——见 [Agent 设计](agent.md)）
 - [ ] **核对文档 vs 源码 API 清单**（Quickstart 跑通后，对照各文档的 API 假设：OpenAIModel 三件套、`AgenticLangchainKnowledgeSearchTool`、nanobot `channels.qq`；发现对不上则改文档不改代码）
-- [ ] 验证 Qwen3-VL 多模态调用（OpenAI 协议图片输入）
+- [ ] 验证 Qwen3.7 多模态调用（OpenAI 协议图片输入）
 - [ ] 验证 Chroma + Qwen3-Embedding-4B 嵌入链路
 - [ ] 从 ima 知识库导出数学试卷 PDF 到 `data/files/raw/`
 

@@ -13,7 +13,7 @@ temperature = 0.7
 max_tokens = 4096
 timeout = 60.0
 
-# ── 视觉语言模型（Qwen3-VL，DashScope，OpenAI 兼容） ──────────
+# ── 视觉语言模型（Qwen3.7，DashScope，OpenAI 兼容） ──────────
 [vlm]
 model = "qwen3.7-flash"
 model_think = "qwen3.7-plus"

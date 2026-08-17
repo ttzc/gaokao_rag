@@ -143,7 +143,7 @@ flowchart LR
     D -->|Runner| E[Gaokao RAG<br/>TeamAgent]
     
     E --> F[Knowledge/RAG<br/>Chroma + SQLite]
-    E --> G[VLM FunctionTool<br/>Qwen3-VL 图形理解]
+    E --> G[VLM FunctionTool<br/>VLM 图形理解]
     E --> H[错题/知识点 FunctionTool]
     E --> I[Memory<br/>错题历史、薄弱画像]
 ```
