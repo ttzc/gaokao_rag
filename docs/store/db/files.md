@@ -46,13 +46,20 @@ CREATE UNIQUE INDEX idx_files_sha ON files(sha256);   -- 同内容天然去重
 
 ## 常见操作
 
+**分层调用**：物理层落盘（`FileStore.save_raw` / `save_processed`）与元数据登记（`FilesDB.register`）分两步——`FileStore` 管字节，`FilesDB` 管注册。摄取管线按需编排（组合 helper 待有调用方时再加）。
+
 | 方法 | 用途 |
 | ---- | ---- |
-| `save_pdf(data)` | 落盘哈希命名 → 返回 file_id（同内容命中已有行） |
-| `save_image(data)` | 同上（kind='image'） |
-| `get_by_title(title)` / `get_by_file_id(id)` | 按标题/ID 查 |
-| `set_title(file_id, title)` | 改名（全局生效） |
-| `verify(file_id)` | sha256 完整性校验（raw 损坏检测） |
+| `register(file_path, sha256, kind, title=None, size=None, source_hint=None)` | 登记文件 → 返回 file_id（同 sha256 命中已有行，去重） |
+| `get_by_id(file_id)` | 按 ID 查（返回 dict 或 None） |
+| `get_by_path(file_path)` | 按磁盘路径查 |
+| `get_by_sha(sha256)` | 按内容哈希查（去重校验用） |
+| `get_by_title(title)` | 按语义标题查（"按试卷名找卷子"，摄入回显/检索入口） |
+| `list_all(kind=None)` | 列出全部 / 按 kind（pdf/image）过滤 |
+| `set_title(file_id, title)` | 改名（全局生效；缺失 id 抛 ValueError） |
+| `set_source_hint(file_id, source_hint)` | 更新来源备注（缺失 id 抛 ValueError） |
+| `verify(file_id, expected_sha256)` | 完整性校验（与预期哈希比对，缺失返回 False） |
+| `delete(file_id)` | 删除登记（raw 被引用时调用方应先查 SQLite） |
 
 ## 与其他表的关系
 

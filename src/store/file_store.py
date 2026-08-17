@@ -130,7 +130,11 @@ class FileStore:
         category: Literal["text", "vlm_desc"],
         name: str,
     ) -> str:
-        """保存处理后中间产物。
+        """保存处理后中间产物。文件已存在则直接覆盖。
+
+        保存路径：
+        - ``category="text"``     → ``data/files/processed/text/<name>``
+        - ``category="vlm_desc"`` → ``data/files/processed/vlm_desc/<name>``
 
         Args:
             content: 文件内容。
@@ -168,7 +172,15 @@ class FileStore:
         return path.read_bytes()
 
     def read_text(self, relative_path: str, encoding: str = "utf-8") -> str | None:
-        """按相对路径读取文本文件。"""
+        """按相对路径读取文本文件。
+
+        Args:
+            relative_path: 从项目根起的路径，如 ``"data/files/processed/text/q_001_cleaned.txt"``。
+            encoding: 文本编码（默认 ``"utf-8"``）。
+
+        Returns:
+            解码后的文本字符串，文件不存在时返回 ``None``。
+        """
         data = self.read(relative_path)
         return data.decode(encoding) if data is not None else None
 
@@ -178,6 +190,9 @@ class FileStore:
         .. warning::
             raw 文件被业务数据（questions / knowledge_notes 等）引用时
             不应直接删除。调用方应先查询 SQLite 确认无引用。
+
+        Args:
+            relative_path: 从项目根起的路径，如 ``"data/files/raw/pdfs/abc.pdf"``。
         """
         path = self._resolve(relative_path)
         if path.exists():
@@ -188,14 +203,18 @@ class FileStore:
         return False
 
     def exists(self, relative_path: str) -> bool:
-        """检查文件是否存在。"""
+        """检查文件是否存在。
+
+        Args:
+            relative_path: 从项目根起的路径，如 ``"data/files/raw/pdfs/abc.pdf"``。
+        """
         return self._resolve(relative_path).exists()
 
     def compute_hash(self, relative_path: str) -> str:
         """计算文件内容的 sha256 哈希。
 
         Args:
-            relative_path: 从项目根起的路径。
+            relative_path: 从项目根起的路径，如 ``"data/files/raw/pdfs/abc.pdf"``。
 
         Returns:
             sha256 hex digest 字符串。
@@ -214,10 +233,10 @@ class FileStore:
         """列出 raw 子目录下的所有文件（相对路径，排序）。
 
         Args:
-            kind: 子目录类型。
+            kind: 子目录类型，如 ``"pdf"``、``"image_uploaded"``、``"image_extracted"``。
 
         Returns:
-            排序后的相对路径列表。
+            排序后的相对路径列表，如 ``["data/files/raw/pdfs/abc.pdf", ...]``。
         """
         key = {
             "pdf": "raw_pdf",
@@ -227,7 +246,14 @@ class FileStore:
         return sorted(self._rel(p) for p in self._subdirs[key].iterdir() if p.is_file())
 
     def list_processed(self, category: Literal["text", "vlm_desc"] = "text") -> list[str]:
-        """列出 processed 子目录下的所有文件。"""
+        """列出 processed 子目录下的所有文件。
+
+        Args:
+            category: 子目录类型，``"text"``（清洗文本）或 ``"vlm_desc"``（VLM 描述）。
+
+        Returns:
+            排序后的相对路径列表，如 ``["data/files/processed/text/q_001_cleaned.txt", ...]``。
+        """
         key = f"processed_{category}"
         return sorted(self._rel(p) for p in self._subdirs[key].iterdir() if p.is_file())
 
