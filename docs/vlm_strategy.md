@@ -222,7 +222,7 @@ VLM 在摄取阶段调用一次，描述存入数据库，查询时不重复调�
 | ------ | ------ |
 | VLM 返回空描述 | 降级：用图像文件名 + 题目文字的 OCR 结果作为描述 |
 | VLM 返回错误 | 重试 1 次，仍失败则标记 `vlm_status="failed"`，继续处理 |
-| 图像损坏/无法读取 | 跳过 VLM 调用，metadata 标记 `has_image=True, vlm_descriptions=[]` |
+| 图像损坏/无法读取 | 跳过 VLM 调用，metadata 标记 `has_image=True`（无 vlm_desc 文件生成） |
 | VLM 描述包含答案 | Prompt 约束 + 后处理：正则检测"答案""等于""选"等关键词，告警人工审核 |
 
 ## 批量处理优化

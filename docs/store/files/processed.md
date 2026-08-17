@@ -30,6 +30,17 @@ data/files/processed/
 2. **命名跟随源文件**：文件名用源文件哈希（`3f9a2c81.txt`）——processed ↔ raw 一一对应，调试好定位
 3. **缓存价值**：`vlm_desc/` 是成本优化关键——同一张图 VLM 描述只调一次，缓存命中直接复用（VLM 按 token 计费）
 
+### 内容存储角色（不只是缓存）
+
+processed 不只是中间态，还承担**可重建内容的持久存储**——`questions` 表不冗余这些内容，经哈希路径关联读取：
+
+| 子目录 | 存什么 | 关联方式 |
+| ------ | ------ | -------- |
+| `vlm_desc/{图片sha256}.json` | VLM 图形描述原始内容 | `questions.image_file_ids` → `files.sha256` → 推导路径 |
+| `text/{文件sha256}.txt` | 原始提取文本（OCR/解析原文）| `questions.file_id` → `files.sha256` → 推导路径 |
+
+**推导规则**：`processed/vlm_desc/{sha}.json`、`processed/text/{sha}.txt`（sha 与 `files.sha256` 一致）——无需显式存路径，哈希即关联键。读取 VLM 描述/回溯原文时按此约定解析；重跑管线会重新生成同名文件。
+
 ## 与各层的关系
 
 ```mermaid

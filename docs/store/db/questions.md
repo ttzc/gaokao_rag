@@ -22,8 +22,6 @@ CREATE TABLE questions (
     analysis_text   TEXT,                            -- 解析
     has_image       BOOLEAN DEFAULT 0,              -- 是否含图
     image_file_ids  TEXT,                            -- 题目图片 files.id 数组 JSON（经 files 表取路径）
-    vlm_descriptions TEXT,                           -- VLM 生成的图形描述 JSON 数组
-    raw_text        TEXT,                            -- 原始提取文本（备份）
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
@@ -34,10 +32,11 @@ CREATE INDEX idx_questions_type ON questions(question_type);
 
 ## 关键设计点
 
-- **`content_text` 含 VLM 图形描述**：图片经 VLM 转文本描述后并入题目文本，下游全走文本 RAG（`vlm_descriptions` 单独留原始描述）
+- **`content_text` 含 VLM 图形描述**：图片经 VLM 转文本描述后并入题目文本，下游全走文本 RAG；VLM 描述原始内容**不存本表**——存 `data/files/processed/vlm_desc/{图片sha256}.json`，经 `image_file_ids` → `files.sha256` 推导路径关联（见 processed.md）
+- **原始提取文本不存本表**：OCR/解析原文存 `data/files/processed/text/{文件sha256}.txt`（可重建，raw 重跑即可），VLM 描述质量差时回溯重跑用
 - **3 种 chunk**：`question`（题目+图形描述，检索用）/ `answer`（答案+解析）/ `knowledge_point`（知识点描述）——同 collection 靠 `chunk_type` + metadata 区分
 - **`doc_id` 是 SQLite ↔ Chroma 的桥**：格式如 `q_001_question`，双写一致性靠它
-- **`raw_text` 备份**：保留 OCR/原始提取文本，VLM 描述质量差时可回溯重跑
+- **可重建内容外置**：VLM 描述 / 原始提取文本等可重建内容不占 SQLite，存 `processed/`（vlm_desc/、text/）经哈希关联——`content_text` / `answer_text` / `analysis_text` 才是本表的持久内容
 
 ## 常见操作
 

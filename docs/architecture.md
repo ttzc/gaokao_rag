@@ -208,7 +208,6 @@ class GaokaoState(State):
     "chunk_type": "question",
     "has_image": True,
     "image_file_ids": "[1, 2]",   # 题目图片 files.id 数组 JSON
-    "vlm_descriptions": "[\"...\"]",           # VLM 生成的图形描述 JSON
 }
 ```
 
