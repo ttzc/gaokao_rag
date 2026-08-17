@@ -67,7 +67,7 @@ Schema 设计见 [store/db/topics.md](store/db/topics.md)
 
 ### 3. 知识点讲解表 `knowledge_notes`
 
-存储讲义/学习资料中的**知识点讲解段**（概念、公式、典型方法）。本质是**纯文本 RAG**——比带图的题目还简单，不需要 VLM，文本切块向量化即可。
+存储讲义/学习资料中的**知识点讲解段**（概念、公式、典型方法）。本质是**纯文本 RAG**——比带图的题目还简单，不需要 VLM，文本切块向量化即可。**`subject` 学科冗余列**（同 questions：扩科后讲解混合多学科，直接过滤免 join）。
 
 **与 Chroma 的关系**：content 向量化 → `knowledge_point` chunk，`doc_id` 桥接（同 questions 模式）。
 
@@ -105,7 +105,7 @@ Schema 设计见 [store/db/review_plans.md](store/db/review_plans.md)
 
 ### 8. 试卷作答记录表 `exam_attempts`
 
-支撑「整卷作答情况」——记录一次完整模考/作业的总体表现（总分、正确率、逐题对错、用时）。与 `errors` 分工：errors 回答"这题为什么错"（题目粒度），exam_attempts 回答"这张卷整体考得怎样"（卷子粒度）。
+支撑「整卷作答情况」——记录一次完整模考/作业的总体表现（总分、正确率、逐题对错、用时）。与 `errors` 分工：errors 回答"这题为什么错"（题目粒度），exam_attempts 回答"这张卷整体考得怎样"（卷子粒度）。**`subject` 学科冗余列**（同 questions：周报按学科聚合作答统计）。
 
 > **作答录入（关键交互）**：与错题录入一致——**用户口述 + LLM 解析**，不依赖识别手写成绩单：
 >

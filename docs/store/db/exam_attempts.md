@@ -10,6 +10,7 @@
 CREATE TABLE exam_attempts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id         TEXT NOT NULL,                  -- 用户标识（MVP 固定单一用户）
+    subject         TEXT NOT NULL,                  -- 学科: "数学" / "物理" / ...（查询热维度，冗余列，同 questions）
     file_id         INTEGER NOT NULL REFERENCES files(id),  -- 关联试卷（files 表，title 经 join 获取）
     attempt_date    TEXT NOT NULL,                  -- 作答日期
     total_score     REAL,                           -- 卷面得分
@@ -21,6 +22,7 @@ CREATE TABLE exam_attempts (
 );
 
 CREATE INDEX idx_attempts_user_date ON exam_attempts(user_id, attempt_date);
+CREATE INDEX idx_attempts_subject ON exam_attempts(subject);
 CREATE INDEX idx_attempts_file ON exam_attempts(file_id);
 ```
 

@@ -10,6 +10,7 @@
 CREATE TABLE knowledge_notes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     doc_id          TEXT UNIQUE NOT NULL,          -- 与 Chroma knowledge_point chunk 对应
+    subject         TEXT NOT NULL,                  -- 学科: "数学" / "物理" / ...（查询热维度，冗余列，同 questions）
     topic_id        INTEGER REFERENCES topics(id),  -- 关联知识点树节点（可空，识别不出先挂 NULL）
     file_id         INTEGER REFERENCES files(id),  -- 所属资料/试卷（files 表，可空=散资料无来源）
     title           TEXT,                           -- 讲解标题（如"分离参数法"）
@@ -18,6 +19,7 @@ CREATE TABLE knowledge_notes (
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
+CREATE INDEX idx_notes_subject ON knowledge_notes(subject);
 CREATE INDEX idx_notes_topic ON knowledge_notes(topic_id);
 CREATE INDEX idx_notes_file ON knowledge_notes(file_id);
 ```
