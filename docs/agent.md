@@ -68,7 +68,7 @@ flowchart TD
 | 子 Agent | 职责 | 挂载能力 |
 | --------- | ------ | --------- |
 | **文档识别 Agent** | 接收照片/PDF → 提取内容（图片走 VLM，PDF 走 PyMuPDF） | VLM + PyMuPDF 工具 |
-| **结构识别 Agent** | 区分讲解段 vs 题目段 → 生成题目清单（每题一句话概括） | LLM 分类 |
+| **结构识别 Agent** | 区分讲解段 vs 题目段 → **语义划分每题「题目/答案/解析」**（不依赖关键词）→ 生成题目清单（每题一句话概括） | LLM 分类 |
 | **知识整理 Agent** | 知识点开放式提取 → 动态树归位/合并/挂载（写 topics） | 树维护工具（knowledge_tree FunctionTool） |
 | **入库决策 Agent** | 回显题目清单 → 收集学生选择（入库/错题/跳过）→ 写 questions/errors | SQLite 写入工具 |
 

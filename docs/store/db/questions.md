@@ -18,8 +18,8 @@ CREATE TABLE questions (
     question_number TEXT,                            -- 题号: "第15题" / "选择题3"
     question_type   TEXT NOT NULL,                  -- "单选题" / "多选题" / "填空题" / "解答题"
     content_text    TEXT NOT NULL,                  -- 题目文本（VLM 处理后含图形描述）
-    answer_text     TEXT,                            -- 标准答案
-    analysis_text   TEXT,                            -- 解析
+    answer_text     TEXT,                            -- 标准答案（可空：源资料缺失时 NULL）
+    analysis_text   TEXT,                            -- 解析（可空：源资料缺失时 NULL，可后续 LLM 补）
     has_image       BOOLEAN DEFAULT 0,              -- 是否含图
     image_file_ids  TEXT,                            -- 题目图片 files.id 数组 JSON（经 files 表取路径）
     created_at      TEXT DEFAULT (datetime('now'))
