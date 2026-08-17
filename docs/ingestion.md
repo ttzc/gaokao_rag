@@ -181,15 +181,16 @@ async def tag_knowledge_points(question_text: str, vlm_desc: str = "") -> list[d
 
 **知识点库**：动态演化，不再是固定候选集。树随数据摄入生长。
 
-### 6. 分块与向量化
+### 6. 向量化入库
 
-**分块策略**：按 `chunk_type` 拆分，每道题产出最多 3 个 chunk：
+**入库单位 = 一篇完整 document**（不按 chunk 拆分）：
 
-| chunk | 内容 | 是否向量化 |
-|-------|------|-----------|
-| `question` | 题目文本 + VLM 图形描述 | ✅ |
-| `answer` | 答案 + 解析 | ✅ |
-| `knowledge_point` | 知识点讲解段（概念/公式/方法，来自任何文档） | ✅ |
+| document | 内容 | 来源 |
+|----------|------|------|
+| 题目 document | 题干 + 答案 + 解析 + VLM 图形描述（合并） | `questions` 行 |
+| 讲解 document | 知识点讲解段（概念/公式/方法，来自任何文档） | `knowledge_notes` 行 |
+
+**切片分块细则**（切多大/怎么切/是否切片存储）属于 `vector_store.py` 实现细节，V0.3 实现时再定——摄入侧只保证"一个实体 = 一个 doc_id = 一篇完整内容"。
 
 **向量嵌入**：
 - 模型：Qwen3-Embedding-4B（DashScope API，2560 维，中文 CMTEB 68.09）

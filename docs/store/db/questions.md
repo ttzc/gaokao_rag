@@ -2,14 +2,14 @@
 
 ## 功能定位
 
-题目主表，记录**题目内容（含图片描述）+ 答案解析**；知识点关联在 `question_topics` 表（经 `question_id`），错题错因在 `errors` 表（经 `question_id`）。一道题拆分 3 种 chunk 入 Chroma（`question` / `answer` / `knowledge_point`），本表是 SQLite 侧的元数据中枢。
+题目主表，记录**题目内容（含图片描述）+ 答案解析**；知识点关联在 `question_topics` 表（经 `question_id`），错题错因在 `errors` 表（经 `question_id`）。整篇（题干+答案+解析+VLM 描述）作为一篇 document 入 Chroma（`doc_id` 桥接），本表是 SQLite 侧的元数据中枢。
 
 ## Schema
 
 ```sql
 CREATE TABLE questions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    doc_id          TEXT UNIQUE NOT NULL,          -- 与 Chroma chunk 的 doc_id 对应
+    doc_id          TEXT UNIQUE NOT NULL,          -- 与 Chroma document 的 doc_id 对应
     source_type     TEXT NOT NULL,                  -- "exam" / "special_topic" / "homework" / "error_book"
     subject         TEXT NOT NULL,                  -- 学科: "数学" / "物理" / ...（查询热维度，冗余列——扩科后 questions 混合多学科，直接过滤免 join；摄入时从源文件学科判定，MVP 固定"数学"）
     file_id         INTEGER REFERENCES files(id),  -- 所属试卷/作业（files 表；标题经 join 获取，不冗余）
@@ -35,17 +35,17 @@ CREATE INDEX idx_questions_type ON questions(question_type);
 
 - **`content_text` 含 VLM 图形描述**：图片经 VLM 转文本描述后并入题目文本，下游全走文本 RAG；VLM 描述原始内容**不存本表**——存 `data/files/processed/vlm_desc/{图片sha256}.json`，经 `image_file_ids` → `files.sha256` 推导路径关联（见 processed.md）
 - **原始提取文本不存本表**：OCR/解析原文存 `data/files/processed/text/{文件sha256}.txt`（可重建，raw 重跑即可），VLM 描述质量差时回溯重跑用
-- **3 种 chunk**：`question`（题目+图形描述，检索用）/ `answer`（答案+解析）/ `knowledge_point`（知识点描述）——同 collection 靠 `chunk_type` + metadata 区分
+- **整篇 document 入库**：一道题 = 题干+答案+解析+VLM 描述合并为一篇 document 入 Chroma（切片分块细则在 vector_store.py 实现时定）；同 collection 靠 `doc_type`（question/note）+ metadata 区分来源
 - **`doc_id` 是 SQLite ↔ Chroma 的桥**：格式如 `q_001_question`，双写一致性靠它
 - **可重建内容外置**：VLM 描述 / 原始提取文本等可重建内容不占 SQLite，存 `processed/`（vlm_desc/、text/）经哈希关联——`content_text` / `answer_text` / `analysis_text` 才是本表的持久内容
 - **`has_image` 是 Chroma 过滤专用**：Chroma metadata 存 `has_image` 布尔快照（Chroma 不支持数组非空查询，需要标量做快速过滤）；**SQLite 侧不存该字段**——以 `image_file_ids` 为准（非空即含图），避免两边维护不一致。摄入时同步写 Chroma metadata
 
 ## 常见操作
 
-- 插入：本表 + `question_topics` 关联 + Chroma 3 chunk（**同一事务**，见摄入管线）
+- 插入：本表 + `question_topics` 关联 + Chroma document（**同一事务**，见摄入管线）
 - 按知识点查：`question_topics` join 本表（或经树展开取多知识点）
 - 按考试查：`WHERE exam_regions LIKE '%"南昌"%' AND exam_year = ?`（JSON 数组包含匹配；题目量小全表扫可接受）
-- 删除：级联删 `question_topics` / `errors` 引用 + Chroma chunk
+- 删除：级联删 `question_topics` / `errors` 引用 + Chroma document
 
 ## 与其他表的关系
 
@@ -54,7 +54,7 @@ flowchart LR
     Q[questions] -->|question_id| QT[question_topics]
     Q -->|question_id| E[errors 错题]
     Q -->|question_id| EA[exam_attempts 作答]
-    Q -->|doc_id| C[Chroma 3 chunk]
+    Q -->|doc_id| C[Chroma document]
     QT --> T[topics]
 ```
 

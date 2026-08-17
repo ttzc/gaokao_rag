@@ -205,7 +205,7 @@ class GaokaoState(State):
     "exam_month": 3,
     "question_type": "解答题",
     "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），树展开后用于过滤
-    "chunk_type": "question",
+    "doc_type": "question",   # 来源类型: question（题目）/ note（讲解）
     "has_image": True,   # Chroma 过滤专用快照（SQLite 侧以 image_file_ids 为准，不冗余存储）
     "image_file_ids": "[1, 2]",   # 题目图片 files.id 数组 JSON
 }
@@ -250,7 +250,7 @@ gaokao_rag/
 │   │   │   ├── exam_attempts.py
 │   │   │   ├── review_plans.py
 │   │   │   └── periodic_reports.py
-│   │   ├── vector_store.py    #   Layer 3：Chroma 向量库（3 种 chunk）
+│   │   ├── vector_store.py    #   Layer 3：Chroma 向量库（document 入库，切片细则 V0.3 定）
 │   │   └── __init__.py
 │   │
 │   ├── rag/                   # RAG Agent 与检索

@@ -270,7 +270,7 @@ async def math_search_node(state: GaokaoState) -> dict:
     pass
 ```
 
-> **混合检索（设计说明）**：不区分"搜题目"还是"搜知识点"——题目（question chunk）和知识点讲解（knowledge_point chunk）在同一个 Collection，一起召回，由 LLM 综合组织答案：
+> **混合检索（设计说明）**：不区分"搜题目"还是"搜知识点"——题目 document 和讲解 document 在同一个 Collection，一起召回，由 LLM 综合组织答案：
 >
 > - 搜"离心率最值怎么求" → 可能命中题目 + 讲解，LLM 既给解法又总结方法
 > - 搜"什么是分离参数法" → 命中讲解为主，LLM 自动带上相关例题

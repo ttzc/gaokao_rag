@@ -71,13 +71,13 @@ Schema 设计见 [store/db/topics.md](store/db/topics.md)
 
 **与 Chroma 的关系**：content 向量化 → `knowledge_point` chunk，`doc_id` 桥接（同 questions 模式）。
 
-**检索价值**：用户问"什么是分离参数法" → 命中 knowledge_point chunk → 返回讲解内容 + 关联例题。复习建议可链接到具体讲解（"先看圆锥曲线讲义：分离参数法"）。
+**检索价值**：用户问"什么是分离参数法" → 命中讲解 document → 返回讲解内容 + 关联例题。复习建议可链接到具体讲解（"先看圆锥曲线讲义：分离参数法"）。
 
 Schema 设计见 [store/db/knowledge_notes.md](store/db/knowledge_notes.md)
 
 ### 4. 题目表 `questions`
 
-存储试卷/作业/专题/错题中的**题目信息**：题目内容（含图片描述）+ 答案解析（本表）；**知识点关联在 `question_topics` 表**（经 `question_id`），**错题错因在 `errors` 表**（经 `question_id`）。**`subject` 学科冗余列**（查询热维度，扩科后直接过滤免 join，与 Chroma metadata 的 subject 快照一致）。题目文本、答案、解析存于本表（**SQLite 自包含**——离线可查；答案/解析**允许缺失**，源资料没有则 NULL），内容三分由结构识别 Agent **LLM 语义划分**（不依赖关键词）。同时拆分 3 种 chunk 入 Chroma（question / answer / knowledge_point，`doc_id` 桥接）做语义检索——双写，本表是权威源。**可重建内容（VLM 描述、原始提取文本）不占本表**，存 `processed/`（vlm_desc/、text/）经哈希关联（见 [processed.md](store/files/processed.md)）。
+存储试卷/作业/专题/错题中的**题目信息**：题目内容（含图片描述）+ 答案解析（本表）；**知识点关联在 `question_topics` 表**（经 `question_id`），**错题错因在 `errors` 表**（经 `question_id`）。**`subject` 学科冗余列**（查询热维度，扩科后直接过滤免 join，与 Chroma metadata 的 subject 快照一致）。题目文本、答案、解析存于本表（**SQLite 自包含**——离线可查；答案/解析**允许缺失**，源资料没有则 NULL），内容三分由结构识别 Agent **LLM 语义划分**（不依赖关键词）。整篇（题干+答案+解析+VLM 描述）作为一篇 document 入 Chroma（`doc_id` 桥接）做语义检索——双写，本表是权威源。**可重建内容（VLM 描述、原始提取文本）不占本表**，存 `processed/`（vlm_desc/、text/）经哈希关联（见 [processed.md](store/files/processed.md)）。
 
 Schema 设计见 [store/db/questions.md](store/db/questions.md)
 
@@ -150,52 +150,52 @@ collection = chroma_client.get_or_create_collection(
 )
 ```
 
-### Chunk 策略
+### Document 策略
 
-一道题拆分为 3 种 chunk，独立入库：
+**入库单位 = 一篇完整 document**（不是按 chunk 拆分）：
 
-| chunk_type        | 内容                         | 检索场景                 |
-| ----------------- | ---------------------------- | ------------------------ |
-| `question`        | 题目文本 + VLM 图形描述      | 用户搜"椭圆离心率最值"   |
-| `answer`          | 标准答案 + 解析              | 用户看解析、对比解法     |
-| `knowledge_point` | 知识点描述 + 公式 + 典型方法 | 用户问"什么是分离参数法" |
+| document | 内容 | 来源 |
+| -------- | ---- | ---- |
+| **题目 document** | 题干 + 答案 + 解析 + VLM 图形描述（合并为一篇） | `questions` 行 |
+| **讲解 document** | 知识点讲解段（概念/公式/方法） | `knowledge_notes` 行 |
+
+**切片分块细则（切多大/怎么切/是否切片存储）属于 `vector_store.py` 实现细节，V0.3 实现时再定**——document 层只保证"一个实体 = 一个 doc_id = 一篇完整内容"。
+
+**检索**：题目 document 与讲解 document 在同一个 Collection 混合召回（用户问"什么是分离参数法" → 命中讲解 document；搜题 → 命中题目 document），由 LLM 综合组织。
 
 ### doc_id 生成规则
 
-`doc_id` 是 SQLite ↔ Chroma 的桥（业务表存 `doc_id` 列，Chroma 用 `doc_id` 定位 chunk）。**三段式生成**：
+`doc_id` 是 SQLite ↔ Chroma 的桥（业务表存 `doc_id` 列，Chroma 用 `doc_id` 定位 document）。**实体级两段式生成**：
 
 ```
-doc_id = "{entity}_{id}_{chunk_type}"
+doc_id = "{entity}_{id}"
 ```
 
 | 段 | 取值 | 说明 |
 | --- | ---- | ---- |
 | `entity` | `q`（questions）/ `kn`（knowledge_notes） | 业务实体缩写 |
 | `id` | 业务表主键（questions.id / knowledge_notes.id） | 定位到行 |
-| `chunk_type` | `question` / `answer` / `knowledge_point` | 定位到该行的哪个 chunk |
 
 **示例**：
 
 | doc_id | 含义 |
 | ------ | ---- |
-| `q_42_question` | 题目 42 的题目文本 chunk |
-| `q_42_answer` | 题目 42 的答案+解析 chunk |
-| `q_42_knowledge_point` | 题目 42 的知识点描述 chunk |
-| `kn_7_knowledge_point` | 讲解 7 的知识点 chunk |
+| `q_42` | 题目 42 的完整 document（题干+答案+解析+VLM 描述） |
+| `kn_7` | 讲解 7 的 document |
 
 **规则**：
-1. **幂等**：同 (entity, id, chunk_type) 恒生成同 doc_id——Chroma `upsert` 天然去重，重复摄入不产生重复 chunk（更新同 id 的题目内容 = 重算向量后 upsert 同名 doc_id 覆盖）
-2. **按实体操作**：前缀匹配 `q_42_` 取该题全部 chunk；删除题目 = 删全部前缀匹配的 chunk
-3. **knowledge_point 双来源**：`q_*_knowledge_point`（题目附带）与 `kn_*_knowledge_point`（讲解段）在同一 collection 共存，前缀区分来源；检索按 `chunk_type` 过滤时天然混用两者（题目知识点 + 讲解都答"什么是X"）
-4. **检索不依赖 doc_id**：查询走 metadata 过滤（subject/topic_tags/chunk_type），doc_id 只做桥接与生命周期管理（更新/删除）
+1. **幂等**：同实体（entity + id）恒生成同 doc_id——Chroma `upsert` 天然去重，重复摄入不产生重复 document（更新同 id 的题目内容 = 重算向量后 upsert 同名 doc_id 覆盖）
+2. **按实体操作**：删除/更新题目 = 直接按 doc_id（`q_42`）操作，一个实体一个键
+3. **双来源共存**：`q_*`（题目）与 `kn_*`（讲解）在同一 collection，前缀区分来源；检索按 `doc_type` 过滤时天然混用两者（题目 + 讲解都答"什么是X"）
+4. **检索不依赖 doc_id**：查询走 metadata 过滤（subject/topic_tags/doc_type），doc_id 只做桥接与生命周期管理（更新/删除）
 
 ### Metadata 设计
 
-每个 chunk 的 metadata（与 SQLite 字段对齐）：
+每个 document 的 metadata（与 SQLite 字段对齐）：
 
 ```python
 {
-    "doc_id": "q_42_question",     # 与 SQLite questions.doc_id 对应
+    "doc_id": "q_42",     # 与 SQLite questions.doc_id 对应
     "source_type": "exam",
     "title": "2026 南昌一模数学卷",   # 语义标题（files.title 快照，检索可读）
     "subject": "数学",
@@ -203,7 +203,7 @@ doc_id = "{entity}_{id}_{chunk_type}"
     "exam_year": 2026,
     "question_type": "解答题",
     "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），逗号分隔
-    "chunk_type": "question",
+    "doc_type": "question",   # 来源类型: "question"（题目）/ "note"（讲解）
     "has_image": True,   # Chroma 过滤专用快照（SQLite 侧以 image_file_ids 为准，不冗余存储）
 }
 ```
