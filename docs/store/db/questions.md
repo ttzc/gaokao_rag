@@ -21,8 +21,7 @@ CREATE TABLE questions (
     content_text    TEXT NOT NULL,                  -- 题目文本（VLM 处理后含图形描述）
     answer_text     TEXT,                            -- 标准答案（可空：源资料缺失时 NULL）
     analysis_text   TEXT,                            -- 解析（可空：源资料缺失时 NULL，可后续 LLM 补）
-    has_image       BOOLEAN DEFAULT 0,              -- 是否含图
-    image_file_ids  TEXT,                            -- 题目图片 files.id 数组 JSON（经 files 表取路径）
+    image_file_ids  TEXT,                            -- 题目图片 files.id 数组 JSON（经 files 表取路径；非空即含图）
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
@@ -39,6 +38,7 @@ CREATE INDEX idx_questions_type ON questions(question_type);
 - **3 种 chunk**：`question`（题目+图形描述，检索用）/ `answer`（答案+解析）/ `knowledge_point`（知识点描述）——同 collection 靠 `chunk_type` + metadata 区分
 - **`doc_id` 是 SQLite ↔ Chroma 的桥**：格式如 `q_001_question`，双写一致性靠它
 - **可重建内容外置**：VLM 描述 / 原始提取文本等可重建内容不占 SQLite，存 `processed/`（vlm_desc/、text/）经哈希关联——`content_text` / `answer_text` / `analysis_text` 才是本表的持久内容
+- **`has_image` 是 Chroma 过滤专用**：Chroma metadata 存 `has_image` 布尔快照（Chroma 不支持数组非空查询，需要标量做快速过滤）；**SQLite 侧不存该字段**——以 `image_file_ids` 为准（非空即含图），避免两边维护不一致。摄入时同步写 Chroma metadata
 
 ## 常见操作
 

@@ -206,7 +206,7 @@ class GaokaoState(State):
     "question_type": "解答题",
     "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），树展开后用于过滤
     "chunk_type": "question",
-    "has_image": True,
+    "has_image": True,   # Chroma 过滤专用快照（SQLite 侧以 image_file_ids 为准，不冗余存储）
     "image_file_ids": "[1, 2]",   # 题目图片 files.id 数组 JSON
 }
 ```
