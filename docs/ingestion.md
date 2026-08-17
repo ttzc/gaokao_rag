@@ -164,7 +164,7 @@ async def tag_knowledge_points(question_text: str, vlm_desc: str = "") -> list[d
 题目文本：{question_text}
 图形描述：{vlm_desc or "无图形"}
 
-请输出 JSON：{{"topics": [{{"name": "...", "parent_hint": "..."}}], "difficulty": 4}}"""
+请输出 JSON：{{"topics": [{{"name": "...", "parent_hint": "..."}}]}}"""
     
     response = await call_llm(prompt)
     return parse_json(response)

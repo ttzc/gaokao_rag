@@ -17,7 +17,6 @@ CREATE TABLE questions (
     exam_month      TEXT,                            -- 月份: "二月" / "三月" ...
     question_number TEXT,                            -- 题号: "第15题" / "选择题3"
     question_type   TEXT NOT NULL,                  -- "选择题" / "填空题" / "解答题"
-    difficulty      INTEGER,                         -- 1-5 难度等级
     content_text    TEXT NOT NULL,                  -- 题目文本（VLM 处理后含图形描述）
     answer_text     TEXT,                            -- 标准答案
     analysis_text   TEXT,                            -- 解析
@@ -31,7 +30,6 @@ CREATE TABLE questions (
 CREATE INDEX idx_questions_source ON questions(source_type, file_id);
 CREATE INDEX idx_questions_exam ON questions(exam_region, exam_year);
 CREATE INDEX idx_questions_type ON questions(question_type);
-CREATE INDEX idx_questions_difficulty ON questions(difficulty);
 ```
 
 ## 关键设计点

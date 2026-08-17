@@ -204,7 +204,6 @@ class GaokaoState(State):
     "exam_year": 2026,
     "exam_month": "三月",
     "question_type": "解答题",
-    "difficulty": 4,
     "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），树展开后用于过滤
     "chunk_type": "question",
     "has_image": True,
@@ -327,7 +326,7 @@ gaokao_rag/
 | 图形处理 | 无 | VLM（核心技术差异点） |
 | 知识点 | 扁平 tag | 树形图谱 + 题目关联 |
 | 用户 | 个人 | 单人（MVP；user_id 字段预留未来多用户） |
-| 元数据 | source/type/tags | 科目/年份/题型/难度/知识点/考区 |
+| 元数据 | source/type/tags | 科目/年份/题型/知识点/考区 |
 | MCP | 手写 9 工具 | 框架内置 MCPToolset |
 | 服务化 | CLI | CLI + FastAPI + MCP |
 | 可观测性 | 自写日志 | OpenTelemetry |

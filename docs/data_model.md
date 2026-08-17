@@ -18,7 +18,7 @@ Gaokao RAG 的数据模型分为两部分：
 1. **SQLite 关系层** —— 存储知识点图谱、知识点讲解、题目元数据、错题记录、作答记录、题目-知识点关联
 2. **Chroma 向量层** —— 存储文本块（题目、解析、知识点描述）的向量嵌入
 
-两层通过 `doc_id` 关联。SQLite 负责"精确过滤"（按知识点、年份、难度），Chroma 负责"语义相似"（按问题含义检索）。
+两层通过 `doc_id` 关联。SQLite 负责"精确过滤"（按知识点、年份、考区），Chroma 负责"语义相似"（按问题含义检索）。
 
 ## SQLite Schema
 
@@ -144,7 +144,6 @@ CREATE TABLE questions (
     exam_month      TEXT,                            -- 月份: "二月" / "三月" ...
     question_number TEXT,                            -- 题号: "第15题" / "选择题3"
     question_type   TEXT NOT NULL,                  -- "选择题" / "填空题" / "解答题"
-    difficulty      INTEGER,                         -- 1-5 难度等级
     content_text    TEXT NOT NULL,                  -- 题目文本（VLM 处理后含图形描述）
     answer_text     TEXT,                            -- 标准答案
     analysis_text   TEXT,                            -- 解析
@@ -158,7 +157,6 @@ CREATE TABLE questions (
 CREATE INDEX idx_questions_source ON questions(source_type, file_id);
 CREATE INDEX idx_questions_exam ON questions(exam_region, exam_year);
 CREATE INDEX idx_questions_type ON questions(question_type);
-CREATE INDEX idx_questions_difficulty ON questions(difficulty);
 ```
 
 ### 5. 题目-知识点关联表 `question_topics`
@@ -341,7 +339,6 @@ collection = chroma_client.get_or_create_collection(
     "exam_region": "南昌",
     "exam_year": 2026,
     "question_type": "解答题",
-    "difficulty": 4,
     "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），逗号分隔
     "chunk_type": "question",
     "has_image": True,
