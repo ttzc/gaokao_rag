@@ -25,7 +25,7 @@ Gaokao RAG 的 Agent 层基于 tRPC-Agent-Python 的 **TeamAgent** 构建（多 
 flowchart TD
     U[用户请求] --> L[Team Leader<br/>自由委派 + 综合]
     
-    subgraph 查询侧（读）
+    subgraph "查询侧（读）"
         L --> A1[意图识别 Agent]
         L --> A2[搜索信息 Agent]
         L --> A3[VLM 理解 Agent]
@@ -33,7 +33,7 @@ flowchart TD
         L --> A5[输出整理 Agent]
     end
     
-    subgraph 摄入侧（写）
+    subgraph "摄入侧（写）"
         L --> B1[文档识别 Agent]
         L --> B2[结构识别 Agent]
         L --> B3[知识整理 Agent]

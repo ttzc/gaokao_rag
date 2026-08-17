@@ -7,7 +7,7 @@
 > **Gaokao RAG 的数据 = 题目 + 知识点，两者分开处理**：
 >
 > - **知识点**（资料/专题/作业中的讲解段）→ 只需挂到知识树（`knowledge_notes.topic_id` → `topics`），纯文本 RAG
-> - **题目**（试卷/作业中的题）→ 记录完整四要素：**题目内容（含图片描述）+ 答案解析 + 错题错因 + 知识点关联**
+> - **题目**（试卷/作业中的题）→ 记录**题目内容（含图片描述）+ 答案解析 + 知识点关联**（questions 表）；**错题错因单独存 `errors` 表**（经 `question_id` 关联，见第 6 节）
 > - **考试试卷**额外记录整卷作答情况（`exam_attempts`）；作业试卷不需要
 > - 所有输入走**统一摄入范式**：结构识别 → 讲解/题目分流 → 回显确认 → 用户决定去向
 
@@ -77,7 +77,7 @@ Schema 设计见 [store/db/knowledge_notes.md](store/db/knowledge_notes.md)
 
 ### 4. 题目表 `questions`
 
-存储试卷/作业/专题/错题中的**题目完整信息**（四要素：题目内容含图片描述 / 答案解析 / 错题错因 / 知识点关联）。题目文本、答案、解析存于本表（**SQLite 自包含**——离线可查；答案/解析**允许缺失**，源资料没有则 NULL），内容三分由结构识别 Agent **LLM 语义划分**（不依赖关键词）。同时拆分 3 种 chunk 入 Chroma（question / answer / knowledge_point，`doc_id` 桥接）做语义检索——双写，本表是权威源。**可重建内容（VLM 描述、原始提取文本）不占本表**，存 `processed/`（vlm_desc/、text/）经哈希关联（见 [processed.md](store/files/processed.md)）。
+存储试卷/作业/专题/错题中的**题目信息**：题目内容（含图片描述）+ 答案解析 + 知识点关联（`question_topics` 表）；**错题错因不在本表，存 `errors` 表**（经 `question_id` 关联）。题目文本、答案、解析存于本表（**SQLite 自包含**——离线可查；答案/解析**允许缺失**，源资料没有则 NULL），内容三分由结构识别 Agent **LLM 语义划分**（不依赖关键词）。同时拆分 3 种 chunk 入 Chroma（question / answer / knowledge_point，`doc_id` 桥接）做语义检索——双写，本表是权威源。**可重建内容（VLM 描述、原始提取文本）不占本表**，存 `processed/`（vlm_desc/、text/）经哈希关联（见 [processed.md](store/files/processed.md)）。
 
 Schema 设计见 [store/db/questions.md](store/db/questions.md)
 
