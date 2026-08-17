@@ -175,8 +175,8 @@ async def tag_knowledge_points(question_text: str, vlm_desc: str = "") -> list[d
 
 **归位逻辑**（摄取管线内，与 topics 表交互）：
 - 提取的知识点名 → 查 topics（含 aliases 模糊匹配）
-  - 命中 → 复用节点，插入 question_topics
-  - 未命中 → 新增节点（parent 由 LLM 的 parent_hint 判定，挂载后 status=active；无法判定则挂根，status=pending）
+  - 命中 → 复用节点，取规范名插入 question_topics
+  - 未命中 → 新增节点（parent 由 LLM 的 parent_hint 判定，挂载后 status=active；无法判定则挂根，status=pending），取新节点名插入
 - 同义合并：与现有节点语义等价时，写入 aliases 而非新建
 
 **知识点库**：动态演化，不再是固定候选集。树随数据摄入生长。

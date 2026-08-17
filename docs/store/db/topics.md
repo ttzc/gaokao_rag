@@ -20,7 +20,7 @@ CREATE TABLE topics (
     description TEXT,                             -- 知识点描述（跨题目聚合）
     -- 动态构建字段
     aliases     TEXT,                             -- 同义表述 JSON: ["离心率", "e=c/a"]（合并/改名时旧名归档于此）
-    source_count INTEGER DEFAULT 0,               -- 关联题目数（树生长统计）
+    source_count INTEGER DEFAULT 0,               -- 关联题目数（按名字匹配 question_topics.topic_name，含 aliases；合并后重算）
     confidence  REAL,                             -- 节点可信度（LLM 挂载置信度）
     status      TEXT DEFAULT 'active',            -- active / merged / pending（待归位）
     merged_into INTEGER REFERENCES topics(id),    -- 合并后指向的节点
@@ -86,7 +86,7 @@ def expand_tag_names(node_id) -> list[str]:
 ```mermaid
 flowchart LR
     T[topics] -->|topic_id| KN[knowledge_notes 知识点讲解]
-    T -->|topic_id| QT[question_topics 题目关联]
+    T -->|名字 tag| QT[question_topics 题目关联]
     T -->|topic_tags 名字| CHROMA[Chroma metadata]
     QT -->|question_id| Q[questions 题目]
     T -->|weak_topics 聚合| R[periodic_reports 周报]

@@ -83,9 +83,9 @@ Schema 设计见 [store/db/questions.md](store/db/questions.md)
 
 ### 5. 题目-知识点关联表 `question_topics`
 
-多对多关系——一道题可能涉及多个知识点：
+多对多关系——一道题可能涉及多个知识点。**关联存知识点名字（`topic_name`）而非 `topic_id`**——知识树会演化（合并/移动/改名），id 不稳定；名字是稳定 tag（合并时旧名归档进 aliases），树怎么调整关联都不受影响。题目 id 不会变，`question_id` 正常引用。
 
-> **标注流程**：摄取时由 LLM 读取题目文本，输出知识点**名字**列表（含同义表述），通过 `search_topic`（name/aliases 模糊查）归位获取 `topic_id`；未命中则新建节点（pending）。
+> **标注流程**：摄取时由 LLM 读取题目文本，输出知识点**名字**列表（含同义表述），通过 `search_topic`（name/aliases 模糊查）归位**确认规范名字**（命中取规范名 / 未命中新建 pending 后取其名）；关联表存该名字。
 
 Schema 设计见 [store/db/question_topics.md](store/db/question_topics.md)
 
