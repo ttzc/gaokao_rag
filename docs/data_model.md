@@ -160,13 +160,42 @@ collection = chroma_client.get_or_create_collection(
 | `answer`          | 标准答案 + 解析              | 用户看解析、对比解法     |
 | `knowledge_point` | 知识点描述 + 公式 + 典型方法 | 用户问"什么是分离参数法" |
 
+### doc_id 生成规则
+
+`doc_id` 是 SQLite ↔ Chroma 的桥（业务表存 `doc_id` 列，Chroma 用 `doc_id` 定位 chunk）。**三段式生成**：
+
+```
+doc_id = "{entity}_{id}_{chunk_type}"
+```
+
+| 段 | 取值 | 说明 |
+| --- | ---- | ---- |
+| `entity` | `q`（questions）/ `kn`（knowledge_notes） | 业务实体缩写 |
+| `id` | 业务表主键（questions.id / knowledge_notes.id） | 定位到行 |
+| `chunk_type` | `question` / `answer` / `knowledge_point` | 定位到该行的哪个 chunk |
+
+**示例**：
+
+| doc_id | 含义 |
+| ------ | ---- |
+| `q_42_question` | 题目 42 的题目文本 chunk |
+| `q_42_answer` | 题目 42 的答案+解析 chunk |
+| `q_42_knowledge_point` | 题目 42 的知识点描述 chunk |
+| `kn_7_knowledge_point` | 讲解 7 的知识点 chunk |
+
+**规则**：
+1. **幂等**：同 (entity, id, chunk_type) 恒生成同 doc_id——Chroma `upsert` 天然去重，重复摄入不产生重复 chunk（更新同 id 的题目内容 = 重算向量后 upsert 同名 doc_id 覆盖）
+2. **按实体操作**：前缀匹配 `q_42_` 取该题全部 chunk；删除题目 = 删全部前缀匹配的 chunk
+3. **knowledge_point 双来源**：`q_*_knowledge_point`（题目附带）与 `kn_*_knowledge_point`（讲解段）在同一 collection 共存，前缀区分来源；检索按 `chunk_type` 过滤时天然混用两者（题目知识点 + 讲解都答"什么是X"）
+4. **检索不依赖 doc_id**：查询走 metadata 过滤（subject/topic_tags/chunk_type），doc_id 只做桥接与生命周期管理（更新/删除）
+
 ### Metadata 设计
 
 每个 chunk 的 metadata（与 SQLite 字段对齐）：
 
 ```python
 {
-    "doc_id": "q_001_question",     # 与 SQLite questions.doc_id 对应
+    "doc_id": "q_42_question",     # 与 SQLite questions.doc_id 对应
     "source_type": "exam",
     "title": "2026 南昌一模数学卷",   # 语义标题（files.title 快照，检索可读）
     "subject": "数学",
