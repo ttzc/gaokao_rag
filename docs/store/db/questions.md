@@ -11,6 +11,7 @@ CREATE TABLE questions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     doc_id          TEXT UNIQUE NOT NULL,          -- 与 Chroma chunk 的 doc_id 对应
     source_type     TEXT NOT NULL,                  -- "exam" / "special_topic" / "homework" / "error_book"
+    subject         TEXT NOT NULL,                  -- 学科: "数学" / "物理" / ...（查询热维度，冗余列——扩科后 questions 混合多学科，直接过滤免 join；摄入时从源文件学科判定，MVP 固定"数学"）
     file_id         INTEGER REFERENCES files(id),  -- 所属试卷/作业（files 表；标题经 join 获取，不冗余）
     exam_region     TEXT,                            -- 考区: "南昌" / "深圳" / "全国卷I" ...
     exam_year       INTEGER,                         -- 年份
@@ -26,6 +27,7 @@ CREATE TABLE questions (
 );
 
 CREATE INDEX idx_questions_source ON questions(source_type, file_id);
+CREATE INDEX idx_questions_subject ON questions(subject);
 CREATE INDEX idx_questions_exam ON questions(exam_region, exam_year);
 CREATE INDEX idx_questions_type ON questions(question_type);
 ```

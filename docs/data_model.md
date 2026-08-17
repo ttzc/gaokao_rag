@@ -77,7 +77,7 @@ Schema 设计见 [store/db/knowledge_notes.md](store/db/knowledge_notes.md)
 
 ### 4. 题目表 `questions`
 
-存储试卷/作业/专题/错题中的**题目信息**：题目内容（含图片描述）+ 答案解析（本表）；**知识点关联在 `question_topics` 表**（经 `question_id`），**错题错因在 `errors` 表**（经 `question_id`）。题目文本、答案、解析存于本表（**SQLite 自包含**——离线可查；答案/解析**允许缺失**，源资料没有则 NULL），内容三分由结构识别 Agent **LLM 语义划分**（不依赖关键词）。同时拆分 3 种 chunk 入 Chroma（question / answer / knowledge_point，`doc_id` 桥接）做语义检索——双写，本表是权威源。**可重建内容（VLM 描述、原始提取文本）不占本表**，存 `processed/`（vlm_desc/、text/）经哈希关联（见 [processed.md](store/files/processed.md)）。
+存储试卷/作业/专题/错题中的**题目信息**：题目内容（含图片描述）+ 答案解析（本表）；**知识点关联在 `question_topics` 表**（经 `question_id`），**错题错因在 `errors` 表**（经 `question_id`）。**`subject` 学科冗余列**（查询热维度，扩科后直接过滤免 join，与 Chroma metadata 的 subject 快照一致）。题目文本、答案、解析存于本表（**SQLite 自包含**——离线可查；答案/解析**允许缺失**，源资料没有则 NULL），内容三分由结构识别 Agent **LLM 语义划分**（不依赖关键词）。同时拆分 3 种 chunk 入 Chroma（question / answer / knowledge_point，`doc_id` 桥接）做语义检索——双写，本表是权威源。**可重建内容（VLM 描述、原始提取文本）不占本表**，存 `processed/`（vlm_desc/、text/）经哈希关联（见 [processed.md](store/files/processed.md)）。
 
 Schema 设计见 [store/db/questions.md](store/db/questions.md)
 
