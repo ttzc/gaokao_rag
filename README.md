@@ -32,7 +32,7 @@
 | **Agent 框架** | tRPC-Agent-Python（**TeamAgent 多 Agent 协作**） | 生产级 Agent 框架；Leader 自由委派 5 个专业子 Agent（意图/搜索/VLM/聚合/输出），比单 Agent 更清晰可扩展；内置 MCP、Session/Memory、FastAPI 服务化 |
 | **用户入口（IM）** | trpc-claw（OpenClaw-like） | 通过 QQ（官方 API + nanobot 原生通道 + 适配器扩展）使用，**高考生零学习成本、无需电脑** |
 | **LLM** | DeepSeek 官方 API（开发期写死 V4-Flash） | OpenAI 兼容协议接入；**模型中立**——架构上不绑定任何厂商，理论上用户可自选任何 OpenAI 兼容模型 |
-| **VLM** | Qwen（DashScope 官方 API，开发期写死 Qwen3-VL-8B / Qwen3-VL-32B） | 处理数学图形（几何图、函数图像、立体几何），8B 轻量快速、32B 复杂推理 |
+| **VLM** | Qwen（DashScope 官方 API，开发期写死 Qwen3.7-Flash / Qwen3.7-Plus） | 处理数学图形（几何图、函数图像、立体几何），Flash 轻量低成本、Plus 复杂图形推理 |
 | **PDF 解析** | PyMuPDF + MinerU2.5-Pro | 文本提取 + 复杂版面解析 |
 | **向量存储** | Chroma | 轻量本地，和 AlgoNotes 一致 |
 | **嵌入模型** | Qwen3-Embedding-4B（DashScope API） | 中文能力最强（CMTEB 68.09）、32k 长上下文整文档嵌入、与 VLM 同厂商一套 Key |
