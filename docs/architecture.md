@@ -202,7 +202,7 @@ class GaokaoState(State):
     "subject": "数学",
     "exam_region": "南昌",
     "exam_year": 2026,
-    "exam_month": "三月",
+    "exam_month": 3,
     "question_type": "解答题",
     "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），树展开后用于过滤
     "chunk_type": "question",

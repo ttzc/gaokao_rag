@@ -14,9 +14,9 @@ CREATE TABLE questions (
     file_id         INTEGER REFERENCES files(id),  -- 所属试卷/作业（files 表；标题经 join 获取，不冗余）
     exam_region     TEXT,                            -- 考区: "南昌" / "深圳" / "全国卷I" ...
     exam_year       INTEGER,                         -- 年份
-    exam_month      TEXT,                            -- 月份: "二月" / "三月" ...
+    exam_month      INTEGER,                         -- 1-12 月份（展示时转中文）
     question_number TEXT,                            -- 题号: "第15题" / "选择题3"
-    question_type   TEXT NOT NULL,                  -- "选择题" / "填空题" / "解答题"
+    question_type   TEXT NOT NULL,                  -- "单选题" / "多选题" / "填空题" / "解答题"
     content_text    TEXT NOT NULL,                  -- 题目文本（VLM 处理后含图形描述）
     answer_text     TEXT,                            -- 标准答案
     analysis_text   TEXT,                            -- 解析
