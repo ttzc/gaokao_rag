@@ -13,7 +13,7 @@ CREATE TABLE questions (
     source_type     TEXT NOT NULL,                  -- "exam" / "special_topic" / "homework" / "error_book"
     subject         TEXT NOT NULL,                  -- 学科: "数学" / "物理" / ...（查询热维度，冗余列——扩科后 questions 混合多学科，直接过滤免 join；摄入时从源文件学科判定，MVP 固定"数学"）
     file_id         INTEGER REFERENCES files(id),  -- 所属试卷/作业（files 表；标题经 join 获取，不冗余）
-    exam_region     TEXT,                            -- 考区: "南昌" / "深圳" / "全国卷I" ...
+    exam_regions    TEXT,                            -- 考区层级 JSON 数组，从小到大: ["深圳","广东","全国一卷"]；单级可 ["南昌"]；可空=未知
     exam_year       INTEGER,                         -- 年份
     exam_month      INTEGER,                         -- 1-12 月份（展示时转中文）
     question_number TEXT,                            -- 题号: "第15题" / "选择题3"
@@ -28,7 +28,7 @@ CREATE TABLE questions (
 
 CREATE INDEX idx_questions_source ON questions(source_type, file_id);
 CREATE INDEX idx_questions_subject ON questions(subject);
-CREATE INDEX idx_questions_exam ON questions(exam_region, exam_year);
+CREATE INDEX idx_questions_exam ON questions(exam_year);
 CREATE INDEX idx_questions_type ON questions(question_type);
 ```
 
@@ -44,7 +44,7 @@ CREATE INDEX idx_questions_type ON questions(question_type);
 
 - 插入：本表 + `question_topics` 关联 + Chroma 3 chunk（**同一事务**，见摄入管线）
 - 按知识点查：`question_topics` join 本表（或经树展开取多知识点）
-- 按考试查：`WHERE exam_region = ? AND exam_year = ?`
+- 按考试查：`WHERE exam_regions LIKE '%"南昌"%' AND exam_year = ?`（JSON 数组包含匹配；题目量小全表扫可接受）
 - 删除：级联删 `question_topics` / `errors` 引用 + Chroma chunk
 
 ## 与其他表的关系

@@ -53,7 +53,7 @@ async def get_question_detail(doc_id: str) -> dict:
 
 | 工具名 | 描述 | 参数 |
 |--------|------|------|
-| `search_questions` | 语义检索题目 | `query`（问题描述）、`topic`（知识点过滤）、`exam_region`（考区）、`exam_year`（年份）、`question_type`（题型）、`top_k`（返回数量） |
+| `search_questions` | 语义检索题目 | `query`（问题描述）、`topic`（知识点过滤）、`exam_region`（考区，匹配考区层级任一级，如"南昌"命中 ["深圳","南昌","全国一卷"] 的题）、`exam_year`（年份）、`question_type`（题型）、`top_k`（返回数量） |
 | `get_question_detail` | 获取题目完整信息 | `doc_id`（题目 ID） |
 | `get_knowledge_tree` | 获取知识点树 | `subject`（学科，默认数学） |
 | `get_questions_by_topic` | 按知识点列出题目 | `topic_name`（知识点名字/tag）、`limit` |

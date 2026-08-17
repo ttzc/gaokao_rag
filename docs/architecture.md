@@ -200,7 +200,7 @@ class GaokaoState(State):
     "source_type": "exam",
     "title": "2026 南昌一模数学卷",   # 语义标题（files.title 快照，检索可读）
     "subject": "数学",
-    "exam_region": "南昌",
+    "exam_regions": ["南昌", "江西", "全国一卷"],   # 考区层级，从小到大
     "exam_year": 2026,
     "exam_month": 3,
     "question_type": "解答题",

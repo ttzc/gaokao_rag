@@ -170,7 +170,7 @@ collection = chroma_client.get_or_create_collection(
     "source_type": "exam",
     "title": "2026 南昌一模数学卷",   # 语义标题（files.title 快照，检索可读）
     "subject": "数学",
-    "exam_region": "南昌",
+    "exam_regions": ["南昌", "江西", "全国一卷"],   # 考区层级，从小到大
     "exam_year": 2026,
     "question_type": "解答题",
     "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），逗号分隔
@@ -191,7 +191,7 @@ collection = chroma_client.get_or_create_collection(
 {
     "operator": "and",
     "value": [
-        {"field": "metadata.exam_region", "operator": "eq", "value": "南昌"},
+        {"field": "metadata.exam_regions", "operator": "contains", "value": "南昌"},
         {"field": "metadata.exam_year", "operator": "eq", "value": 2026},
         {"field": "metadata.topic_tags", "operator": "like", "value": "椭圆|双曲线|抛物线|离心率"}
     ]
