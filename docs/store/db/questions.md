@@ -2,7 +2,7 @@
 
 ## 功能定位
 
-题目主表，记录**题目内容（含图片描述）+ 答案解析 + 知识点关联**（错题错因在 `errors` 表，经 `question_id` 关联）。一道题拆分 3 种 chunk 入 Chroma（`question` / `answer` / `knowledge_point`），本表是 SQLite 侧的元数据中枢。
+题目主表，记录**题目内容（含图片描述）+ 答案解析**；知识点关联在 `question_topics` 表（经 `question_id`），错题错因在 `errors` 表（经 `question_id`）。一道题拆分 3 种 chunk 入 Chroma（`question` / `answer` / `knowledge_point`），本表是 SQLite 侧的元数据中枢。
 
 ## Schema
 
