@@ -5,6 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "langchain-chroma>=1.1.0",
+    "langchain-openai>=1.4.3",
+    "openai>=2.54.0",
     "python-dotenv>=1.2.2",
     "trpc-agent-py[knowledge,langfuse]>=1.1.16",
 ]
