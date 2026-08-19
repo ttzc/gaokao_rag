@@ -226,7 +226,7 @@ gaokao_rag/
 │   ├── api/                   # 模型客户端层（OpenAI 兼容协议抽象）
 │   │   ├── llm.py             #   LLM 客户端 —— DeepSeek V4-Flash
 │   │   ├── vlm.py             #   VLM 客户端 —— Qwen3.7-Flash / Plus（DashScope）
-│   │   └── embedding.py       #   嵌入模型 —— Qwen3-Embedding-4B（DashScope）
+│   │   └── embedding.py       #   嵌入模型 —— qwen3.7-text-embedding（DashScope）
 │   │
 │   ├── ingestion/             # 多模态摄取管线（PDF → 结构化数据）
 │   │   ├── loader.py          #   PDF 加载（PyMuPDF 主力 + MinerU2.5-Pro 兜底）
@@ -310,7 +310,7 @@ gaokao_rag/
 | 对话/推理 (LLM) | DeepSeek V4-Flash | DeepSeek 官方 API | OpenAIModel |
 | 图形理解 (VLM) | Qwen3.7-Flash | Qwen 官方 API（DashScope） | OpenAIModel (多模态) |
 | 复杂图形推理 (VLM) | Qwen3.7-Plus | Qwen 官方 API（DashScope） | OpenAIModel (多模态) |
-| 文本嵌入 | Qwen3-Embedding-4B | Qwen 官方 API（DashScope） | 独立调用 |
+| 文本嵌入 | qwen3.7-text-embedding（dimension=1024，config 规定） | Qwen 官方 API（DashScope） | OpenAI 兼容端点独立调用 |
 | PDF 解析 | MinerU2.5-Pro | 独立 API 调用 | 独立调用 |
 
 模型名、API Key、Base URL 全部走 `config.toml` + 环境变量，代码不硬编码。

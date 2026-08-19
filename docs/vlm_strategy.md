@@ -47,7 +47,7 @@ VLM（视觉语言模型）是 Gaokao RAG 和 AlgoNotes RAG 拉开差距的核�
 flowchart LR
     A[图像] --> B[VLM]
     B --> C[文本描述]
-    C --> D[Qwen3-Embedding-4B 嵌入]
+    C --> D[qwen3.7-text-embedding 嵌入]
     D --> E[Chroma]
     C --> F[与题目文本合并]
     F --> G[检索 + 生成]

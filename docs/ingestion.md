@@ -193,9 +193,9 @@ async def tag_knowledge_points(question_text: str, vlm_desc: str = "") -> list[d
 **切片分块细则**（切多大/怎么切/是否切片存储）属于 `vector_store.py` 实现细节，V0.3 实现时再定——摄入侧只保证"一个实体 = 一个 doc_id = 一篇完整内容"。
 
 **向量嵌入**：
-- 模型：Qwen3-Embedding-4B（DashScope API，2560 维，中文 CMTEB 68.09）
-- 调用方式：DashScope 官方 API（与 VLM 同厂商，一套 Key）
-- **32k 长上下文**：整份讲义/长文档可一次嵌入，简化分块策略（长文档分块失真风险大幅降低）
+- 模型：qwen3.7-text-embedding（DashScope API，dimension=1024 由 `config.embedding.dimension` 规定）
+- 调用方式：DashScope OpenAI 兼容端点（与 VLM 同厂商，一套 Key）
+- **131k 长上下文**：整份讲义/长文档可一次嵌入，简化分块策略（长文档分块失真风险大幅降低）
 
 **知识点讲解（knowledge_point）**：来自讲义/专题/带讲解的作业中的讲解段，写入 `knowledge_notes` 表（关联 topic_id）+ 向量化。**纯文本 RAG**，不需要 VLM——文本切块后直接嵌入，比带图题目更简单。
 

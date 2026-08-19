@@ -138,7 +138,7 @@
 | SQLite 表设计      | 建表、外键、索引              | "SQLite 建表 外键 索引"                                 |
 | 路径枚举（树存储） | 树形结构存储与查询（Materialized Path）| "SQLite materialized path 树"、"SQLite 树形结构 path 枚举" |
 | Chroma             | 向量库基本操作                | "Chroma 向量数据库 python"、"chroma collection 用法"    |
-| Qwen3-Embedding-4B | 中文嵌入模型（DashScope API） | "Qwen3-Embedding 使用 教程"、"dashscope 文本向量化 API" |
+| qwen3.7-text-embedding | 中文嵌入模型（DashScope API） | "Qwen3-Embedding 使用 教程"、"dashscope 文本向量化 API" |
 
 **过关标准**：SQLite 里建一棵知识点树并用递归查出来；Chroma 里增删查向量。
 

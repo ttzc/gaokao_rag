@@ -28,7 +28,7 @@ flowchart LR
 - [ ] **验证 TeamAgent 可用性**（`trpc_agent_sdk.teams` 的 Leader 委派 API；若当前版本不可用，退回 GraphAgent——见 [Agent 设计](agent.md)）
 - [ ] **核对文档 vs 源码 API 清单**（Quickstart 跑通后，对照各文档的 API 假设：OpenAIModel 三件套、`AgenticLangchainKnowledgeSearchTool`、nanobot `channels.qq`；发现对不上则改文档不改代码）
 - [ ] 验证 Qwen3.7 多模态调用（OpenAI 协议图片输入）
-- [ ] 验证 Chroma + Qwen3-Embedding-4B 嵌入链路
+- [ ] 验证 Chroma + qwen3.7-text-embedding 嵌入链路（含 dimensions=1024 冒烟测试）
 - [ ] 从 ima 知识库导出数学试卷 PDF 到 `data/files/raw/`
 
 ### 验收标准
@@ -74,7 +74,7 @@ flowchart LR
 - [ ] **回显确认**：向用户展示题目清单，批量决定去向（入库/错题/跳过）
 - [ ] 题目入库：题目文本 + VLM 图形描述 + 答案解析（含图题目走 VLM，见 [VLM 策略](vlm_strategy.md)）
 - [ ] 知识点标注：LLM 开放式提取 → 动态树归位/合并/挂载（见 [数据模型](data_model.md)）
-- [ ] 分块向量化（Qwen3-Embedding-4B + Chroma，chunk 类型 question/answer/knowledge_point）
+- [ ] 分块向量化（qwen3.7-text-embedding + Chroma，chunk 类型 question/answer/knowledge_point）
 - [ ] SQLite 元数据入库（questions + question_topics + knowledge_notes）
 - [ ] 摄取 CLI：`python scripts/ingest.py <path>`
 - [ ] 幂等性：重复摄取跳过、断点续传

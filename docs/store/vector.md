@@ -15,6 +15,26 @@
 
 **原因**：`LangchainKnowledge.search()` 内部调用 `vectorstore.asearch()`（见 [tRPC-Agent 源码](../../../../learn/trpc-agent-python/trpc_agent_sdk/server/knowledge/langchain_knowledge.py)），要求 vectorstore 是 langchain `VectorStore` 接口实现。原生 chromadb API 满足不了，故统一走 langchain Chroma，**不要混用两种 API 操作同一个 `chroma_db`**（避免双写不一致）。
 
+## 模型选型：qwen3.7-text-embedding（2026-08-19 定）
+
+对比 DashScope 各嵌入模型（官方模型市场 / 文档）：
+
+| 模型 | 价格 | 可选维度 | 批量（条/次） | 单批 Token | 性能 |
+| ---- | ---- | -------- | ------------ | ---------- | ---- |
+| **qwen3.7-text-embedding** | ¥0.5/M | 2560/2048/1536/**1024(默认)**/768/512/256 | **20** | **128K** | v4 基础上检索任务 +20%，201 种语言，上下文 131K |
+| text-embedding-v4 | ¥0.5/M | 2048/1536/1024/768/512/256/128/64 | 10 | 33K | MTEB 68.36 @1024 / 71.58 @2048 |
+| text-embedding-v3 | ¥0.5/M | 1024/768/512/256/128/64 | 10 | 8K | MTEB 63.39 @1024 |
+| text-embedding-async-v2/v1 | — | 1536 固定 | 100K（离线） | 2K | 全量索引专用，MVP 不用 |
+| text-embedding-v2/v1 | — | 1536 固定 | 25 | 2K | 老模型，排除 |
+
+**决策：qwen3.7-text-embedding，dimension=1024（默认）**。理由：
+1. **同价（¥0.5/M）性能最强**——v4 基础上检索任务提升 20%，无理由选旧代
+2. 维度 256~2560 可自定义，1024 默认——契合"config 规定维度 + 显式传参"方案
+3. 批量 20 条 / 128K token（v4 仅 10 条 / 33K）——批量摄入请求次数减半；131K 上下文，长文档一次嵌入不截断
+4. **模型中立**：走 OpenAI 兼容端点，换平台/换模型只改 `base_url` + `model`（不绑 DashScope 原生 API）
+
+> 为什么不选 DashScope 原生 API（厂商专属协议）：`text_type`（非对称检索）需实测确认 qwen3.7 支持；`output_type=dense&sparse` 稀疏检索 Chroma 不支持，落地要自建稀疏索引，MVP 不值；`instruct` 增益 1-5% 锦上添花。为这些用不上的功能牺牲模型中立，不值。触发条件：检索效果实测不达标再评估。
+
 ## 向量维度（核心决策，必须显式指定）
 
 ### 为什么必须规定维度
@@ -39,14 +59,14 @@ AlgoNotes 踩过的坑（`algonotes_rag/issues/IJVLRZ.md`）：**同一个模型
 
 本走 **OpenAI 兼容端点 + openai SDK**，SDK 里传 `dimensions=config.embedding.dimension`。
 
-> ⚠️ 官方文档模型表只列了 `text-embedding-v3/v4`，`qwen3-embedding-4b` 对 `dimensions` 的可选值范围**未写明**——实现时先冒烟测试（传 `dimensions=1024` 看是否接受、返回是否 1024 维）再定白名单。若实测不支持该参数，改为"请求不传、校验返回维度 == config.dimension"。
+> ⚠️ 官方文档模型表未列 `qwen3.7-text-embedding`（更新滞后），其对 `dimensions` 的可选值范围**待实测**——实现时先冒烟测试（传 `dimensions=1024` 看是否接受、返回是否 1024 维）再定白名单。若实测不支持该参数，改为"请求不传、校验返回维度 == config.dimension"。
 
 ### 配置
 
 ```toml
 # config.toml
 [embedding]
-model = "qwen3-embedding-4b"
+model = "qwen3.7-text-embedding"
 base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 api_key = "${DASHSCOPE_API_KEY}"
 timeout = 60.0
@@ -95,7 +115,7 @@ flowchart LR
     EMB -->|embedding_function=| VS
     EMB -->|embedder=| KB
     VS -->|vectorstore=| KB
-    EMB -->|dimensions=1024| API[DashScope /embeddings<br/>Qwen3-Embedding-4B]
+    EMB -->|dimensions=1024| API[DashScope /embeddings<br/>qwen3.7-text-embedding]
     VS -->|persist_directory| DB[(data/chroma_db)]
 ```
 
@@ -105,7 +125,7 @@ flowchart LR
 - 内部用 openai SDK（`OpenAI` + `AsyncOpenAI` 双客户端，sync/async 各一份）直调 DashScope 兼容端点 `/embeddings`
 - 调用时**显式传 `dimensions=cfg.dimension`**
 - `get_embedding_model()` 懒初始化单例，风格对齐 llm.py/vlm.py：白名单（`_SUPPORTED_MODELS`）+ `${VAR}` 占位符检查 + 初始化日志
-- **`_BATCH_SIZE = 10`**：DashScope `/embeddings` 单次 `input` 字符串数组上限 **10 条**（官方文档确认；比 Gitee.AI 的 25 条更严）
+- **`_BATCH_SIZE = 20`**：qwen3.7-text-embedding 单次 `input` 字符串数组上限 **20 条**（官方文档；v3/v4 为 10，按最终模型实测校准）
 
 ### src/store/vector_store.py —— Chroma 封装
 
@@ -134,12 +154,12 @@ knowledge = LangchainKnowledge(
 1. **doc_id 格式**：权威格式是两段式 `q_42` / `kn_7`（data_model.md「doc_id 生成规则」+ `questions.py::_make_doc_id`）；曾有文档示例写成 `q_42_question` / `q_001_question`，已修正
 2. **`afrom_documents` 会重建实例**：`LangchainKnowledge.create_vectorstore_from_document()` 内部调 `vectorstore.afrom_documents(...)`（classmethod，返回**新实例**）——注入的 Chroma 必须带 `persist_directory` + `embedding_function`，否则新实例落到默认临时目录，**数据直接丢**
 3. **维度不写死、但 collection 建后固定**：维度由 config 规定（见上）；换维度 = 删 `data/chroma_db` 重建（AlgoNotes STORE.md 教训）
-4. **批量上限**：DashScope 单次 ≤10 条（`_BATCH_SIZE=10`）；Gitee.AI ≤25（历史踩坑，当前不用）
+4. **批量上限**：qwen3.7 单次 ≤20 条（`_BATCH_SIZE=20`）；v3/v4 为 10；Gitee.AI ≤25（历史踩坑，当前不用）
 5. **不混用原生 chromadb API 与 langchain Chroma**（同库双写会不一致）
 
 ## 测试要点
 
-- `tests/test_embedding.py`：monkeypatch `src.api.embedding.OpenAI` 为 fake client——验证 `embed_query` 单条、`embed_documents` 超 10 条拆两批、`dimensions` 透传、`${VAR}` 占位符报错、白名单校验
+- `tests/test_embedding.py`：monkeypatch `src.api.embedding.OpenAI` 为 fake client——验证 `embed_query` 单条、`embed_documents` 超 20 条拆两批、`dimensions` 透传、`${VAR}` 占位符报错、白名单校验
 - `tests/test_vector_store.py`：`tmp_path` 持久化 + FakeEmbedder（定长向量，不真调 DashScope）——验证 upsert 幂等（同 doc_id 覆盖不重复）、`search` 的 where 过滤、`delete` 后 `get` 为空、**维度防呆报错**
 
 ## 与其他文档的关系
