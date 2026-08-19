@@ -33,7 +33,7 @@ Gaokao RAG 的数据模型分为两部分：
 
 采用**路径枚举（Materialized Path）**模型，每个节点用 `path` 列记录从根到自身的完整 id 路径（如 `1/2/3/`，根节点 = `1/`）。子树查询走前缀匹配（`LIKE '1/2/%'`），防环靠 O(1) 路径比较，移动/合并靠前缀批量替换——比邻接表 + 递归 CTE 更契合"频繁演化"的动态树。**树是数据驱动的动态结构**（非预定义写死，见下方"动态构建"说明）。
 
-> **tag 语义（名字即 tag）**：树上任意节点的 `name`（含 `aliases`）都是可用的 tag。Chroma metadata 存**名字快照**（`topic_tags`，见下文），树结构演化（合并/移动/改名）不影响已入库 metadata——合并/改名时旧名归档进 `aliases`，检索按"name + aliases"并集匹配即可。~~`code`（知识点编码）~~ 已砍掉：名字即身份，无需额外编码层。
+> **tag 语义（名字即 tag）**：树上任意节点的 `name`（含 `aliases`）都是可用的 tag。Chroma metadata 存**名字快照**（`topic_tags`，格式见 [store/vector.md「Metadata 格式」](store/vector.md)），树结构演化（合并/移动/改名）不影响已入库 metadata——合并/改名时旧名归档进 `aliases`，检索按"name + aliases"并集匹配即可。~~`code`（知识点编码）~~ 已砍掉：名字即身份，无需额外编码层。
 
 **路径枚举操作要点**：
 
@@ -195,96 +195,8 @@ doc_id = "{entity}_{id}"
 3. **双来源共存**：`q_*`（题目）与 `kn_*`（讲解）在同一 collection，前缀区分来源；检索按 `doc_type` 过滤时天然混用两者（题目 + 讲解都答"什么是X"）
 4. **检索不依赖 doc_id**：查询走 metadata 过滤（subject/topic_tags/doc_type），doc_id 只做桥接与生命周期管理（更新/删除）
 
-### Metadata 设计
-
-**定位：Chroma metadata 是检索快照**——只存过滤/展示需要的字段，内容（题干/答案/解析/关联）一律不存；SQLite 是权威源，metadata 摄入时从 SQLite 行派生、同事务双写。
-
-**类型约束（Chroma 官方）**：值支持 `str / int / float / bool / 同类型数组`（str[] / int[] / float[] / bool[]）；`$contains` 是**数组包含**操作（非字符串子串匹配）；`$gt/$gte/$lt/$lte` 仅数值；多条件用 `$and` / `$or` 嵌套。
-
-**通用字段（题目与讲解共有）**：
-
-| 字段 | 类型 | 示例 | 过滤方式 | 说明 |
-| ---- | ---- | ---- | -------- | ---- |
-| `doc_id` | str | `q_42` / `kn_7` | 不参与过滤 | 幂等 upsert 键 + SQLite 桥 |
-| `doc_type` | str | `question` / `note` | `$eq` / `$in` | 来源类型，检索混合召回用 |
-| `subject` | str | `数学` | `$eq` | 学科（MVP 固定，扩科后过滤） |
-| `source_type` | str | `exam` / `homework` / `notes` | `$in` | 资料类型 |
-| `title` | str | `2026 南昌一模数学卷` | 不参与过滤 | files.title 快照，检索结果可读 |
-| `topic_tags` | **str[]** | `["椭圆", "离心率"]` | `$contains` | 知识点名字快照（name + aliases），树展开后 `$or` 组合 |
-
-**题目专属字段**：
-
-| 字段 | 类型 | 示例 | 过滤方式 |
-| ---- | ---- | ---- | -------- |
-| `exam_regions` | **str[]** | `["南昌", "江西", "全国一卷"]` | `$contains`（考区层级，从小到大） |
-| `exam_year` | int | `2026` | `$eq` / `$gte` / `$lte`（可空：作业/资料不存该字段） |
-| `question_type` | str | `解答题` | `$eq` / `$in` |
-| `has_image` | bool | `True` | `$eq`（Chroma 过滤专用快照） |
-
-讲解 document（`kn_*`）只有通用字段，无 `exam_*` / `question_type` / `has_image`。
-
-**示例（题目 q_42）**：
-
-```python
-{
-    "doc_id": "q_42",
-    "doc_type": "question",
-    "subject": "数学",
-    "source_type": "exam",
-    "title": "2026 南昌一模数学卷",        # 语义标题（files.title 快照，检索可读）
-    "exam_regions": ["南昌", "江西", "全国一卷"],   # 考区层级，从小到大
-    "exam_year": 2026,
-    "question_type": "解答题",
-    "topic_tags": ["椭圆", "离心率"],      # 知识点名字快照（name + aliases）
-    "has_image": True,                    # Chroma 过滤专用快照
-}
-```
-
-**过滤语义**：
-
-```python
-# 学科 + 知识点（树展开 N 个名字 → $or 组合，命中任一即召回）
-{"$and": [
-    {"subject": "数学"},
-    {"$or": [{"topic_tags": {"$contains": "椭圆"}},
-             {"topic_tags": {"$contains": "双曲线"}}]},
-]}
-
-# 考区 + 年份 + 题型
-{"$and": [
-    {"exam_regions": {"$contains": "南昌"}},
-    {"exam_year": {"$gte": 2024}},
-    {"question_type": {"$in": ["选择题", "填空题"]}},
-]}
-
-# 含图题目
-{"has_image": True}
-```
-
-> **tag 快照与树的上卷**：`topic_tags` 是摄入时的名字快照（人话、可读）。检索时通过**树展开**做上卷——用户问父节点（"圆锥曲线"）时，取子树所有节点的 name + aliases 并集作为过滤词，`topic_tags` 用 `$contains` + `$or` 命中任一即召回。树结构演化后只需重新计算展开集合，metadata 不需要改。
-
-> **字段取舍**：`image_file_ids`、`exam_month` **不存 Chroma**——前者以 SQLite `questions.image_file_ids` 为准（检索用不上，要图 → `has_image` 过滤 + doc_id 回查 SQLite）；后者检索价值低（年份够用），按月聚合走 SQLite。
+metadata 的**格式、字段规范与过滤语义**见 [store/vector.md「Metadata 格式」](store/vector.md)。
 
 ## tRPC-Agent Knowledge 集成
 
-利用 tRPC-Agent 的 `LangchainKnowledge` + `AgenticLangchainKnowledgeSearchTool`，Agent 可以根据用户问题自动构建 metadata 过滤条件：
-
-```python
-# 用户问 "帮我找2026年南昌一模的圆锥曲线题"
-# LLM 自动构建 dynamic_filter（圆锥曲线 → 树展开为子孙节点名字并集）:
-{
-    "operator": "and",
-    "value": [
-        {"field": "metadata.exam_regions", "operator": "contains", "value": "南昌"},
-        {"field": "metadata.exam_year", "operator": "eq", "value": 2026},
-        {"operator": "or", "value": [
-            {"field": "metadata.topic_tags", "operator": "contains", "value": "椭圆"},
-            {"field": "metadata.topic_tags", "operator": "contains", "value": "双曲线"},
-            {"field": "metadata.topic_tags", "operator": "contains", "value": "抛物线"},
-            {"field": "metadata.topic_tags", "operator": "contains", "value": "离心率"},
-        ]},
-    ]
-}
-```
-
-这就是 tRPC-Agent 的 `AgenticLangchainKnowledgeSearchTool` 的核心能力——LLM 根据用户语义自动构建 `KnowledgeFilterExpr`，不需要手写路由逻辑。
+利用 tRPC-Agent 的 `LangchainKnowledge` + `AgenticLangchainKnowledgeSearchTool`，Agent 可以根据用户问题自动构建 metadata 过滤条件（`KnowledgeFilterExpr`，示例见 [store/vector.md「框架集成」](store/vector.md)）。

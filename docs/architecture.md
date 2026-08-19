@@ -192,7 +192,7 @@ class GaokaoState(State):
 
 ### Layer 3: Chroma 向量库
 
-负责语义检索。每个 document 携带**检索快照 metadata**——只存过滤/展示需要的字段（学科/考区/年份/题型/知识点 tag/含图标记），内容以 SQLite 为权威源。**字段规范与过滤语义见 [data_model.md「Metadata 设计」](data_model.md)**（单一来源，此处不重复）。
+负责语义检索。每个 document 携带**检索快照 metadata**——只存过滤/展示需要的字段（学科/考区/年份/题型/知识点 tag/含图标记），内容以 SQLite 为权威源。**字段规范与过滤语义见 [store/vector.md「Metadata 格式与过滤语义」](store/vector.md)**（单一来源，此处不重复）。
 
 ## 项目文件架构
 

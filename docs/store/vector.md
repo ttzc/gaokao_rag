@@ -4,7 +4,7 @@
 
 ## 功能定位
 
-三层存储的**最顶层索引**——SQLite 负责"精确过滤"（知识点/年份/考区），Chroma 负责"语义相似"（按问题含义检索），两层通过 `doc_id` 桥接。设计细节（Collection / doc_id / Metadata 规范）见 [data_model.md](../data_model.md)「Chroma 向量层」一节，本文档只记录**实现层面的开发细节与踩坑**。
+三层存储的**最顶层索引**——SQLite 负责"精确过滤"（知识点/年份/考区），Chroma 负责"语义相似"（按问题含义检索），两层通过 `doc_id` 桥接。**Collection / doc_id / Document 策略**见 [data_model.md](../data_model.md)「Chroma 向量层」一节；**Metadata 格式与过滤语义见本文档下文**——本文档是向量层实现细节的单一来源。
 
 ## 技术选型：langchain-chroma（不直接用原生 chromadb）
 
@@ -99,6 +99,80 @@ def __init__(self, collection_name: str, persist_dir: str, expected_dim: int) ->
 
 **Chroma 不预指定维度**（对比腾讯云向量库的 `IndexParams(dimension=768)`）：以第一批入库向量的维度为准，因此防呆校验放在初始化时。
 
+## Metadata 格式与过滤语义
+
+**定位：Chroma metadata 是检索快照**——只存过滤/展示需要的字段，内容（题干/答案/解析/关联）一律不存；SQLite 是权威源，metadata 摄入时从 SQLite 行派生、同事务双写。
+
+**类型约束（Chroma 官方）**：值支持 `str / int / float / bool / 同类型数组`（str[] / int[] / float[] / bool[]）；`$contains` 是**数组包含**操作（非字符串子串匹配）；`$gt/$gte/$lt/$lte` 仅数值；多条件用 `$and` / `$or` 嵌套。
+
+**通用字段（题目与讲解共有）**：
+
+| 字段 | 类型 | 示例 | 过滤方式 | 说明 |
+| ---- | ---- | ---- | -------- | ---- |
+| `doc_id` | str | `q_42` / `kn_7` | 不参与过滤 | 幂等 upsert 键 + SQLite 桥 |
+| `doc_type` | str | `question` / `note` | `$eq` / `$in` | 来源类型，检索混合召回用 |
+| `subject` | str | `数学` | `$eq` | 学科（MVP 固定，扩科后过滤） |
+| `source_type` | str | `exam` / `homework` / `notes` | `$in` | 资料类型 |
+| `title` | str | `2026 南昌一模数学卷` | 不参与过滤 | files.title 快照，检索结果可读 |
+| `topic_tags` | **str[]** | `["椭圆", "离心率"]` | `$contains` | 知识点名字快照（name + aliases），树展开后 `$or` 组合 |
+
+**题目专属字段**：
+
+| 字段 | 类型 | 示例 | 过滤方式 |
+| ---- | ---- | ---- | -------- |
+| `exam_regions` | **str[]** | `["南昌", "江西", "全国一卷"]` | `$contains`（考区层级，从小到大） |
+| `exam_year` | int | `2026` | `$eq` / `$gte` / `$lte`（可空：作业/资料不存该字段） |
+| `question_type` | str | `解答题` | `$eq` / `$in` |
+| `has_image` | bool | `True` | `$eq`（Chroma 过滤专用快照） |
+
+讲解 document（`kn_*`）只有通用字段，无 `exam_*` / `question_type` / `has_image`。
+
+**示例（题目 q_42）**：
+
+```python
+{
+    "doc_id": "q_42",
+    "doc_type": "question",
+    "subject": "数学",
+    "source_type": "exam",
+    "title": "2026 南昌一模数学卷",        # 语义标题（files.title 快照，检索可读）
+    "exam_regions": ["南昌", "江西", "全国一卷"],   # 考区层级，从小到大
+    "exam_year": 2026,
+    "question_type": "解答题",
+    "topic_tags": ["椭圆", "离心率"],      # 知识点名字快照（name + aliases）
+    "has_image": True,                    # Chroma 过滤专用快照
+}
+```
+
+**过滤语义**：
+
+```python
+# 学科 + 知识点（树展开 N 个名字 → $or 组合，命中任一即召回）
+{"$and": [
+    {"subject": "数学"},
+    {"$or": [{"topic_tags": {"$contains": "椭圆"}},
+             {"topic_tags": {"$contains": "双曲线"}}]},
+]}
+
+# 考区 + 年份 + 题型
+{"$and": [
+    {"exam_regions": {"$contains": "南昌"}},
+    {"exam_year": {"$gte": 2024}},
+    {"question_type": {"$in": ["选择题", "填空题"]}},
+]}
+
+# 含图题目
+{"has_image": True}
+```
+
+> **tag 快照与树的上卷**：`topic_tags` 是摄入时的名字快照（人话、可读）。检索时通过**树展开**做上卷——用户问父节点（"圆锥曲线"）时，取子树所有节点的 name + aliases 并集作为过滤词，`topic_tags` 用 `$contains` + `$or` 命中任一即召回。树结构演化后只需重新计算展开集合，metadata 不需要改。
+
+> **字段取舍**：`image_file_ids`、`exam_month` **不存 Chroma**——前者以 SQLite `questions.image_file_ids` 为准（检索用不上，要图 → `has_image` 过滤 + doc_id 回查 SQLite）；后者检索价值低（年份够用），按月聚合走 SQLite。
+
+### 实现注意：langchain Filter vs Chroma where
+
+⚠️ langchain 的 Filter 语法（`$eq/$ne/$in/$gt...`）**不含 `$contains`**——它是 Chroma 专有操作符。`AgenticLangchainKnowledgeSearchTool` 生成的 filter 若覆盖不到数组语义，`VectorStore.search()` 需要支持直接透传 **chromadb 原生 where**（或加 langchain Filter → Chroma where 的翻译层），否则数组字段（知识点/考区）无法过滤。实现时以实测为准，测试里覆盖"数组 $contains 过滤"用例。
+
 ## 组件装配
 
 ```mermaid
@@ -140,12 +214,6 @@ flowchart LR
 
 `get_vector_store()` 懒初始化单例。
 
-### metadata 过滤语义（实现注意）
-
-字段规范见 [data_model.md「Metadata 设计」](../data_model.md)——**数组字段（`topic_tags` / `exam_regions`）存 str[]，过滤用 Chroma `$contains`**（数组包含），非字符串子串匹配。
-
-⚠️ **langchain Filter 与 Chroma where 的兼容**：langchain 的 Filter 语法（`$eq/$ne/$in/$gt...`）**不含 `$contains`**——它是 Chroma 专有操作符。`AgenticLangchainKnowledgeSearchTool` 生成的 filter 若覆盖不到数组语义，`VectorStore.search()` 需要支持直接透传 **chromadb 原生 where**（或加 langchain Filter → Chroma where 的翻译层），否则数组字段（知识点/考区）无法过滤。实现时以实测为准，测试里覆盖"数组 $contains 过滤"用例。
-
 ### rag 层装配
 
 ```python
@@ -155,6 +223,30 @@ knowledge = LangchainKnowledge(
 )
 ```
 
+## 框架集成：AgenticLangchainKnowledgeSearchTool
+
+利用 tRPC-Agent 的 `LangchainKnowledge` + `AgenticLangchainKnowledgeSearchTool`，Agent 可以根据用户问题自动构建 metadata 过滤条件（`KnowledgeFilterExpr`）：
+
+```python
+# 用户问 "帮我找2026年南昌一模的圆锥曲线题"
+# LLM 自动构建 dynamic_filter（圆锥曲线 → 树展开为子孙节点名字并集）:
+{
+    "operator": "and",
+    "value": [
+        {"field": "metadata.exam_regions", "operator": "contains", "value": "南昌"},
+        {"field": "metadata.exam_year", "operator": "eq", "value": 2026},
+        {"operator": "or", "value": [
+            {"field": "metadata.topic_tags", "operator": "contains", "value": "椭圆"},
+            {"field": "metadata.topic_tags", "operator": "contains", "value": "双曲线"},
+            {"field": "metadata.topic_tags", "operator": "contains", "value": "抛物线"},
+            {"field": "metadata.topic_tags", "operator": "contains", "value": "离心率"},
+        ]},
+    ]
+}
+```
+
+这就是 `AgenticLangchainKnowledgeSearchTool` 的核心能力——LLM 根据用户语义自动构建 `KnowledgeFilterExpr`，不需要手写路由逻辑。
+
 ## 坑清单（实现时必看）
 
 1. **doc_id 格式**：权威格式是两段式 `q_42` / `kn_7`（data_model.md「doc_id 生成规则」+ `questions.py::_make_doc_id`）；曾有文档示例写成 `q_42_question` / `q_001_question`，已修正
@@ -162,7 +254,7 @@ knowledge = LangchainKnowledge(
 3. **维度不写死、但 collection 建后固定**：维度由 config 规定（见上）；换维度 = 删 `data/chroma_db` 重建（AlgoNotes STORE.md 教训）
 4. **批量上限**：qwen3.7 单次 ≤20 条（`_BATCH_SIZE=20`）；v3/v4 为 10；Gitee.AI ≤25（历史踩坑，当前不用）
 5. **不混用原生 chromadb API 与 langchain Chroma**（同库双写会不一致）
-6. **数组过滤走 Chroma 原生 where**：`$contains` 不在 langchain Filter 语法内（见「metadata 过滤语义」），数组字段过滤不能只依赖 langchain 翻译
+6. **数组过滤走 Chroma 原生 where**：`$contains` 不在 langchain Filter 语法内（见「Metadata 格式与过滤语义 · 实现注意」），数组字段过滤不能只依赖 langchain 翻译
 
 ## 测试要点
 
@@ -171,7 +263,7 @@ knowledge = LangchainKnowledge(
 
 ## 与其他文档的关系
 
-- 数据模型：[data_model.md](../data_model.md)（Collection / doc_id / Metadata 规范）
+- 数据模型：[data_model.md](../data_model.md)（Collection / doc_id / Document 策略；Metadata 格式见本文档）
 - 题目表：[db/questions.md](db/questions.md)（`doc_id` 桥接、`has_image` 过滤快照）
 - 讲解表：[db/knowledge_notes.md](db/knowledge_notes.md)（`kn_*` document）
 - 知识树：[db/topics.md](db/topics.md)（`topic_tags` 名字快照 + 树展开上卷）
