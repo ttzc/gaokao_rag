@@ -104,7 +104,7 @@ flowchart TD
 
 **软删**：不提供 `delete_topic`（真删要级联处理子树 + 题目引用 + metadata），只用 `deactivate_topic`（status → inactive）。
 
-**检索侧配合（树展开上卷）**：查询侧不走 Agent 调树——检索时直接调 `store/db/topics.py` 的 `expand_tag_names(node)`，取子树所有节点 name+aliases 并集作为过滤词，交给 `AgenticLangchainKnowledgeSearchTool` 对 `metadata.topic_tags` 做匹配，实现"问圆锥曲线 → 搜到椭圆/双曲线/抛物线的题"。
+**检索侧配合（树展开上卷）**：查询侧不走 Agent 调树——检索时直接调 `store/db/topics.py` 的 `expand_tag_names(node)`，取子树所有节点 name+aliases 并集作为过滤词，交给 `AgenticLangchainKnowledgeSearchTool` 对 `metadata.topic_tags` 做匹配（数组 `$contains` + `$or`，格式见 [data_model.md「Metadata 设计」](data_model.md)），实现"问圆锥曲线 → 搜到椭圆/双曲线/抛物线的题"。
 
 **4 条内建约束（写在 tool 内部，不依赖 LLM 自觉）**：防环（挂载前 O(1) path 比较）/ 防重（create 前强制 search，name+aliases 全局唯一）/ 合并幂等（merged 节点不可再操作）/ 软删（只 deactivate 不真删）。
 

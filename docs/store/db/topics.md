@@ -94,4 +94,4 @@ flowchart LR
 ```
 
 - **摄入侧**：`store/db/topics.py` 封装全部树逻辑 → FunctionTool 挂到知识整理 Agent（见 `docs/agent.md`「知识整理 Agent 详解」）
-- **检索侧**：`expand_tag_names` 树展开 → 配合 `AgenticLangchainKnowledgeSearchTool` 过滤 `metadata.topic_tags`
+- **检索侧**：`expand_tag_names` 树展开 → 配合 `AgenticLangchainKnowledgeSearchTool` 过滤 `metadata.topic_tags`（数组 `$contains` + `$or`，见 [data_model.md「Metadata 设计」](../../data_model.md)）
