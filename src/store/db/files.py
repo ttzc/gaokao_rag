@@ -10,12 +10,12 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from typing import Any
 
 from trpc_agent_sdk.log import logger
 
 from src.config import config
+from src.store.db import get_shared_conn
 
 
 # ── Schema ──────────────────────────────────────────────────────────
@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS files (
 
 _CREATE_INDEX_KIND = "CREATE INDEX IF NOT EXISTS idx_files_kind ON files(kind);"
 _CREATE_INDEX_SHA = "CREATE UNIQUE INDEX IF NOT EXISTS idx_files_sha ON files(sha256);"
+
+# 已初始化 schema 的连接 id 集合，避免重复执行 DDL（幂等但浪费）
+_schema_initialized: set[int] = set()
 
 
 # ── 行映射 ──────────────────────────────────────────────────────────
@@ -58,52 +61,49 @@ class FilesDB:
     2. ``FilesDB.register(file_path=..., sha256=..., ...)`` → 入库 + 返回 file_id
     3. 业务表（questions / knowledge_notes）通过 ``file_id`` 引用
 
-    Attributes:
-        db_path: SQLite 数据库文件路径（默认来自 ``config.store.sqlite_path``）。
+    连接走全局共享 SQLite 连接（由 ``src.store.db.get_shared_conn()`` 管理），
+    保证跨表外键约束统一生效。
     """
 
-    def __init__(self, db_path: str | None = None) -> None:
-        self.db_path = db_path or config.store.sqlite_path
-        self._conn: sqlite3.Connection | None = None
+    def __init__(self) -> None:
+        pass
 
     # ── 连接管理 ────────────────────────────────────────────────────
 
     def _connect(self) -> sqlite3.Connection:
-        """获取（或创建）SQLite 连接，启用 WAL 模式 + 外键约束。
+        """返回共享 SQLite 连接 + 初始化本表 schema。
 
-        连接采用惰性初始化 + 进程内单例模式：首次调用时创建并初始化 schema，
-        后续调用直接复用同一连接。
+        ``CREATE TABLE IF NOT EXISTS`` 幂等，每次调用无副作用，
+        确保任意表类率先连接时所有表 schema 都被初始化。
         """
-        if self._conn is None:
-            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA foreign_keys=ON")
-            self._init_schema(self._conn)
-        return self._conn
+        conn = get_shared_conn()
+        self._init_schema(conn)
+        return conn
 
     def _init_schema(self, conn: sqlite3.Connection) -> None:
         """创建表和索引（IF NOT EXISTS）。
 
+        使用连接 id 去重，同一连接只执行一次 DDL。
+
         Args:
-            conn: 已建立的 SQLite 连接（保证非 None，由 ``_connect`` 传入）。
+            conn: 共享 SQLite 连接（由 ``_connect`` 传入）。
         """
+        conn_id = id(conn)
+        if conn_id in _schema_initialized:
+            return
         conn.execute(_CREATE_TABLE)
         conn.execute(_CREATE_INDEX_KIND)
         conn.execute(_CREATE_INDEX_SHA)
-        conn.commit()
-        logger.debug("files table schema initialized (db=%s)", self.db_path)
+        _schema_initialized.add(conn_id)
+        logger.debug("files table schema initialized (shared conn)")
 
     def close(self) -> None:
         """关闭数据库连接。
 
-        通常在应用退出时调用；测试中可用 ``contextmanager`` 模式或手动 close。
+        共享连接由 ``src.store.db.close_shared_conn()`` 统一管理，
+        本方法保留以兼容 context manager 协议，但不实际关闭连接。
         """
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
-            logger.debug("FilesDB connection closed")
+        logger.debug("FilesDB.close() skipped (shared connection managed by db/__init__.py)")
 
     # ── 注册（INSERT + 去重） ────────────────────────────────────────
 
@@ -354,16 +354,8 @@ class FilesDB:
         logger.warning("delete: file_id=%d 不存在", file_id)
         return False
 
-    # ── 上下文管理 ──────────────────────────────────────────────────
-
-    def __enter__(self) -> FilesDB:
-        return self
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self.close()
-
     def __repr__(self) -> str:
-        return f"FilesDB(db_path={self.db_path!r})"
+        return "FilesDB()"
 
 
 # ── Singleton factory ───────────────────────────────────────────────
@@ -371,19 +363,16 @@ class FilesDB:
 _files_db: FilesDB | None = None
 
 
-def get_files_db(db_path: str | None = None) -> FilesDB:
+def get_files_db() -> FilesDB:
     """返回缓存的 FilesDB 单例。
 
-    首次调用创建实例并缓存，后续调用返回同一实例。``db_path`` 仅在首次调用时生效。
-
-    Args:
-        db_path: 可选的自定义数据库路径（覆盖 ``config.store.sqlite_path``）。
-                 仅在单例尚未创建时生效。
+    首次调用创建实例并缓存，后续调用返回同一实例。
+    连接统一走全局共享 SQLite 连接，无需传参。
 
     Returns:
         FilesDB 实例。
     """
     global _files_db
     if _files_db is None:
-        _files_db = FilesDB(db_path=db_path)
+        _files_db = FilesDB()
     return _files_db

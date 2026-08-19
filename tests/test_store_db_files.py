@@ -1,22 +1,19 @@
 """FilesDB 测试：覆盖注册去重、CRUD、sha256 校验、kind 过滤。"""
 
-import hashlib
 from pathlib import Path
 
 import pytest
 
-from src.store.db.files import FilesDB
+from src.store.db import close_shared_conn
+from src.store.db.files import FilesDB, get_files_db
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
 
 @pytest.fixture()
-def db(tmp_path) -> FilesDB:
-    """基于临时目录 SQLite 文件的 FilesDB 实例（每个测试独立数据库）。"""
-    db_path = str(tmp_path / "gaokao.db")
-    instance = FilesDB(db_path=db_path)
-    yield instance
-    instance.close()
+def db() -> FilesDB:
+    """FilesDB 实例（共享连接，每个测试独立数据）。"""
+    return get_files_db()
 
 
 @pytest.fixture()
@@ -49,21 +46,20 @@ def sample_image(db: FilesDB) -> int:
 
 class TestInit:
 
-    def test_creates_db_file(self, tmp_path):
-        db_path = str(tmp_path / "gaokao.db")
-        db = FilesDB(db_path=db_path)
-        # 触发惰性初始化（首次 _connect 时才创建文件）
+    def test_creates_db_file(self):
+        """共享连接创建时，数据库文件在 config.store.sqlite_path 落盘。"""
+        from src.config import config
+        db_path = config.store.sqlite_path
+        db = FilesDB()
         db._connect()
         assert Path(db_path).exists()
-        db.close()
 
-    def test_idempotent_init(self, tmp_path):
-        db_path = str(tmp_path / "gaokao.db")
-        db1 = FilesDB(db_path=db_path)
-        db1.close()
-        # 第二次初始化不应报错
-        db2 = FilesDB(db_path=db_path)
-        db2.close()
+    def test_idempotent_init(self):
+        """多次初始化共享连接不报错（幂等）。"""
+        db1 = FilesDB()
+        db1._connect()
+        db2 = FilesDB()
+        db2._connect()
 
     def test_schema_has_files_table(self, db: FilesDB):
         conn = db._connect()
@@ -386,22 +382,20 @@ class TestDelete:
         assert db.count() == 1
 
 
-# ── 上下文管理 ──────────────────────────────────────────────────────
+# ── 直接使用 ──────────────────────────────────────────────────────
 
-class TestContextManager:
+class TestDirectUsage:
 
-    def test_with_statement(self, tmp_path):
-        db_path = str(tmp_path / "ctx.db")
-        with FilesDB(db_path=db_path) as db:
-            db.register(
-                file_path="data/files/raw/pdfs/x.pdf",
-                sha256="e" * 64,
-                size=100,
-                kind="pdf",
-            )
-            assert db.count() == 1
-        # 退出后连接已关闭
-        assert db._conn is None
+    def test_create_and_use(self):
+        db = get_files_db()
+        file_id = db.register(
+            file_path="data/files/raw/pdfs/x.pdf",
+            sha256="e" * 64,
+            size=100,
+            kind="pdf",
+        )
+        assert file_id > 0
+        assert db.count() == 1
 
 
 # ── 单例 factory ───────────────────────────────────────────────────
