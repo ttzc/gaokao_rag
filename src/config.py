@@ -140,7 +140,7 @@ class EmbeddingConfig(BaseModel):
     """嵌入模型（OpenAI 兼容端点）配置。"""
 
     model: str = Field(
-        default="qwen3-embedding-4b",
+        default="qwen3.7-text-embedding",
         description="嵌入模型名称（DashScope model ID）",
     )
     base_url: str = Field(
@@ -152,6 +152,12 @@ class EmbeddingConfig(BaseModel):
         description="DashScope API Key，通过环境变量引用",
     )
     timeout: float = Field(default=60.0, gt=0)
+    dimension: int = Field(
+        default=1024,
+        ge=64,
+        le=2048,
+        description="向量维度，显式指定（不依赖模型/平台默认值）；换值需重建 Chroma collection",
+    )
 
 
 class MinerUConfig(BaseModel):

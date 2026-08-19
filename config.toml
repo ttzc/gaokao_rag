@@ -28,12 +28,13 @@ complexity_keywords = [               # 触发升级的题目关键词
     "组合", "叠加", "复合", "恒成立", "存在性",
 ]
 
-# ── 嵌入模型（Qwen3-Embedding-4B，DashScope） ───────────────────
+# ── 嵌入模型（qwen3.7-text-embedding，DashScope） ──────────────────
 [embedding]
-model = "qwen3-embedding-4b"
+model = "qwen3.7-text-embedding"
 base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 api_key = "${DASHSCOPE_API_KEY}"
 timeout = 60.0
+dimension = 1024   # 向量维度，显式指定不依赖模型默认值（AlgoNotes 踩坑：同模型跨平台维度不同）
 
 # ── PDF 解析兜底服务（MinerU2.5-Pro） ───────────────────────────
 [mineru]

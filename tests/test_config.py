@@ -152,7 +152,10 @@ class TestVLMConfig:
 
 class TestEmbeddingConfig:
     def test_default_model(self) -> None:
-        assert EmbeddingConfig().model == "qwen3-embedding-4b"
+        assert EmbeddingConfig().model == "qwen3.7-text-embedding"
+
+    def test_default_dimension(self) -> None:
+        assert EmbeddingConfig().dimension == 1024
 
     def test_default_base_url(self) -> None:
         assert (
