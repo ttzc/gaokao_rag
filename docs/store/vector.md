@@ -57,7 +57,7 @@ AlgoNotes 踩过的坑（`algonotes_rag/issues/IJVLRZ.md`）：**同一个模型
 | OpenAI 兼容（`/compatible-mode/v1/embeddings`） | **`dimensions`**（复数） | 1024 | 2048 / 1536 / 1024 / 768 / 512 / 256 / 128 / 64（2048/1536/256/128/64 仅 v4） |
 | DashScope 原生（`/api/v1/services/embeddings/...`） | **`dimension`**（单数） | 1024 | 同上 |
 
-本走 **OpenAI 兼容端点 + openai SDK**，SDK 里传 `dimensions=config.embedding.dimension`。
+本走 **OpenAI 兼容端点**，由 `langchain_openai.OpenAIEmbeddings` 封装（它原生透传 `dimensions` + `chunk_size` 自动分批 + async），配置见 `config.embedding`。
 
 > ⚠️ 官方文档模型表未列 `qwen3.7-text-embedding`（更新滞后），其对 `dimensions` 的可选值范围**待实测**——实现时先冒烟测试（传 `dimensions=1024` 看是否接受、返回是否 1024 维）再定白名单。若实测不支持该参数，改为"请求不传、校验返回维度 == config.dimension"。
 
@@ -178,7 +178,7 @@ def __init__(self, collection_name: str, persist_dir: str, expected_dim: int) ->
 ```mermaid
 flowchart LR
     subgraph api层
-        EMB[src/api/embedding.py<br/>QwenEmbeddingModel : Embeddings 接口<br/>embed_query / embed_documents + async]
+        EMB[src/api/embedding.py<br/>OpenAIEmbeddings 工厂（langchain_openai）<br/>dimensions / chunk_size 原生 + async]
     end
     subgraph store层
         VS[src/store/vector_store.py<br/>VectorStore : langchain Chroma<br/>collection "gaokao" · doc_id 幂等 upsert]
@@ -193,13 +193,11 @@ flowchart LR
     VS -->|persist_directory| DB[(data/chroma_db)]
 ```
 
-### src/api/embedding.py —— embedder（实现 Embeddings 接口）
+### src/api/embedding.py —— embedder（OpenAIEmbeddings 工厂）
 
-- `QwenEmbeddingModel(Embeddings)`：继承 `langchain_core.embeddings.Embeddings`，实现 `embed_query` / `embed_documents` + async 版本。**这是 A 方案的关键**——该接口恰好就是 Chroma 的 `embedding_function` 和 `LangchainKnowledge.embedder` 需要的形状，api 层定义能力、store/rag 层消费
-- 内部用 openai SDK（`OpenAI` + `AsyncOpenAI` 双客户端，sync/async 各一份）直调 DashScope 兼容端点 `/embeddings`
-- 调用时**显式传 `dimensions=cfg.dimension`**
-- `get_embedding_model()` 懒初始化单例，风格对齐 llm.py/vlm.py：白名单（`_SUPPORTED_MODELS`）+ `${VAR}` 占位符检查 + 初始化日志
-- **`_BATCH_SIZE = 20`**：qwen3.7-text-embedding 单次 `input` 字符串数组上限 **20 条**（官方文档；v3/v4 为 10，按最终模型实测校准）
+- **直接用 `langchain_openai.OpenAIEmbeddings`**，不自写 `Embeddings` 子类——它本身就是 langchain `Embeddings` 接口实现（含 `aembed_documents`/`aembed_query` async 版），可直接注入 `LangchainKnowledge.embedder` 与 `langchain_chroma.Chroma` 的 `embedding_function`。**参考 AlgoNotes `src/api/embedding_client.py` 的 langchain 工厂路线**（其用 `init_embeddings(provider="openai")`）。
+- 构造参数（来自 `config.embedding`）：`model` / `openai_api_key` / `base_url` / **`dimensions=cfg.dimension`（显式传维度，防 AlgoNotes 跨平台坑——OpenAIEmbeddings 仅在 `dimensions is not None` 时透传 `params["dimensions"]`）** / `chunk_size=20`（qwen3.7 单次 input 数组 ≤20 条，原生自动分批，不用手写循环）/ `tiktoken_enabled=False` / `check_embedding_ctx_length=False`（数学长文本不卡 token 检查）
+- `get_embedding_model()` 懒初始化单例，**保留我们的约定**：白名单（`_SUPPORTED_MODELS = ("qwen3.7-text-embedding",)`）+ `${VAR}` 占位符检查（api_key 未解析则 RuntimeError）+ 初始化日志（用 `trpc_agent_sdk.log.logger`，不 import 业务 logger）
 
 ### src/store/vector_store.py —— Chroma 封装
 
@@ -252,13 +250,14 @@ knowledge = LangchainKnowledge(
 1. **doc_id 格式**：权威格式是两段式 `q_42` / `kn_7`（data_model.md「doc_id 生成规则」+ `questions.py::_make_doc_id`）；曾有文档示例写成 `q_42_question` / `q_001_question`，已修正
 2. **`afrom_documents` 会重建实例**：`LangchainKnowledge.create_vectorstore_from_document()` 内部调 `vectorstore.afrom_documents(...)`（classmethod，返回**新实例**）——注入的 Chroma 必须带 `persist_directory` + `embedding_function`，否则新实例落到默认临时目录，**数据直接丢**
 3. **维度不写死、但 collection 建后固定**：维度由 config 规定（见上）；换维度 = 删 `data/chroma_db` 重建（AlgoNotes STORE.md 教训）
-4. **批量上限**：qwen3.7 单次 ≤20 条（`_BATCH_SIZE=20`）；v3/v4 为 10；Gitee.AI ≤25（历史踩坑，当前不用）
+4. **批量上限**：qwen3.7 单次 ≤20 条（`chunk_size=20` 传给 OpenAIEmbeddings 自动分批）；v3/v4 为 10；Gitee.AI ≤25（历史踩坑，当前不用）
 5. **不混用原生 chromadb API 与 langchain Chroma**（同库双写会不一致）
 6. **数组过滤走 Chroma 原生 where**：`$contains` 不在 langchain Filter 语法内（见「Metadata 格式与过滤语义 · 实现注意」），数组字段过滤不能只依赖 langchain 翻译
+7. **依赖版本约束**：`langchain-chroma` 必须声明 `>=0.3`——当前 `uv.lock` 锁定 `langchain-core==1.5.4`（新版主版本线），旧版 langchain-chroma（0.1/0.2）要求 `langchain-core<0.4`，会依赖冲突导致 `uv sync` 失败。推荐直接用 `uv add openai langchain-chroma` 让 uv 自动解析兼容版本；`chromadb` 不必单独声明（langchain-chroma 的传递依赖）。`openai` 虽已是 trpc-agent-py 的传递依赖，但显式声明更稳（防 trpc 改动断链）
 
 ## 测试要点
 
-- `tests/test_embedding.py`：monkeypatch `src.api.embedding.OpenAI` 为 fake client——验证 `embed_query` 单条、`embed_documents` 超 20 条拆两批、`dimensions` 透传、`${VAR}` 占位符报错、白名单校验
+- `tests/test_embedding.py`：monkeypatch `langchain_openai.OpenAIEmbeddings` 底层 `embeddings.create` 为 fake——验证 `embed_query` 单条、`embed_documents` 超 20 条触发 `chunk_size=20` 分批、`dimensions` 透传、`${VAR}` 占位符报错、白名单校验
 - `tests/test_vector_store.py`：`tmp_path` 持久化 + FakeEmbedder（定长向量，不真调 DashScope）——验证 upsert 幂等（同 doc_id 覆盖不重复）、`search` 的 where 过滤、`delete` 后 `get` 为空、**维度防呆报错**
 
 ## 与其他文档的关系
