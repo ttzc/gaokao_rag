@@ -196,7 +196,7 @@ class GaokaoState(State):
 
 ```python
 {
-    "doc_id": "q_42_question",     # 与 SQLite questions.doc_id 对应
+    "doc_id": "q_42",     # 与 SQLite questions.doc_id 对应（两段式：{entity}_{id}，见 data_model.md）
     "source_type": "exam",
     "title": "2026 南昌一模数学卷",   # 语义标题（files.title 快照，检索可读）
     "subject": "数学",

@@ -150,6 +150,12 @@ collection = chroma_client.get_or_create_collection(
 )
 ```
 
+### 向量维度（config 规定）
+
+**向量维度由 `config.embedding.dimension` 规定（默认 1024），请求显式传 `dimensions` 参数，不依赖模型/平台默认值。**
+
+原因（AlgoNotes 踩坑）：同一 `Qwen3-Embedding-4B`，Gitee.AI 返回 1024 维、SiliconFlow 返回 2560 维——**同模型跨平台默认维度不同**；而 Chroma collection 建好后维度固定，换模型/换维度必须先删 collection 重建，否则维度冲突报错。实现细节与防呆校验见 [store/vector.md](store/vector.md)。
+
 ### Document 策略
 
 **入库单位 = 一篇完整 document**（不是按 chunk 拆分）：
