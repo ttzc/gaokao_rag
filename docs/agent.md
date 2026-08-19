@@ -286,8 +286,11 @@ async def vlm_understand_node(state: GaokaoState) -> dict:
     """
     descriptions = []
     for doc in state["retrieved_docs"]:
-        if doc.get("has_image") and doc.get("image_file_ids"):
-            for file_id in doc["image_file_ids"]:   # files 表 id，路径经 files 表解析
+        if doc.get("has_image"):
+            # Chroma metadata 不存 image_file_ids（SQLite 权威，见 data_model.md「Metadata 设计」）：
+            # 用 doc_id 回查 questions 表取图片 file_id，再经 files 表解析路径
+            image_file_ids = question_db.get_image_file_ids(doc["doc_id"])
+            for file_id in image_file_ids:
                 desc = await vlm_understand_image(
                     file_id, 
                     doc["content"]  # 题目文本作为上下文

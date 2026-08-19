@@ -197,19 +197,19 @@ class GaokaoState(State):
 ```python
 {
     "doc_id": "q_42",     # 与 SQLite questions.doc_id 对应（两段式：{entity}_{id}，见 data_model.md）
+    "doc_type": "question",   # 来源类型: "question"（题目）/ "note"（讲解）
+    "subject": "数学",
     "source_type": "exam",
     "title": "2026 南昌一模数学卷",   # 语义标题（files.title 快照，检索可读）
-    "subject": "数学",
     "exam_regions": ["南昌", "江西", "全国一卷"],   # 考区层级，从小到大
     "exam_year": 2026,
-    "exam_month": 3,
     "question_type": "解答题",
-    "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），树展开后用于过滤
-    "doc_type": "question",   # 来源类型: question（题目）/ note（讲解）
+    "topic_tags": ["椭圆", "离心率"],   # 知识点名字快照（name + aliases），树展开后 $or 过滤
     "has_image": True,   # Chroma 过滤专用快照（SQLite 侧以 image_file_ids 为准，不冗余存储）
-    "image_file_ids": "[1, 2]",   # 题目图片 files.id 数组 JSON
 }
 ```
+
+> 完整字段规范与过滤语义见 [data_model.md「Metadata 设计」](data_model.md)。
 
 ## 项目文件架构
 

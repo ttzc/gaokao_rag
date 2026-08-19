@@ -69,7 +69,8 @@ CREATE INDEX idx_topics_status ON topics(status);
 ```python
 def expand_tag_names(node_id) -> list[str]:
     """取子树所有节点的 name + aliases 并集（含自身）。
-    用户问"圆锥曲线" → 展开为 ["椭圆","双曲线","抛物线","离心率",...] → topic_tags LIKE 命中任一。"""
+    用户问"圆锥曲线" → 展开为 ["椭圆","双曲线","抛物线","离心率",...]
+    → Chroma metadata.topic_tags 数组 $contains + $or 命中任一（见 data_model.md「Metadata 设计」）。"""
 ```
 
 ## 常见操作

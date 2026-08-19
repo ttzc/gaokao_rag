@@ -132,13 +132,19 @@ flowchart LR
 | 方法 | 用途 |
 | ---- | ---- |
 | `upsert(doc_id, text, metadata)` / `upsert_many(...)` | 写入/更新，**doc_id 幂等**（同 id 覆盖，重复摄入不产生重复 document） |
-| `search(query, k, where)` | 语义检索 + metadata 过滤（langchain Filter 语法，与 AgenticLangchainKnowledgeSearchTool 一致）→ `(Document, score)` |
+| `search(query, k, where)` | 语义检索 + metadata 过滤 → `(Document, score)`；`where` 支持 langchain Filter **与 chromadb 原生 where**（数组 `$contains` 需原生透传，见下） |
 | `delete(doc_ids)` | 删除题目/讲解时同步删对应 document |
 | `get(doc_id)` | 按 id 取 document（更新前查重、一致性校验） |
 | `count()` | collection 内 document 总数 |
 | `vectorstore` 属性 | 底层 Chroma 实例，**供 LangchainKnowledge 注入** |
 
 `get_vector_store()` 懒初始化单例。
+
+### metadata 过滤语义（实现注意）
+
+字段规范见 [data_model.md「Metadata 设计」](../data_model.md)——**数组字段（`topic_tags` / `exam_regions`）存 str[]，过滤用 Chroma `$contains`**（数组包含），非字符串子串匹配。
+
+⚠️ **langchain Filter 与 Chroma where 的兼容**：langchain 的 Filter 语法（`$eq/$ne/$in/$gt...`）**不含 `$contains`**——它是 Chroma 专有操作符。`AgenticLangchainKnowledgeSearchTool` 生成的 filter 若覆盖不到数组语义，`VectorStore.search()` 需要支持直接透传 **chromadb 原生 where**（或加 langchain Filter → Chroma where 的翻译层），否则数组字段（知识点/考区）无法过滤。实现时以实测为准，测试里覆盖"数组 $contains 过滤"用例。
 
 ### rag 层装配
 
@@ -156,6 +162,7 @@ knowledge = LangchainKnowledge(
 3. **维度不写死、但 collection 建后固定**：维度由 config 规定（见上）；换维度 = 删 `data/chroma_db` 重建（AlgoNotes STORE.md 教训）
 4. **批量上限**：qwen3.7 单次 ≤20 条（`_BATCH_SIZE=20`）；v3/v4 为 10；Gitee.AI ≤25（历史踩坑，当前不用）
 5. **不混用原生 chromadb API 与 langchain Chroma**（同库双写会不一致）
+6. **数组过滤走 Chroma 原生 where**：`$contains` 不在 langchain Filter 语法内（见「metadata 过滤语义」），数组字段过滤不能只依赖 langchain 翻译
 
 ## 测试要点
 

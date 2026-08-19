@@ -197,24 +197,73 @@ doc_id = "{entity}_{id}"
 
 ### Metadata 设计
 
-每个 document 的 metadata（与 SQLite 字段对齐）：
+**定位：Chroma metadata 是检索快照**——只存过滤/展示需要的字段，内容（题干/答案/解析/关联）一律不存；SQLite 是权威源，metadata 摄入时从 SQLite 行派生、同事务双写。
+
+**类型约束（Chroma 官方）**：值支持 `str / int / float / bool / 同类型数组`（str[] / int[] / float[] / bool[]）；`$contains` 是**数组包含**操作（非字符串子串匹配）；`$gt/$gte/$lt/$lte` 仅数值；多条件用 `$and` / `$or` 嵌套。
+
+**通用字段（题目与讲解共有）**：
+
+| 字段 | 类型 | 示例 | 过滤方式 | 说明 |
+| ---- | ---- | ---- | -------- | ---- |
+| `doc_id` | str | `q_42` / `kn_7` | 不参与过滤 | 幂等 upsert 键 + SQLite 桥 |
+| `doc_type` | str | `question` / `note` | `$eq` / `$in` | 来源类型，检索混合召回用 |
+| `subject` | str | `数学` | `$eq` | 学科（MVP 固定，扩科后过滤） |
+| `source_type` | str | `exam` / `homework` / `notes` | `$in` | 资料类型 |
+| `title` | str | `2026 南昌一模数学卷` | 不参与过滤 | files.title 快照，检索结果可读 |
+| `topic_tags` | **str[]** | `["椭圆", "离心率"]` | `$contains` | 知识点名字快照（name + aliases），树展开后 `$or` 组合 |
+
+**题目专属字段**：
+
+| 字段 | 类型 | 示例 | 过滤方式 |
+| ---- | ---- | ---- | -------- |
+| `exam_regions` | **str[]** | `["南昌", "江西", "全国一卷"]` | `$contains`（考区层级，从小到大） |
+| `exam_year` | int | `2026` | `$eq` / `$gte` / `$lte`（可空：作业/资料不存该字段） |
+| `question_type` | str | `解答题` | `$eq` / `$in` |
+| `has_image` | bool | `True` | `$eq`（Chroma 过滤专用快照） |
+
+讲解 document（`kn_*`）只有通用字段，无 `exam_*` / `question_type` / `has_image`。
+
+**示例（题目 q_42）**：
 
 ```python
 {
-    "doc_id": "q_42",     # 与 SQLite questions.doc_id 对应
-    "source_type": "exam",
-    "title": "2026 南昌一模数学卷",   # 语义标题（files.title 快照，检索可读）
+    "doc_id": "q_42",
+    "doc_type": "question",
     "subject": "数学",
+    "source_type": "exam",
+    "title": "2026 南昌一模数学卷",        # 语义标题（files.title 快照，检索可读）
     "exam_regions": ["南昌", "江西", "全国一卷"],   # 考区层级，从小到大
     "exam_year": 2026,
     "question_type": "解答题",
-    "topic_tags": "椭圆,离心率",   # 知识点名字快照（name + aliases），逗号分隔
-    "doc_type": "question",   # 来源类型: "question"（题目）/ "note"（讲解）
-    "has_image": True,   # Chroma 过滤专用快照（SQLite 侧以 image_file_ids 为准，不冗余存储）
+    "topic_tags": ["椭圆", "离心率"],      # 知识点名字快照（name + aliases）
+    "has_image": True,                    # Chroma 过滤专用快照
 }
 ```
 
-> **tag 快照与树的上卷**：`topic_tags` 是摄入时的名字快照（人话、可读）。检索时通过**树展开**做上卷——用户问父节点（"圆锥曲线"）时，取子树所有节点的 name + aliases 并集作为过滤词（"椭圆,双曲线,抛物线,离心率,…"），`topic_tags` 命中任一即召回。树结构演化后只需重新计算展开集合，metadata 不需要改。
+**过滤语义**：
+
+```python
+# 学科 + 知识点（树展开 N 个名字 → $or 组合，命中任一即召回）
+{"$and": [
+    {"subject": "数学"},
+    {"$or": [{"topic_tags": {"$contains": "椭圆"}},
+             {"topic_tags": {"$contains": "双曲线"}}]},
+]}
+
+# 考区 + 年份 + 题型
+{"$and": [
+    {"exam_regions": {"$contains": "南昌"}},
+    {"exam_year": {"$gte": 2024}},
+    {"question_type": {"$in": ["选择题", "填空题"]}},
+]}
+
+# 含图题目
+{"has_image": True}
+```
+
+> **tag 快照与树的上卷**：`topic_tags` 是摄入时的名字快照（人话、可读）。检索时通过**树展开**做上卷——用户问父节点（"圆锥曲线"）时，取子树所有节点的 name + aliases 并集作为过滤词，`topic_tags` 用 `$contains` + `$or` 命中任一即召回。树结构演化后只需重新计算展开集合，metadata 不需要改。
+
+> **字段取舍**：`image_file_ids`、`exam_month` **不存 Chroma**——前者以 SQLite `questions.image_file_ids` 为准（检索用不上，要图 → `has_image` 过滤 + doc_id 回查 SQLite）；后者检索价值低（年份够用），按月聚合走 SQLite。
 
 ## tRPC-Agent Knowledge 集成
 
@@ -228,7 +277,12 @@ doc_id = "{entity}_{id}"
     "value": [
         {"field": "metadata.exam_regions", "operator": "contains", "value": "南昌"},
         {"field": "metadata.exam_year", "operator": "eq", "value": 2026},
-        {"field": "metadata.topic_tags", "operator": "like", "value": "椭圆|双曲线|抛物线|离心率"}
+        {"operator": "or", "value": [
+            {"field": "metadata.topic_tags", "operator": "contains", "value": "椭圆"},
+            {"field": "metadata.topic_tags", "operator": "contains", "value": "双曲线"},
+            {"field": "metadata.topic_tags", "operator": "contains", "value": "抛物线"},
+            {"field": "metadata.topic_tags", "operator": "contains", "value": "离心率"},
+        ]},
     ]
 }
 ```
