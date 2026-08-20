@@ -51,20 +51,16 @@ class GaokaoKnowledge(LangchainKnowledge):
 ### 工具：LangchainKnowledgeSearchTool vs Agentic
 
 - `LangchainKnowledgeSearchTool`：包成名为 `knowledge_search` 的工具，只声明 `query` 一个参数；支持静态 `knowledge_filter` + `top_k` + `min_score`。
-- **`AgenticLangchainKnowledgeSearchTool`（采用）**：在父类基础上额外暴露 `dynamic_filter`（`KnowledgeFilterExpr` JSON），LLM 可在运行时自生成过滤条件；动态 filter 与静态 `knowledge_filter` 用 `and` 合并后再搜。这正是"LLM 自动构建过滤条件"的官方实现——用户问"2026 年南昌一模圆锥曲线题"，LLM 把"圆锥曲线"树展开为子孙名字并集，生成如下 `dynamic_filter`：
+- **`AgenticLangchainKnowledgeSearchTool`（采用）**：在父类基础上额外暴露 `dynamic_filter`（`KnowledgeFilterExpr` JSON），LLM 可在运行时自生成过滤条件；动态 filter 与静态 `knowledge_filter` 用 `and` 合并后再搜。这正是"LLM 自动构建过滤条件"的官方实现——用户问"2026 年南昌一模椭圆题"，LLM 自动生成 `topic_tags contains "椭圆"` 等过滤条件。
 
 ```json
 {
     "operator": "and",
     "value": [
+        {"field": "metadata.subject", "operator": "eq", "value": "数学"},
         {"field": "metadata.exam_regions", "operator": "contains", "value": "南昌"},
         {"field": "metadata.exam_year", "operator": "eq", "value": 2026},
-        {"operator": "or", "value": [
-            {"field": "metadata.topic_tags", "operator": "contains", "value": "椭圆"},
-            {"field": "metadata.topic_tags", "operator": "contains", "value": "双曲线"},
-            {"field": "metadata.topic_tags", "operator": "contains", "value": "抛物线"},
-            {"field": "metadata.topic_tags", "operator": "contains", "value": "离心率"}
-        ]}
+        {"field": "metadata.topic_tags", "operator": "contains", "value": "椭圆"}
     ]
 }
 ```
@@ -88,6 +84,6 @@ class GaokaoKnowledge(LangchainKnowledge):
 
 - 存储读写侧：[vector_store.md](./vector_store.md)（Chroma 封装、Metadata 格式与过滤语义、嵌入模型与维度决策、坑清单）
 - 数据模型：[data_model.md](../../data_model.md)（Collection / doc_id / Document 策略）
-- 知识树：[db/topics.md](../db/topics.md)（`expand_tag_names` 树展开 → 过滤词并集，配合本层 `$contains` + `$or`）
+- 知识树：[db/topics.md](../db/topics.md)（扁平 tag 注册表，MVP 无树形结构）
 - 检索架构：[architecture.md](../../architecture.md)（Layer 3 语义检索总览）
 - 配置：`config.toml` `[embedding]` / `[store]` 段（见 [vector_store.md](./vector_store.md)）

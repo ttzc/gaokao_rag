@@ -29,39 +29,18 @@ Gaokao RAG 的数据模型分为两部分：
 > **设计要点**：磁盘文件名 = sha256 哈希（去重 / 防冲突 / 防恶意名），**原文件名直接丢弃**；`title` 是语义标题（agent 从内容总结，用户可自定义），**挂在文件上而非题目上**——一份试卷改标题全局生效。图片（kind='image'）同样入库，题目通过 `image_file_ids` 引用。`source_file` 字段已废弃。
 > Schema 设计见 [store/db/files.md](store/db/files.md)
 
-### 2. 知识点树形表 `topics`
+### 2. 知识点标签表 `topics`
 
-采用**路径枚举（Materialized Path）**模型，每个节点用 `path` 列记录从根到自身的完整 id 路径（如 `1/2/3/`，根节点 = `1/`）。子树查询走前缀匹配（`LIKE '1/2/%'`），防环靠 O(1) 路径比较，移动/合并靠前缀批量替换——比邻接表 + 递归 CTE 更契合"频繁演化"的动态树。**树是数据驱动的动态结构**（非预定义写死，见下方"动态构建"说明）。
+MVP 采用**扁平 tag 表**（无树结构）。每个知识点是一条独立记录，`name` 即为 tag，`aliases` 存同义表述。题目与知识点通过 `question_topics` 多对多关联。
 
-> **tag 语义（名字即 tag）**：树上任意节点的 `name`（含 `aliases`）都是可用的 tag。Chroma metadata 存**名字快照**（`topic_tags`，格式见 [store/vector/vector_store.md「Metadata 格式」](store/vector/vector_store.md)），树结构演化（合并/移动/改名）不影响已入库 metadata——合并/改名时旧名归档进 `aliases`，检索按"name + aliases"并集匹配即可。~~`code`（知识点编码）~~ 已砍掉：名字即身份，无需额外编码层。
+> **MVP 与正式版的分界**：树形结构（Materialized Path / 父子关系 / 树展开上卷）放在 MVP 后的正式版做。MVP 只做"标签注册 + 多对多关联"，不构成树。
 
-**路径枚举操作要点**：
+**设计要点**：
 
-| 操作         | SQL / 做法                                                                                                 |
-| ------------ | ---------------------------------------------------------------------------------------------------------- |
-| 取子树       | `WHERE path LIKE '1/2/3/%'`（走 path 索引）                                                                |
-| 取祖先链     | `path` split('/') 得到 id 序列                                                                             |
-| 插入         | `INSERT` 拿新 id → `path = 父路径 \| id \| '/'`                                                            |
-| 移动整棵子树 | `UPDATE topics SET path = 新前缀 \| substr(path, LEN(旧前缀)+1) WHERE path LIKE 旧前缀 \| '%'`（一次改完） |
-| 防环检查     | 新父 `path` 不以本节点 `path` 开头（O(1) 字符串比较）                                                      |
-| 合并         | source 子树 path 批量替换到 target 前缀 + aliases 并入 target                                              |
-
-> 防环必须写在写入路径（`move_topic`/`create_topic`）内部，不能依赖 LLM 自觉；`path` 必须带尾斜杠，否则 `LIKE '1/2/3/%'` 会误匹配 `1/2/3/60` 这类 id 前缀撞车的节点。
-
-**动态构建（数据驱动，MVP 单用户一棵树）**：
-
-> 树不是 V0.2 手工 seed 的固定分类，而是随用户数据摄入不断演化。摄取时四步：
-> ① **LLM 开放式提取**知识点名（不预定义候选集，允许树外新节点，如"切线放缩""端点效应"）
-> ② **查树归位**：命中复用已有节点；未命中新增（先挂根，status=pending）
-> ③ **语义合并**：同义/近义表述（"离心率" vs "e=c/a"）合并到同一节点（aliases），防树膨胀
-> ④ **挂载父节点**：LLM 依据语义判定层级挂载（status=pending → active）
-
-**设计决策**：动态构建而非预定义。理由：
-
-- 树是"用户数据在知识空间的投影"，无知识天花板；树外知识点自动长出新节点
-- 反映真实薄弱分布（周报"薄弱知识点 Top 3"直接从树 × errors 聚合）
-- 扩科（理化生）无需重造树，数据喂进来树自己长
-- **MVP 单用户**：不存在多用户隔离，树就是这一个用户的知识树
+- `name` 是规范名，`aliases` 是同义表述 JSON（如 `["离心率", "e=c/a"]`）
+- Chroma metadata 存**名字快照**（`topic_tags`，格式见 [store/vector/vector_store.md「Metadata 格式」](store/vector/vector_store.md)）
+- 名字是稳定 tag（与"名字即 tag"原则一致），不依赖 id 做关联
+- ~~`code`（知识点编码）~~ 已砍掉：名字即身份，无需额外编码层
 
 Schema 设计见 [store/db/topics.md](store/db/topics.md)
 

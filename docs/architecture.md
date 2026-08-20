@@ -174,7 +174,7 @@ class GaokaoState(State):
 | --------- | ------ | --------- |
 | 文档识别 Agent | 接收照片/PDF → 提取内容（图片走 VLM，PDF 走 PyMuPDF） | VLM + PyMuPDF 工具 |
 | 结构识别 Agent | 区分讲解段 vs 题目段 → 题目清单（每题一句话概括） | LLM 分类 |
-| 知识整理 Agent | 知识点提取 → 动态树归位/合并/挂载（写 topics） | SQLite 写入工具 |
+| 知识整理 Agent | 知识点提取 → tag 归位/别名归并（写 topics） | SQLite 写入工具 |
 | 入库决策 Agent | 回显清单 → 收集学生选择 → 写 questions/errors | SQLite 写入工具 |
 
 ## 三层存储架构
@@ -187,7 +187,7 @@ class GaokaoState(State):
 
 ### Layer 2: SQLite 索引
 
-负责结构化查询和知识点图谱。详见 [数据模型文档](data_model.md)。
+负责结构化查询和知识点标签管理。详见 [数据模型文档](data_model.md)。
 
 > 每张表的详细设计见 [store/db/](store/db/)（8 份表文档：topics / knowledge_notes / questions / question_topics / errors / exam_attempts / review_plans / periodic_reports）
 
@@ -217,7 +217,7 @@ gaokao_rag/
 │   │   ├── cleaner.py         #   文本清洗（去页眉页脚、公式归一化）
 │   │   ├── splitter.py        #   分块策略（题目/解析/知识点分段）
 │   │   ├── vlm_processor.py   #   图像 VLM 理解（图形描述生成）
-│   │   ├── tagger.py          #   知识点标注（LLM 提取 → 挂载知识树）
+│   │   ├── tagger.py          #   知识点标注（LLM 提取 → 归位到 topics 标签表）
 │   │   └── pipeline.py        #   管线编排（7 阶段串联）
 │   │
 │   ├── store/                 # 三层存储 + 知识点图谱
@@ -226,7 +226,7 @@ gaokao_rag/
 │   │   │   ├── __init__.py    #     连接管理（单例）+ schema 初始化
 │   │   │   ├── schema.py      #     9 张表 DDL + 索引
 │   │   │   ├── files.py       #     文件注册表（title + 哈希路径 + sha256 去重）
-│   │   │   ├── topics.py      #     知识点树：CRUD + 路径枚举/防环/状态机/展开（独特逻辑集中）
+│   │   │   ├── topics.py      #     知识点标签 CRUD（MVP 扁平 tag，无树结构）
 │   │   │   ├── knowledge_notes.py
 │   │   │   ├── questions.py
 │   │   │   ├── question_topics.py
@@ -309,7 +309,7 @@ gaokao_rag/
 | 学科 | 单域（算法竞赛） | 多学科（愿景全科；MVP 数学单科） |
 | 输入格式 | Markdown | PDF + 图像 + Markdown |
 | 图形处理 | 无 | VLM（核心技术差异点） |
-| 知识点 | 扁平 tag | 树形图谱 + 题目关联 |
+| 知识点 | 扁平 tag + 题目关联 | 树形图谱 + 题目关联 |
 | 用户 | 个人 | 单人（MVP；user_id 字段预留未来多用户） |
 | 元数据 | source/type/tags | 科目/年份/题型/知识点/考区 |
 | MCP | 手写 9 工具 | 框架内置 MCPToolset |

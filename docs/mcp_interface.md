@@ -55,7 +55,8 @@ async def get_question_detail(doc_id: str) -> dict:
 |--------|------|------|
 | `search_questions` | 语义检索题目 | `query`（问题描述）、`topic`（知识点过滤）、`exam_region`（考区，匹配考区层级任一级，如"南昌"命中 ["深圳","南昌","全国一卷"] 的题）、`exam_year`（年份）、`question_type`（题型）、`top_k`（返回数量） |
 | `get_question_detail` | 获取题目完整信息 | `doc_id`（题目 ID） |
-| `get_knowledge_tree` | 获取知识点树 | `subject`（学科，默认数学） |
+| `list_topics` | 列出所有知识点 tag | — |
+| `search_topic` | 按名字/别名搜索知识点 tag | `keyword`（关键词） |
 | `get_questions_by_topic` | 按知识点列出题目 | `topic_name`（知识点名字/tag）、`limit` |
 
 ### 错题与复习类
@@ -126,7 +127,7 @@ search_agent = LlmAgent(
     instruction=SEARCH_PROMPT,
     tools=[
         GaokaoMCPToolset(),           # MCP 工具集（检索类）
-        FunctionTool(query_knowledge_tree),
+        FunctionTool(search_topic),
     ],
 )
 
@@ -149,7 +150,7 @@ aggregate_agent = LlmAgent(
 
 | 工具 | 挂到子 Agent | 说明 |
 |------|------------|------|
-| `search_questions` / `get_question_detail` / `get_knowledge_tree` | 搜索信息 Agent | Chroma + SQLite 检索 |
+| `search_questions` / `get_question_detail` / `list_topics` / `search_topic` | 搜索信息 Agent | Chroma + SQLite 检索 |
 | `get_error_stats` / `generate_review_plan` | 聚合数据 Agent | SQLite 错题统计 |
 | `generate_periodic_report` | 聚合数据 Agent | 错题聚合 + LLM 建议 |
 | `add_error` | 聚合数据 Agent | 错题录入 |
@@ -168,7 +169,8 @@ search_agent = LlmAgent(
     tools=[
         FunctionTool(search_questions),
         FunctionTool(get_question_detail),
-        FunctionTool(get_knowledge_tree),
+        FunctionTool(list_topics),
+        FunctionTool(search_topic),
     ],
 )
 

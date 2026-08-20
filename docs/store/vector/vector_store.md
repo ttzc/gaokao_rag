@@ -116,7 +116,7 @@ def __init__(self, collection_name: str, persist_dir: str, expected_dim: int) ->
 | `subject` | str | `数学` | `$eq` | 学科（MVP 固定，扩科后过滤） |
 | `source_type` | str | `exam` / `homework` / `notes` | `$in` | 资料类型 |
 | `title` | str | `2026 南昌一模数学卷` | 不参与过滤 | files.title 快照，检索结果可读 |
-| `topic_tags` | **str[]** | `["椭圆", "离心率"]` | `$contains` | 知识点名字快照（name + aliases），树展开后 `$or` 组合 |
+| `topic_tags` | **str[]** | `["椭圆", "离心率"]` | `$contains` | 知识点 tag 名字快照（摄入时的规范名 + 别名），直接匹配 |
 
 **题目专属字段**：
 
@@ -149,11 +149,10 @@ def __init__(self, collection_name: str, persist_dir: str, expected_dim: int) ->
 **过滤语义**：
 
 ```python
-# 学科 + 知识点（树展开 N 个名字 → $or 组合，命中任一即召回）
+# 学科 + 知识点（topic_tags 数组 $contains，命中任一即召回）
 {"$and": [
     {"subject": "数学"},
-    {"$or": [{"topic_tags": {"$contains": "椭圆"}},
-             {"topic_tags": {"$contains": "双曲线"}}]},
+    {"topic_tags": {"$contains": "椭圆"}}
 ]}
 
 # 考区 + 年份 + 题型
@@ -167,7 +166,7 @@ def __init__(self, collection_name: str, persist_dir: str, expected_dim: int) ->
 {"has_image": True}
 ```
 
-> **tag 快照与树的上卷**：`topic_tags` 是摄入时的名字快照（人话、可读）。检索时通过**树展开**做上卷——用户问父节点（"圆锥曲线"）时，取子树所有节点的 name + aliases 并集作为过滤词，`topic_tags` 用 `$contains` + `$or` 命中任一即召回。树结构演化后只需重新计算展开集合，metadata 不需要改。
+> **tag 快照**：`topic_tags` 是摄入时的名字快照（人话、可读）。检索时直接按 `topic_tags` 数组做 `$contains` 匹配（MVP 不做树展开）。正式版引入树形结构后，可通过树展开（父节点 → 子孙名字并集）做上卷检索。
 
 > **字段取舍**：`image_file_ids`、`exam_month` **不存 Chroma**——前者以 SQLite `questions.image_file_ids` 为准（检索用不上，要图 → `has_image` 过滤 + doc_id 回查 SQLite）；后者检索价值低（年份够用），按月聚合走 SQLite。
 
@@ -253,6 +252,6 @@ flowchart LR
 - 数据模型：[data_model.md](../../data_model.md)（Collection / doc_id / Document 策略；Metadata 格式见本文档）
 - 题目表：[db/questions.md](../db/questions.md)（`doc_id` 桥接、`has_image` 过滤快照）
 - 讲解表：[db/knowledge_notes.md](../db/knowledge_notes.md)（`kn_*` document）
-- 知识树：[db/topics.md](../db/topics.md)（`topic_tags` 名字快照 + 树展开上卷）
+- 知识树：[db/topics.md](../db/topics.md)（`topic_tags` 名字快照，MVP 直接匹配无树展开）
 - 检索查询侧：[knowledge.md](./knowledge.md)（LangchainKnowledge + AgenticLangchainKnowledgeSearchTool + GaokaoKnowledge 子类）
 - 配置：`config.toml` `[embedding]` / `[store]` 段（`dimension` / `collection_name`）

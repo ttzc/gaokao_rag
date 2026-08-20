@@ -43,7 +43,7 @@ CREATE INDEX idx_questions_type ON questions(question_type);
 ## 常见操作
 
 - 插入：本表 + `question_topics` 关联 + Chroma document（**同一事务**，见摄入管线）
-- 按知识点查：`question_topics` join 本表（或经树展开取多知识点）
+- 按知识点查：`question_topics` join 本表（`WHERE topic_name IN (?)` 直接匹配）
 - 按考试查：`WHERE exam_regions LIKE '%"南昌"%' AND exam_year = ?`（JSON 数组包含匹配；题目量小全表扫可接受）
 - 删除：级联删 `question_topics` / `errors` 引用 + Chroma document
 

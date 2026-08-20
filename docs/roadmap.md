@@ -47,14 +47,14 @@ flowchart LR
 1. **试卷**：从 ima「高考2026」导出数学试卷（2月-6月，约 20+ 份）
 2. **专题**：导出 9 份专题 PDF（圆锥曲线、导数、立体几何等）
 3. **错题**：从 ima 笔记导出错题记录
-4. **知识点体系**：**不预定义**——由数据驱动动态生长（LLM 开放式提取 → 归位/合并/挂载，见 [数据模型](data_model.md)）
+4. **知识点体系**：**不预定义**——由数据驱动动态生长（LLM 开放式提取 → tag 归位/别名归并，见 [数据模型](data_model.md)）。MVP 阶段为扁平 tag 表，树形结构放在正式版实现
 
 ### 任务
 
 - [ ] 写脚本批量从 ima 导出 PDF（或手动导出）
 - [ ] 按 `data/files/raw/试卷/`、`data/files/raw/专题/` 分类整理
 - [ ] 抽 2-3 份试卷人工检查 PDF 质量（文本可提取性、图像完整性）
-- [ ] 知识点树不做 seed——依赖 V0.3 摄取时的动态构建（见 [数据模型](data_model.md) 四步机制）
+- [ ] 知识点 tag 不做 seed——依赖 V0.3 摄取时的开放式提取 + 归位（见 [数据模型](data_model.md)）
 
 ### 验收标准
 
@@ -73,7 +73,7 @@ flowchart LR
 - [ ] 题目段 → 题目清单生成（每题一句话概括）
 - [ ] **回显确认**：向用户展示题目清单，批量决定去向（入库/错题/跳过）
 - [ ] 题目入库：题目文本 + VLM 图形描述 + 答案解析（含图题目走 VLM，见 [VLM 策略](vlm_strategy.md)）
-- [ ] 知识点标注：LLM 开放式提取 → 动态树归位/合并/挂载（见 [数据模型](data_model.md)）
+- [ ] 知识点标注：LLM 开放式提取 → tag 归位/别名归并（见 [数据模型](data_model.md)）
 - [ ] 分块向量化（qwen3.7-text-embedding + Chroma，chunk 类型 question/answer/knowledge_point）
 - [ ] SQLite 元数据入库（questions + question_topics + knowledge_notes）
 - [ ] 摄取 CLI：`python scripts/ingest.py <path>`
@@ -89,21 +89,21 @@ flowchart LR
 
 ## V0.4: 存储层（与 V0.3 并行）
 
-**目标**：SQLite schema 落地 + 知识点图谱查询。
+**目标**：SQLite schema 落地 + 知识点 tag 管理。
 
 ### 任务
 
-- [ ] 实现 `topics` 树形表（路径枚举：path 列 + 动态构建字段 aliases / status / merged_into，防环 + 子树前缀查询）
+- [ ] 实现 `topics` 扁平 tag 表（name + aliases，UNIQUE 约束；树形结构放正式版）
 - [ ] 实现 `questions` / `question_topics` / `knowledge_notes` 表
 - [ ] 实现 `errors`（含 error_summary 错因总结）/ `exam_attempts`（整卷作答）表
 - [ ] 实现 `review_plans` / `periodic_reports`（周报快照，UNIQUE 幂等）表
-- [ ] 知识点查询工具：`get_knowledge_tree`、`get_questions_by_topic`
+- [ ] 知识点查询工具：`list_topics`、`search_topic`、`create_topic`、`add_alias`
 - [ ] 错题统计工具：`get_error_stats`、`analyze_weak_points`
 - [ ] 作答/报告工具：`add_exam_attempt`、`generate_periodic_report`（见 [MCP 接口](mcp_interface.md)）
 
 ### 验收标准
 
-- [ ] 知识点树查询：输入"解析几何"返回全部子知识点
+- [ ] 知识点 tag 查询：输入"椭圆"返回相关 tag 列表
 - [ ] 题目过滤：按"2026年 南昌 圆锥曲线 解答题"精确过滤
 - [ ] 9 张表全部建齐（files / topics / knowledge_notes / questions / question_topics / errors / exam_attempts / review_plans / periodic_reports）
 
@@ -164,7 +164,7 @@ flowchart LR
 
 - [ ] 找 1-2 位高三同学试用，收集反馈
 - [ ] 优化 VLM 描述质量（见 [VLM 策略](vlm_strategy.md) 质量评估）
-- [ ] 扩充知识点树（补全二级/三级节点）
+- [ ] 扩充知识点 tag（补充常见考点 tag + 别名）
 - [ ] 评估检索效果（关键词覆盖率、命中率）
 - [ ] 复习建议的个性化程度迭代
 

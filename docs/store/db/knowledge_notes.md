@@ -33,7 +33,7 @@ CREATE INDEX idx_notes_file ON knowledge_notes(file_id);
 ## 常见操作
 
 - 插入：`INSERT` + 同步写 Chroma 讲解 document（同事务）
-- 按 topic 查：`WHERE topic_id = ?` 或经树展开（父节点 → 全部子孙的讲解）
+- 按 topic 查：`WHERE topic_id = ?`（MVP 直接匹配，无树展开）
 - 删除：删行 + 删对应 Chroma document（`doc_id` 关联）
 
 ## 与其他表的关系

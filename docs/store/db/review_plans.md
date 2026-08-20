@@ -40,7 +40,7 @@ CREATE INDEX idx_review_user ON review_plans(user_id);
 
 | 关联 | 说明 |
 | ---- | ---- |
-| `topics` | `target_topics` 存知识点名字，经树展开可检索推荐题 |
+| `topics` | `target_topics` 存知识点名字，直接匹配检索推荐题 |
 | `errors` / `exam_attempts` | 计划生成的数据来源 |
 | `periodic_reports` | 周报的 recommendation 字段与 review_plans 可互相引用 |
 

@@ -53,7 +53,7 @@ CREATE INDEX idx_errors_type ON errors(error_type);
 flowchart LR
     E[errors] -->|question_id| Q[questions]
     E -->|error_type/知识点| AGG[周报聚合]
-    Q --> QT[question_topics 按名字标注] --> T[topics 树展开匹配]
+    Q --> QT[question_topics 按名字标注] --> T[topics tag 匹配]
     AGG --> R[periodic_reports]
 ```
 

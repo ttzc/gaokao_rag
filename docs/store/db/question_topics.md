@@ -2,14 +2,16 @@
 
 ## 功能定位
 
-题目与知识点的**多对多关联表**——一道题可能涉及多个知识点（"椭圆离心率最值"同时挂"椭圆"和"离心率"）。是树（topics）与题目（questions）之间的枢纽，也是周报"薄弱知识点 Top 3"聚合的数据来源之一。
+题目与知识点的**多对多关联表**——一道题可能涉及多个知识点（"椭圆离心率最值"同时挂"椭圆"和"离心率"）。MVP 版本为纯粹的关联表，`topic_name` 直接存知识点规范名，无树形展开。
+
+> **MVP 与正式版的分界**：正式版会引入知识点树形结构，届时 `topic_name` 可升级为 `topic_id`，并支持树展开（父节点 → 全部子孙）的递归查询。MVP 阶段只做直接 tag 匹配。
 
 ## Schema
 
 ```sql
 CREATE TABLE question_topics (
     question_id  INTEGER NOT NULL REFERENCES questions(id),
-    topic_name   TEXT NOT NULL,                     -- 知识点名字（tag，不存 id——树结构可调整，名字稳定）
+    topic_name   TEXT NOT NULL,                     -- 知识点规范名（tag）
     is_primary   BOOLEAN DEFAULT 0,                 -- 是否是主要知识点
     created_at   TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (question_id, topic_name)
@@ -21,17 +23,16 @@ CREATE INDEX idx_qt_topic ON question_topics(topic_name);
 
 ## 关键设计点
 
-- **关联存名字而非 `topic_id`（核心设计）**：知识树会演化（合并/移动/改名），id 不稳定——节点被合并后 id 失效，关联就断了。**名字是稳定 tag**（合并时旧名归档进 `aliases`），树怎么调整关联都不受影响，与"名字即 tag"（见 `topics.md`）完全一致
+- **关联存名字而非 `topic_id`**：MVP 虽无树结构，但为正式版预留升级空间——名字是稳定 tag，即使后续 topics 表加树结构，名字也不会变
 - **联合主键**（question_id, topic_name）：天然防重复关联
 - **`is_primary`**：标记主要知识点（如"椭圆离心率"题，椭圆是主知识点、离心率是次知识点）——周报聚合薄弱点时可加权主知识点
-- **标注流程**：LLM 输出知识点名字列表（含同义表述）→ `search_topic` 归位**确认规范名字**（命中取规范名 / 未命中新建 pending 后取其名）→ 存该名字
-- **树合并/改名后无需更新本表**：旧名留在 aliases 里，检索按"name + aliases"并集匹配依然命中——零维护成本
+- **标注流程**：摄取时 LLM 输出知识点名字列表 → 查 `topics` 表确认规范名 → 存该名字
 
 ## 常见操作
 
 - 批量插入：一道题 N 个知识点（规范名），事务内插入
 - 按题查知识点：`WHERE question_id = ?`
-- 按知识点查题：`WHERE topic_name IN (树展开的名字集)`——经 `expand_tag_names` 取该节点及全部子孙的 name+aliases 并集
+- 按知识点查题：`WHERE topic_name = ?` 或 `WHERE topic_name IN (?)`（MVP 直接匹配，无树展开）
 - 聚合：`GROUP BY topic_name` 统计题目数/错题数（周报数据源）
 
 ## 与其他表的关系
@@ -39,6 +40,6 @@ CREATE INDEX idx_qt_topic ON question_topics(topic_name);
 | 关联 | 说明 |
 | ---- | ---- |
 | `questions.id` | 题目（被标注对象，id 不变，正常外键） |
-| `topics.name` / `aliases` | 知识点 tag（名字，经 `search_topic` 归位确认；树演化后按名字匹配） |
+| `topics.name` | 知识点 tag（规范名，经 `search_topic` 归位确认） |
 
-> 与 Chroma metadata 的关系：本表存**结构化关联**（SQLite 精确过滤），`topic_tags`（名字快照）存**检索用快照**（语义过滤，`$contains` + 树展开上卷）——两者同构（都存名字），摄入时同事务写入。格式见 [vector_store.md「Metadata 格式与过滤语义」](../vector/vector_store.md)。
+> 与 Chroma metadata 的关系：本表存**结构化关联**（SQLite 精确过滤），`topic_tags`（名字快照）存**检索用快照**（语义过滤，`$contains` 直接匹配，无树展开）——两者同构（都存名字），摄入时同事务写入。格式见 [vector_store.md「Metadata 格式与过滤语义」](../vector/vector_store.md)。
