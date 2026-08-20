@@ -38,7 +38,7 @@ CREATE INDEX idx_questions_type ON questions(question_type);
 - **整篇 document 入库**：一道题 = 题干+答案+解析+VLM 描述合并为一篇 document 入 Chroma（切片分块细则在 vector_store.py 实现时定）；同 collection 靠 `doc_type`（question/note）+ metadata 区分来源
 - **`doc_id` 是 SQLite ↔ Chroma 的桥**：格式如 `q_42`（两段式 `{entity}_{id}`，幂等 upsert，详见 [data_model.md](../../data_model.md)「doc_id 生成规则」），双写一致性靠它
 - **可重建内容外置**：VLM 描述 / 原始提取文本等可重建内容不占 SQLite，存 `processed/`（vlm_desc/、text/）经哈希关联——`content_text` / `answer_text` / `analysis_text` 才是本表的持久内容
-- **`has_image` 是 Chroma 过滤专用**：Chroma metadata 存 `has_image` 布尔快照（bool 标量过滤最直接，避免检索时回查 SQLite 才能判断含图）；**SQLite 侧不存该字段**——以 `image_file_ids` 为准（非空即含图），避免两边维护不一致。摄入时同步写 Chroma metadata。Chroma metadata **不存 `image_file_ids`**（SQLite 权威，检索用不上，见 vector/vector_store.md「Metadata 格式与过滤语义」）
+- **`has_image` 是 Chroma 过滤专用**：Chroma metadata 存 `has_image` 布尔快照（bool 标量过滤最直接，避免检索时回查 SQLite 才能判断含图）；**SQLite 侧不存该字段**——以 `image_file_ids` 为准（非空即含图），避免两边维护不一致。摄入时同步写 Chroma metadata。Chroma metadata **不存 `image_file_ids`**（SQLite 权威，检索用不上，见 [vector/vector_store.md「Metadata 格式与过滤语义」](../vector/vector_store.md)）
 
 ## 常见操作
 

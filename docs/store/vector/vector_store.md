@@ -199,7 +199,7 @@ flowchart LR
 
 ### src/api/embedding.py —— embedder（OpenAIEmbeddings 工厂）
 
-- **直接用 `langchain_openai.OpenAIEmbeddings`**，不自写 `Embeddings` 子类——它本身就是 langchain `Embeddings` 接口实现（含 `aembed_documents`/`aembed_query` async 版），可直接注入 `LangchainKnowledge.embedder` 与 `langchain_chroma.Chroma` 的 `embedding_function`。**参考 AlgoNotes `src/api/embedding_client.py` 的 langchain 工厂路线**（其用 `init_embeddings(provider="openai")`）。
+- **直接用 `langchain_openai.OpenAIEmbeddings`**，不自写 `Embeddings` 子类——它本身就是 langchain `Embeddings` 接口实现（含 `aembed_documents`/`aembed_query` async 版），可直接注入 `LangchainKnowledge.embedder` 与 `langchain_chroma.Chroma` 的 `embedding_function`。
 - 构造参数（来自 `config.embedding`）：`model` / `api_key=SecretStr(...)` / `base_url` / **`dimensions=cfg.dimension`（显式传维度，防 AlgoNotes 跨平台坑——OpenAIEmbeddings 仅在 `dimensions is not None` 时透传 `params["dimensions"]`）** / `chunk_size=20`（qwen3.7 单次 input 数组 ≤20 条，原生自动分批，不用手写循环）/ **`check_embedding_ctx_length=False`（必设：DashScope 实测拒收 token-ID 格式，见「坑 8」）** / `timeout=cfg.timeout`（透传 openai client，非 langchain 自有字段）。`tiktoken_enabled` **不显式设**（保持默认 True）——因 `check_embedding_ctx_length=False` 已绕过 token 化，该参数实际不参与；设 `False` 反而要求 HF transformers，无益。
 - `get_embedding_model()` 懒初始化单例，**保留我们的约定**：白名单（`_SUPPORTED_MODELS = ("qwen3.7-text-embedding",)`）+ `${VAR}` 占位符检查（api_key 未解析则 RuntimeError）+ 初始化日志（用 `trpc_agent_sdk.log.logger`，不 import 业务 logger）
 

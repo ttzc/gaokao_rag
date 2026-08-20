@@ -246,12 +246,3 @@ python scripts/mcp_client_test.py
 ```
 
 之后 Claude Code 可以直接调用 `search_questions`、`get_question_detail` 等工具。
-
-## 与 AlgoNotes RAG 的对比
-
-| 维度 | AlgoNotes RAG | Gaokao RAG |
-|------|--------------|------------|
-| MCP 实现 | 手写 9 个工具 + stdio 传输 | 框架内置 MCPToolset / FastMCP |
-| 工具数量 | 9 | 14 |
-| 传输方式 | stdio | stdio + SSE + Streamable HTTP |
-| 业务范围 | 笔记检索 | 题目检索 + 错题管理 + 复习计划 |

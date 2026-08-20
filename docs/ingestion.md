@@ -197,7 +197,7 @@ async def tag_knowledge_points(question_text: str, vlm_desc: str = "") -> list[d
 - 调用方式：DashScope OpenAI 兼容端点（与 VLM 同厂商，一套 Key）
 - **131k 长上下文**：整份讲义/长文档可一次嵌入，简化分块策略（长文档分块失真风险大幅降低）
 
-**知识点讲解（knowledge_point）**：来自讲义/专题/带讲解的作业中的讲解段，写入 `knowledge_notes` 表（关联 topic_id）+ 向量化。**纯文本 RAG**，不需要 VLM——文本切块后直接嵌入，比带图题目更简单。
+**知识点讲解（`knowledge_notes` document）**：来自讲义/专题/带讲解的作业中的讲解段，写入 `knowledge_notes` 表（关联 topic_id）+ 向量化。**纯文本 RAG**，不需要 VLM——文本切块后直接嵌入，比带图题目更简单。
 
 **入库**：写入 Chroma，metadata 与 SQLite 字段对齐（见 [数据模型](data_model.md)）。
 

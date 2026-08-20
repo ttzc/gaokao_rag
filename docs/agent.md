@@ -58,7 +58,7 @@ flowchart TD
 | 子 Agent | 职责 | 挂载能力 |
 | --------- | ------ | --------- |
 | **意图识别 Agent** | 判断用户意图（question/review/report/browse/**ingest**） | LLM 分类 |
-| **搜索信息 Agent** | 混合检索（Chroma + SQLite，不分子意图） | LangchainKnowledgeSearchTool |
+| **搜索信息 Agent** | 混合检索（Chroma + SQLite，不分子意图） | AgenticLangchainKnowledgeSearchTool |
 | **VLM 理解 Agent** | 图形描述（有图才调用） | VLM FunctionTool |
 | **聚合数据 Agent** | 错题/作答统计、周报聚合（**读写** SQLite：errors/exam_attempts 统计 + periodic_reports 落库） | SQLite 查询/写入工具 |
 | **输出整理 Agent** | 格式化 + 分片发送 | 纯 LLM |
@@ -260,7 +260,7 @@ def route_choice(state: GaokaoState) -> str:
 ```python
 async def math_search_node(state: GaokaoState) -> dict:
     """
-    Knowledge 节点：调用 LangchainKnowledgeSearchTool 检索。
+    Knowledge 节点：调用 AgenticLangchainKnowledgeSearchTool 检索。
     tRPC-Agent 的 AgenticLangchainKnowledgeSearchTool 会自动
     根据用户问题构建 KnowledgeFilterExpr。
     """
@@ -288,8 +288,13 @@ async def vlm_understand_node(state: GaokaoState) -> dict:
     for doc in state["retrieved_docs"]:
         if doc.get("has_image"):
             # Chroma metadata 不存 image_file_ids（SQLite 权威，见 vector/vector_store.md「Metadata 格式与过滤语义」）：
-            # 用 doc_id 回查 questions 表取图片 file_id，再经 files 表解析路径
-            image_file_ids = question_db.get_image_file_ids(doc["doc_id"])
+            # doc_id 是 "q_42" 两段式，需解析出 questions.id（42）再回查
+            entity, qid_str = doc["doc_id"].split("_", 1)
+            if entity == "q":
+                question_id = int(qid_str)
+                image_file_ids = question_db.get_image_file_ids(question_id)
+            else:
+                continue  # kn_* 是讲解 document，无图片
             for file_id in image_file_ids:
                 desc = await vlm_understand_image(
                     file_id, 

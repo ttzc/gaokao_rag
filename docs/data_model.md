@@ -69,7 +69,7 @@ Schema 设计见 [store/db/topics.md](store/db/topics.md)
 
 存储讲义/学习资料中的**知识点讲解段**（概念、公式、典型方法）。本质是**纯文本 RAG**——比带图的题目还简单，不需要 VLM，文本切块向量化即可。**`subject` 学科冗余列**（同 questions：扩科后讲解混合多学科，直接过滤免 join）。
 
-**与 Chroma 的关系**：content 向量化 → `knowledge_point` chunk，`doc_id` 桥接（同 questions 模式）。
+**与 Chroma 的关系**：content 向量化 → `knowledge_notes` document（`kn_*`），`doc_id` 桥接（同 questions 模式）。
 
 **检索价值**：用户问"什么是分离参数法" → 命中讲解 document → 返回讲解内容 + 关联例题。复习建议可链接到具体讲解（"先看圆锥曲线讲义：分离参数法"）。
 
@@ -144,9 +144,11 @@ Schema 设计见 [store/db/periodic_reports.md](store/db/periodic_reports.md)
 单 Collection，通过 metadata 过滤区分内容类型。
 
 ```python
-collection = chroma_client.get_or_create_collection(
-    name="gaokao",                     # 通用名：全科共用，按 metadata.subject 过滤学科
-    metadata={"description": "高考全科知识库"}
+# 通过 langchain-chroma 创建（实际代码走 src/store/vector/vector_store.py 单例）
+vectorstore = Chroma(
+    collection_name="gaokao",          # 通用名：全科共用，按 metadata.subject 过滤学科
+    embedding_function=get_embedding_model(),
+    persist_directory="data/chroma_db",
 )
 ```
 

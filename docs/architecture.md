@@ -38,10 +38,10 @@ flowchart TD
 | 能力 | 框架组件 | 我们的用法 |
 | ------ | --------- | ----------- |
 | Agent 编排 | TeamAgent | Leader 自由委派 5 个子 Agent（意图/搜索/VLM/聚合/输出） |
-| RAG 检索 | LangchainKnowledge + LangchainKnowledgeSearchTool | 接入 Chroma 向量库，支持 metadata 过滤 |
-| 模型接入 | OpenAIModel / LiteLLMModel | **模型中立**：OpenAI 兼容协议抽象，理论上用户可自选任何兼容模型；开发期默认 DeepSeek + Qwen |
+| RAG 检索 | LangchainKnowledge + AgenticLangchainKnowledgeSearchTool | 接入 Chroma 向量库，支持 metadata 过滤 |
+| 模型接入 | OpenAIModel | **模型中立**：OpenAI 兼容协议抽象，理论上用户可自选任何兼容模型；开发期默认 DeepSeek + Qwen |
 | MCP Server | MCPToolset (stdio/sse/streamable-http) | 暴露检索、查询、复习建议工具 |
-| 会话记忆 | SessionService + MemoryService | **V0.5 用 SqlSessionService（SQLite 持久化）**；摘要机制 + MemoryService 用户画像 V1.1 |
+| 会话记忆 | SessionService + SqlMemoryService | **V0.5 用 SqlSessionService（SQLite 持久化）**；摘要机制 + SqlMemoryService 用户画像 V1.1 |
 | 服务化 | FastAPI + A2A + AG-UI | HTTP API + SSE 流式输出 |
 | 可观测性 | OpenTelemetry + **Langfuse** | **V0.5 接入 Langfuse（自托管）**——多 Agent 委派链可视化，学生数据不出服务器 |
 
@@ -144,6 +144,7 @@ class GaokaoState(State):
     # 业务字段
     subject: str                    # 学科（MVP 固定 "math"）
     query_type: str                 # "question" | "review" | "report" | "browse" | "ingest"
+    period_type: str                # "weekly" | "monthly"（report 意图时由 ROUTER 解析）
     retrieved_docs: list[dict]     # 检索到的题目/解析（含知识点信息）
     vlm_descriptions: list[str]    # VLM 生成的图形描述
     answer: str                     # 最终答案
