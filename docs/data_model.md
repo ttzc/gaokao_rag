@@ -33,7 +33,7 @@ Gaokao RAG 的数据模型分为两部分：
 
 采用**路径枚举（Materialized Path）**模型，每个节点用 `path` 列记录从根到自身的完整 id 路径（如 `1/2/3/`，根节点 = `1/`）。子树查询走前缀匹配（`LIKE '1/2/%'`），防环靠 O(1) 路径比较，移动/合并靠前缀批量替换——比邻接表 + 递归 CTE 更契合"频繁演化"的动态树。**树是数据驱动的动态结构**（非预定义写死，见下方"动态构建"说明）。
 
-> **tag 语义（名字即 tag）**：树上任意节点的 `name`（含 `aliases`）都是可用的 tag。Chroma metadata 存**名字快照**（`topic_tags`，格式见 [store/vector.md「Metadata 格式」](store/vector.md)），树结构演化（合并/移动/改名）不影响已入库 metadata——合并/改名时旧名归档进 `aliases`，检索按"name + aliases"并集匹配即可。~~`code`（知识点编码）~~ 已砍掉：名字即身份，无需额外编码层。
+> **tag 语义（名字即 tag）**：树上任意节点的 `name`（含 `aliases`）都是可用的 tag。Chroma metadata 存**名字快照**（`topic_tags`，格式见 [store/vector/vector_store.md「Metadata 格式」](store/vector/vector_store.md)），树结构演化（合并/移动/改名）不影响已入库 metadata——合并/改名时旧名归档进 `aliases`，检索按"name + aliases"并集匹配即可。~~`code`（知识点编码）~~ 已砍掉：名字即身份，无需额外编码层。
 
 **路径枚举操作要点**：
 
@@ -154,7 +154,7 @@ collection = chroma_client.get_or_create_collection(
 
 **向量维度由 `config.embedding.dimension` 规定（默认 1024），请求显式传 `dimensions` 参数，不依赖模型/平台默认值。**
 
-原因（AlgoNotes 踩坑）：同一 `Qwen3-Embedding-4B`，Gitee.AI 返回 1024 维、SiliconFlow 返回 2560 维——**同模型跨平台默认维度不同**；而 Chroma collection 建好后维度固定，换模型/换维度必须先删 collection 重建，否则维度冲突报错。实现细节与防呆校验见 [store/vector.md](store/vector.md)。
+原因（AlgoNotes 踩坑）：同一 `Qwen3-Embedding-4B`，Gitee.AI 返回 1024 维、SiliconFlow 返回 2560 维——**同模型跨平台默认维度不同**；而 Chroma collection 建好后维度固定，换模型/换维度必须先删 collection 重建，否则维度冲突报错。实现细节与防呆校验见 [store/vector/vector_store.md](store/vector/vector_store.md)。
 
 ### Document 策略
 
@@ -195,8 +195,8 @@ doc_id = "{entity}_{id}"
 3. **双来源共存**：`q_*`（题目）与 `kn_*`（讲解）在同一 collection，前缀区分来源；检索按 `doc_type` 过滤时天然混用两者（题目 + 讲解都答"什么是X"）
 4. **检索不依赖 doc_id**：查询走 metadata 过滤（subject/topic_tags/doc_type），doc_id 只做桥接与生命周期管理（更新/删除）
 
-metadata 的**格式、字段规范与过滤语义**见 [store/vector.md「Metadata 格式」](store/vector.md)。
+metadata 的**格式、字段规范与过滤语义**见 [store/vector/vector_store.md「Metadata 格式」](store/vector/vector_store.md)。
 
 ## tRPC-Agent Knowledge 集成
 
-利用 tRPC-Agent 的 `LangchainKnowledge` + `AgenticLangchainKnowledgeSearchTool`，Agent 可以根据用户问题自动构建 metadata 过滤条件（`KnowledgeFilterExpr`，示例见 [store/vector.md「框架集成」](store/vector.md)）。
+利用 tRPC-Agent 的 `LangchainKnowledge` + `AgenticLangchainKnowledgeSearchTool`，Agent 可以根据用户问题自动构建 metadata 过滤条件（`KnowledgeFilterExpr`，示例见 [store/vector/knowledge.md「框架集成」](store/vector/knowledge.md)）。

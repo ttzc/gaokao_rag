@@ -41,4 +41,4 @@ CREATE INDEX idx_qt_topic ON question_topics(topic_name);
 | `questions.id` | 题目（被标注对象，id 不变，正常外键） |
 | `topics.name` / `aliases` | 知识点 tag（名字，经 `search_topic` 归位确认；树演化后按名字匹配） |
 
-> 与 Chroma metadata 的关系：本表存**结构化关联**（SQLite 精确过滤），`topic_tags`（名字快照）存**检索用快照**（语义过滤，`$contains` + 树展开上卷）——两者同构（都存名字），摄入时同事务写入。格式见 [vector.md「Metadata 格式与过滤语义」](../../vector.md)。
+> 与 Chroma metadata 的关系：本表存**结构化关联**（SQLite 精确过滤），`topic_tags`（名字快照）存**检索用快照**（语义过滤，`$contains` + 树展开上卷）——两者同构（都存名字），摄入时同事务写入。格式见 [vector_store.md「Metadata 格式与过滤语义」](../vector/vector_store.md)。

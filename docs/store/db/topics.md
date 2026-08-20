@@ -70,7 +70,7 @@ CREATE INDEX idx_topics_status ON topics(status);
 def expand_tag_names(node_id) -> list[str]:
     """取子树所有节点的 name + aliases 并集（含自身）。
     用户问"圆锥曲线" → 展开为 ["椭圆","双曲线","抛物线","离心率",...]
-    → Chroma metadata.topic_tags 数组 $contains + $or 命中任一（见 vector.md「Metadata 格式与过滤语义」）。"""
+    → Chroma metadata.topic_tags 数组 $contains + $or 命中任一（见 ../vector/vector_store.md「Metadata 格式与过滤语义」）。"""
 ```
 
 ## 常见操作
@@ -94,4 +94,4 @@ flowchart LR
 ```
 
 - **摄入侧**：`store/db/topics.py` 封装全部树逻辑 → FunctionTool 挂到知识整理 Agent（见 `docs/agent.md`「知识整理 Agent 详解」）
-- **检索侧**：`expand_tag_names` 树展开 → 配合 `AgenticLangchainKnowledgeSearchTool` 过滤 `metadata.topic_tags`（数组 `$contains` + `$or`，见 [vector.md「Metadata 格式与过滤语义」](../../vector.md)）
+- **检索侧**：`expand_tag_names` 树展开 → 配合 `AgenticLangchainKnowledgeSearchTool` 过滤 `metadata.topic_tags`（数组 `$contains` + `$or`，见 [vector_store.md「Metadata 格式与过滤语义」](../vector/vector_store.md)）

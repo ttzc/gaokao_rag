@@ -192,7 +192,7 @@ class GaokaoState(State):
 
 ### Layer 3: Chroma 向量库
 
-负责语义检索。每个 document 携带**检索快照 metadata**——只存过滤/展示需要的字段（学科/考区/年份/题型/知识点 tag/含图标记），内容以 SQLite 为权威源。**字段规范与过滤语义见 [store/vector.md「Metadata 格式与过滤语义」](store/vector.md)**（单一来源，此处不重复）。
+负责语义检索。每个 document 携带**检索快照 metadata**——只存过滤/展示需要的字段（学科/考区/年份/题型/知识点 tag/含图标记），内容以 SQLite 为权威源。**字段规范与过滤语义见 [store/vector/vector_store.md「Metadata 格式与过滤语义」](store/vector/vector_store.md)**（单一来源，此处不重复）。
 
 ## 项目文件架构
 
@@ -233,7 +233,9 @@ gaokao_rag/
 │   │   │   ├── exam_attempts.py
 │   │   │   ├── review_plans.py
 │   │   │   └── periodic_reports.py
-│   │   ├── vector_store.py    #   Layer 3：Chroma 向量库（document 入库，切片细则 V0.3 定）
+│   │   ├── vector/             #   Layer 3：Chroma 向量库（存储读写 / Knowledge 构建两层）
+│   │   │   ├── vector_store.py #     Layer 3a：Chroma 增删读写（document 入库，切片细则 V0.3 定）
+│   │   │   └── knowledge.py    #     Layer 3b：Knowledge 对象构建（GaokaoKnowledge 子类）
 │   │   └── __init__.py
 │   │
 │   ├── rag/                   # RAG Agent 与检索
