@@ -46,6 +46,7 @@ max_pages = 50
 # ── 数据目录（子目录按约定自动派生） ──────────────────────────────
 [store]
 data_dir = "data"
+collection_name = "gaokao"   # Chroma collection 名（全科共用，按 metadata.subject 过滤学科）
 
 # ── QQ 机器人接入（trpc-claw） ──────────────────────────────────
 [qq]
