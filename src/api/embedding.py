@@ -8,7 +8,7 @@
 # 关键约束：
 #   - chunk_size=20 + check_embedding_ctx_length=False 组合下，
 #     langchain OpenAIEmbeddings 以 chunk_size 作为每批条数；
-#     但仍显式在 embed_documents 调用时传入 chunk_size=20，双重保障。
+#     chunk_size 在构造时设置一次，下游 embed_documents 据此分批，无需重复传入。
 #   - dimensions 必须显式传入（AlgoNotes 踩坑：同模型跨平台默认维度不同）。
 #   - 不自写 Embeddings 子类，直接复用 langchain_openai.OpenAIEmbeddings。
 #
@@ -17,8 +17,8 @@
 
 from __future__ import annotations
 
+from pydantic import SecretStr
 from langchain_openai import OpenAIEmbeddings
-
 from trpc_agent_sdk.log import logger
 
 from src.config import config
@@ -54,7 +54,7 @@ def get_embedding_model() -> OpenAIEmbeddings:
     构造参数说明：
         - ``chunk_size=20`` + ``check_embedding_ctx_length=False`` 组合下，
           langchain 以 chunk_size 作为每批条数，确保不超 DashScope 限制。
-        - ``tiktoken_enabled=False``：DashScope 不支持 tiktoken 分词。
+        - ``tiktoken_enabled`` 保持 langchain 默认（True）；在 ``check_embedding_ctx_length=False`` 路径下不触发分词，无需显式设置。
         - ``dimensions=cfg.dimension``：显式 1024，防维度漂移。
 
     Returns:
@@ -86,13 +86,12 @@ def get_embedding_model() -> OpenAIEmbeddings:
     # ── 构造 OpenAIEmbeddings ───────────────────────────────────────────────
     _model = OpenAIEmbeddings(
         model=cfg.model,
-        openai_api_key=cfg.api_key,
+        api_key=SecretStr(cfg.api_key),
         base_url=cfg.base_url,
         dimensions=cfg.dimension,
         chunk_size=_DASHSCOPE_MAX_INPUTS_PER_REQUEST,
-        tiktoken_enabled=False,
         check_embedding_ctx_length=False,
-        request_timeout=cfg.timeout,
+        timeout=cfg.timeout,
     )
 
     logger.info(

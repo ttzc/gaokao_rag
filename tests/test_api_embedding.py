@@ -132,15 +132,6 @@ class TestGetEmbeddingModel:
             result = get_embedding_model()
         assert result.chunk_size == 20
 
-    def test_tiktoken_disabled(self) -> None:
-        """tiktoken_enabled=False（DashScope 不支持 tiktoken）。"""
-        self._reset_singleton()
-        mock_cfg = self._make_mock_cfg()
-        with patch("src.api.embedding.config") as mock_config:
-            mock_config.embedding = mock_cfg
-            result = get_embedding_model()
-        assert result.tiktoken_enabled is False
-
     def test_check_embedding_ctx_length_disabled(self) -> None:
         """check_embedding_ctx_length=False（跳过 token 化，直接发原始文本）。"""
         self._reset_singleton()
