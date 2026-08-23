@@ -7,7 +7,7 @@ Gaokao RAG 基于 **tRPC-Agent-Python** 框架构建，核心理念是：**框�
 tRPC-Agent 已经提供了 Agent 编排、Knowledge/RAG、Session/Memory、MCP、FastAPI 服务化等能力，我们不需要从零手写这些。需要自定义的是：
 
 - **VLM 图形理解管线** —— 框架的 Knowledge 层是文本 RAG，VLM 调用需要封装为 FunctionTool
-- **PDF 多模态摄取** —— 业务逻辑，框架不管，但产出数据走框架的 DocumentLoader → VectorStore 链路
+- **PDF 多模态摄取** —— 业务逻辑，框架不管；但摄取的核心决策（内容三分、题目切分、知识点提取）由 Agent 层完成，ingestion 层只提供纯 I/O 工具集
 - **知识点图谱** —— SQLite schema 设计 + 知识点查询工具
 - **意图识别与委派** —— TeamAgent 的 Leader 自由委派机制，意图由独立子 Agent 判断
 
@@ -51,7 +51,7 @@ flowchart TD
 | ----------- | ------ | --------- |
 | VLM 图形理解 | FunctionTool | 挂到 VLM 子 Agent 的 tools |
 | 知识点查询 | FunctionTool | 挂到搜索子 Agent 的 tools 列表 |
-| PDF 摄取管线 | 独立脚本 | 产出数据写入 Chroma + SQLite |
+| PDF 摄取管线 | 业务 I/O 工具集（Agent 调用） | ingestion 层提供 4 个业务函数（ingest_question / ingest_image / ingest_exam_paper / ingest_error），Agent 层通过 FunctionTool 调用；知识点归位复用 store/vector/knowledge.py |
 | 意图识别 | LLM 子 Agent | TeamAgent 成员（意图识别 Agent） |
 | 错题分析 | FunctionTool + Memory | 挂到聚合子 Agent，读取错题记录 |
 
@@ -111,7 +111,7 @@ flowchart TB
 flowchart TD
     U[用户请求] --> L[Team Leader<br/>自由委派 + 综合]
 
-    subgraph 查询侧（读）
+    subgraph 查询侧-读
         L --> A1[意图识别 Agent]
         L --> A2[搜索信息 Agent]
         L --> A3[VLM 理解 Agent]
@@ -119,7 +119,7 @@ flowchart TD
         L --> A5[输出整理 Agent]
     end
 
-    subgraph 摄入侧（写）
+    subgraph 摄入侧-写
         L --> B1[文档识别 Agent]
         L --> B2[结构识别 Agent]
         L --> B3[知识整理 Agent]
@@ -212,13 +212,11 @@ gaokao_rag/
 │   │   ├── vlm.py             #   VLM 客户端 —— Qwen3.7-Flash / Plus（DashScope）
 │   │   └── embedding.py       #   嵌入模型 —— qwen3.7-text-embedding（DashScope）
 │   │
-│   ├── ingestion/             # 多模态摄取管线（PDF → 结构化数据）
-│   │   ├── loader.py          #   PDF 加载（PyMuPDF 主力 + MinerU2.5-Pro 兜底）
-│   │   ├── cleaner.py         #   文本清洗（去页眉页脚、公式归一化）
-│   │   ├── splitter.py        #   分块策略（题目/解析/知识点分段）
-│   │   ├── vlm_processor.py   #   图像 VLM 理解（图形描述生成）
-│   │   ├── tagger.py          #   知识点标注（LLM 提取 → 归位到 topics 标签表）
-│   │   └── pipeline.py        #   管线编排（7 阶段串联）
+│   ├── ingestion/             # 多模态摄取业务 I/O 层（封装存储组合，无 LLM）
+│   │   ├── question.py        #   ingest_question() - 存储一道题（文件 + DB + 向量 + knowledge 四层）
+│   │   ├── image.py           #   ingest_image() - 存储一张图（文件 + DB）
+│   │   ├── exam_paper.py      #   ingest_exam_paper() - 存储一份试卷（文件 + DB）
+│   │   └── error.py           #   ingest_error() - 存储错题（DB + 关联题目）
 │   │
 │   ├── store/                 # 三层存储 + 知识点图谱
 │   │   ├── file_store.py      #   Layer 1：文件存储（原始 PDF 管理，详见 [store/files/raw.md](store/files/raw.md)）
@@ -244,16 +242,17 @@ gaokao_rag/
 │   │   ├── retriever.py       #   混合检索（Chroma 语义 + SQLite 过滤）
 │   │   └── prompts.py         #   Agent System Prompts（5 个子 Agent）
 │   │
-│   ├── tools/                 # 自定义 FunctionTool
-│   │   ├── vlm_tool.py        #   VLM 图形理解（挂到 VLM 子 Agent）
-│   │   ├── knowledge_tool.py  #   知识点查询（挂到搜索子 Agent）
-│   │   └── error_tool.py      #   错题分析（挂到聚合子 Agent）
+│   ├── tools/                 # Agent 侧 FunctionTool（挂到各子 Agent）
+│   │   ├── vlm_tool.py        #   VLM 图形理解（挂到 VLM / 文档识别子 Agent）
+│   │   ├── knowledge_tool.py  #   知识点查询（挂到搜索 / 知识整理子 Agent）
+│   │   ├── error_tool.py      #   错题分析（挂到聚合子 Agent）
+│   │   └── extract_tool.py    #   PDF / 图像提取（挂到文档识别子 Agent）
 │   │
 │   └── mcp/                   # MCP Server（对外暴露）
 │       └── server.py          #   FastMCP 工具定义（14 个工具）
 │
 ├── scripts/                   # CLI 入口
-│   ├── ingest.py              #   摄取 CLI（PDF → 入库）
+│   ├── ingest.py              #   批量摄取（自动调用摄入侧 Agent 工具集，不经过 TeamLeader）
 │   ├── chat.py                #   对话 CLI（开发调试）
 │   └── mcp_server.py          #   MCP Server 入口（stdio/SSE/HTTP）
 │
@@ -279,9 +278,9 @@ gaokao_rag/
 | ---- | ------ | ------ |
 | 配置 | `config.toml` + `.env` | 模型、存储、VLM 参数，代码不硬编码 |
 | 模型接入 | `src/api/` | OpenAI 兼容协议封装，LLM / VLM / Embedding 统一接口 |
-| 摄取管线 | `src/ingestion/` | PDF 解析 → 图像提取 → VLM 理解 → 知识点标注 → 向量化 |
+| 摄取管线 | `src/ingestion/` | 业务 I/O 工具集（Agent 调用）：ingest_question（文件+DB+向量+knowledge 四层）/ ingest_image / ingest_exam_paper / ingest_error；知识点归位复用 store/vector/knowledge.py |
 | 三层存储 | `src/store/` | 文件(raw) → SQLite(元数据+知识树) → Chroma(向量) |
-| RAG Agent | `src/rag/` | TeamAgent 编排 + 混合检索器 + Prompts |
+| RAG Agent | `src/rag/` | TeamAgent 编排 + 混合检索器 + Prompts；摄入侧 Agent 通过 FunctionTool 调用 ingestion 层 |
 | 自定义工具 | `src/tools/` | VLM / 知识点查询 / 错题分析 FunctionTool |
 | MCP 服务 | `src/mcp/` | 对外暴露 14 个 MCP 工具（检索/错题/复习/报告） |
 | CLI 入口 | `scripts/` | ingest / chat / mcp_server 三个命令 |

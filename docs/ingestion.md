@@ -166,183 +166,6 @@ flowchart LR
 
 ---
 
-## 整卷作答摄入（exam_attempts）
-
-试卷切分入库后，学生可能做完整张卷子并报告作答情况。**不识别手写成绩单**（同错题原则），改为用户口述 + LLM 解析：
-
-```
-用户口述："选择错2个填空错1个，导数大题没写出来，总分68"
-     ↓
-LLM 解析 → 逐题对错 + 总分 + 整卷分析
-     ↓
-写入 exam_attempts 表
-```
-
-**说明**：`question_results` 用 `question_id` 关联已入库的题目，周报可据此聚合"哪些题型失分最多"。
-
----
-
-## 实现视角：src/ingestion/ 工具集
-
-所有涉及 LLM 的判断（内容三分、题目切分、知识点提取、VLM 调用决策、回显策略）全部由 Agent 层完成。`src/ingestion/` 只提供**纯 I/O 操作**，作为 Agent 的 FunctionTool 被调用。
-
-```
-Agent 层（LLM）                     ingestion 层（I/O）
-┌─────────────────────┐          ┌──────────────────────┐
-│ 结构识别 Agent      │          │ src/ingestion/       │
-│ - LLM 判断讲解/题目 │──调用───▶│ file_ops.py          │
-│ - LLM 内容三分      │          │   save_raw()         │
-│ - LLM 提取知识点    │          │   save_processed()   │
-│                     │          │                       │
-│ 知识整理 Agent      │──调用───▶│ extract.py           │
-│ - LLM 决定调用 VLM  │          │   extract_pdf()      │
-│                     │          │   extract_images()   │
-│ 入库决策 Agent      │──调用───▶│                       │
-│ - 回显确认          │          │ vlm_ops.py           │
-│ - 分流执行          │          │   call_vlm()         │
-└─────────────────────┘          │                       │
-                                 │ db_ops.py            │
-                                 │   insert_question()  │
-                                 │   insert_error()     │
-                                 │   insert_topic()     │
-                                 │   ...                │
-                                 │                       │
-                                 │ vector_ops.py        │
-                                 │   upsert_question()  │
-                                 │   upsert_knowledge() │
-                                 │                       │
-                                 │ pipeline.py          │
-                                 │   ingest_question()  │
-                                 │   （dumb 组合）      │
-                                 └──────────────────────┘
-```
-
-### 设计原则
-
-1. **Agent 提供数据，ingestion 执行写入**：Agent 的 LLM 负责生成结构化数据（题干/答案/解析/知识点/用户决策），ingestion 层只负责把这些数据写入三层存储
-2. **ingestion 层无决策能力**：不做 LLM 调用、不做内容理解、不做格式判断，所有输入必须是结构化数据
-3. **每层工具可独立测试**：ingestion 层的函数都是纯 I/O，mock 输入即可测试，不依赖 LLM
-4. **pipeline.py 是 dumb 组合**：把多个 I/O 操作按固定顺序串起来，但不做任何智能判断
-
-### 工具清单
-
-#### file_ops.py — 文件 I/O
-
-```python
-# 保存原始文件（PDF/图像），返回相对路径
-save_raw(content: bytes, kind: Literal["pdf", "image"], subdir: str = "uploaded") -> str
-
-# 保存处理后文件（文本/VLM 描述），返回相对路径
-save_processed(content: bytes, category: Literal["text", "vlm_desc"], name: str) -> str
-
-# 读取文件
-read(relative_path: str) -> bytes | None
-read_text(relative_path: str, encoding: str = "utf-8") -> str | None
-```
-
-#### extract.py — 内容提取
-
-```python
-# 从 PDF 提取文本块 + 图像列表
-extract_pdf(file_path: str) -> dict:
-    # 返回：{"text_blocks": [...], "images": [...], "pages": [...]}
-
-# 从 PDF 提取图像并落盘
-extract_images(file_path: str) -> list[str]:
-    # 返回：图像相对路径列表
-```
-
-#### vlm_ops.py — VLM 调用
-
-```python
-# 调用 VLM 生成图形描述（纯 API 调用，不做决策）
-call_vlm(model: str, image_path: str, prompt: str) -> str
-
-# 选择 VLM 模型（默认 flash，大图/复杂图升级 plus）
-select_vlm_model(image_path: str, complexity_keywords: list[str] = None) -> str
-```
-
-#### db_ops.py — SQLite 写入
-
-```python
-# 写入题目（返回 question_id）
-insert_question(data: QuestionInput) -> int
-
-# 写入知识点关联
-insert_question_topics(question_id: int, topic_names: list[str]) -> None
-
-# 写入错题
-insert_error(data: ErrorInput) -> int
-
-# 写入知识点讲解
-insert_knowledge_note(data: KnowledgeNoteInput) -> int
-
-# 写入文件注册
-insert_file(data: FileInput) -> int
-
-# 查询 topics（供 Agent 归位）
-search_topic(keyword: str) -> list[dict]
-create_topic(name: str, aliases: list[str] = None) -> int
-add_alias(topic_id: int, alias: str) -> None
-```
-
-#### vector_ops.py — Chroma 向量化
-
-```python
-# 题目 document 向量化
-upsert_question_doc(question_id: int, text: str, metadata: dict) -> None
-
-# 知识点 document 向量化
-upsert_knowledge_doc(note_id: int, text: str, metadata: dict) -> None
-
-# 删除 document
-delete_doc(doc_id: str) -> None
-```
-
-#### pipeline.py — 组合操作（dumb 组合）
-
-```python
-# 完整的一道题入库流程（I/O 组合，不做 LLM 判断）
-def ingest_question(
-    raw_file_path: str,
-    question_data: dict,      # Agent 提供的结构化数据
-    topic_names: list[str],   # Agent 提取的知识点
-    user_decision: str,       # "a" / "b" / "c"
-    vlm_descriptions: list[str] = None,
-) -> dict:
-    """
-    执行写入：
-    1. insert_question
-    2. insert_question_topics
-    3. upsert_question_doc
-    4. 如果 user_decision == "b"：insert_error
-    5. 返回写入结果（question_id、doc_id、error_id 等）
-    """
-```
-
-### 与 Agent 的协作方式
-
-摄入侧 Agent 通过 FunctionTool 调用上述工具：
-
-```python
-# 示例：入库决策 Agent 的 FunctionTool
-class IngestQuestionTool(FunctionTool):
-    name = "ingest_question"
-    description = "将一道题写入三层存储"
-    
-    async def execute(self, raw_file_path, question_data, topic_names, user_decision, vlm_descriptions=None):
-        return pipeline.ingest_question(raw_file_path, question_data, topic_names, user_decision, vlm_descriptions)
-```
-
-Agent 运行时：
-1. **LLM 先判断**：这道题有没有图？需不需要调 VLM？有没有答案/解析？
-2. **LLM 生成数据**：题干文本、答案文本、解析文本、知识点列表
-3. **LLM 调用工具**：把结构化数据喂给 ingestion 层的 FunctionTool
-4. **ingestion 层执行**：纯 I/O 写入，返回 ID
-5. **LLM 组织回显**：把结果整理成用户可读的确认消息
-
----
-
 ## 摄取入口
 
 ```bash
@@ -384,3 +207,51 @@ python scripts/ingest.py --source ima --kb "高考2026" --folder "数学/试卷"
 - 增量摄取 → 只处理 `data/files/raw/` 中未摄取的新文件
 - 摄取失败 → 记录到 `ingest_errors.log`，不影响其他文件
 - 单题重复摄入 → 检测 `questions` 表已有同 file_id + 题号，跳过或覆盖
+
+---
+
+## 实现工具集
+
+`src/ingestion/` 提供业务级别的 I/O 工具，每个工具对应"存储一个业务实体"，内部封装好三层存储的组合操作。Agent 只需要提供结构化数据，调用单个函数即可完成入库。
+
+详细设计见各模块文档：
+
+- [question.md](question.md) — 存储一道题（文件 + DB + 向量 + knowledge 四层）
+- [image.md](image.md) — 存储一张图（文件 + DB）
+- [exam_paper.md](exam_paper.md) — 存储一份试卷（文件 + DB）
+- [error.md](error.md) — 存储错题（DB + 关联题目）
+
+### 设计原则
+
+1. **业务实体 = 一个函数**：每道题、每张图、每份试卷、每条错题，对应一个 `ingest_*()` 函数
+2. **函数内部封装所需的所有存储操作**：比如 `ingest_question()` 内部自动完成文件落盘 → DB 写入 → Chroma 向量化 → 知识点归位，Agent 不需要知道细节
+3. **ingestion 层无 LLM 决策**：所有输入必须是结构化数据，不做内容理解、不做格式判断
+4. **每个工具可独立测试**：mock 结构化数据即可测试，不依赖 LLM
+5. **知识点归位复用 store 层**：`src/store/vector/knowledge.py` 已提供 topics 查询/创建/别名管理，ingestion 层直接调用，不重复实现
+
+### 与 Agent 的协作方式
+
+摄入侧 Agent 通过 FunctionTool 调用上述工具：
+
+```python
+# 示例：入库决策 Agent 的 FunctionTool
+class IngestQuestionTool(FunctionTool):
+    name = "ingest_question"
+    description = "将一道题写入三层存储（SQLite + Chroma）"
+    
+    async def execute(self, raw_file_path, question_text, answer_text="", 
+                     analysis_text="", topic_names=None, user_decision="a", ...):
+        return ingestion.question.ingest_question(
+            raw_file_path=raw_file_path,
+            question_text=question_text,
+            ...
+        )
+```
+
+Agent 运行时：
+1. **LLM 先判断并生成数据**：这道题有没有图？需不需要调 VLM？有没有答案/解析？提取出知识点名字列表
+2. **LLM 调用工具**：把结构化数据喂给 `ingest_question()` 等高层函数
+3. **ingestion 层执行**：内部封装三层存储组合操作，返回业务 ID
+4. **LLM 组织回显**：把结果整理成用户可读的确认消息
+
+**关键点**：Agent 不需要知道 `insert_question` → `insert_question_topics` → `upsert_question_doc` 三个步骤，只需要调用一个 `ingest_question()` 函数。
