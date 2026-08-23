@@ -11,7 +11,6 @@ def ingest_question(
     subject: str = "math",        # 学科
     source_type: str = "exam",    # exam / homework / special_topic / reference
     question_type: str = "",      # 选择题/填空题/解答题
-    difficulty: int = 0,          # 难度（可选）
     image_file_ids: list[int] = None,  # 关联图像 ID 列表
     topic_names: list[str] = None,     # 知识点名字列表（Agent 提取）
     vlm_descriptions: list[str] = None, # VLM 图形描述列表
