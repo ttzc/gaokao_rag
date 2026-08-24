@@ -135,14 +135,14 @@ Bot: 已识别到 3 道题目：
 
 | 决策 | 写入内容 |
 |------|----------|
-| **a 入库** | questions + question_topics + Chroma ✅ |
-| **b 错题** | questions + question_topics + Chroma ✅ + errors 表 |
-| **c 跳过** | 不写入 |
+| **a 入库** | 调用 `ingest_question` → questions + question_topics + Chroma |
+| **b 错题** | 先 `ingest_question` 入库题目（与 a 完全相同），再由错题本体系调用 `ingest_error(question_id)` 写入错因（见 error.md） |
+| **c 跳过** | 不调用 `ingest_question`（题目不写入任何表） |
 
 **决策原则**：
 - 用户操作是批量 + 按题组合，避免每题都问一遍
 - 讲解段已自动入库，回显只包含题目
-- 错题额外触发：用户口述错因 → LLM 生成 `error_summary` → 写入 `errors` 表
+- **错题不在题目摄入时内联写 `errors`**：入库决策 Agent 对标记为「错题」的题目，**先** `ingest_question` 入库，**再**调用独立的 `ingest_error(question_id, user_reflection)` 写入错因（见 error.md）。`ingest_question` 保持原子化、完全不感知 `errors`，避免 `ingest_question` ↔ `errors` 的循环依赖。
 
 **输出**：写入结果回显
 
@@ -227,7 +227,7 @@ python scripts/ingest.py --source ima --kb "高考2026" --folder "数学/试卷"
 2. **函数内部封装所需的所有存储操作**：比如 `ingest_question()` 内部自动完成文件落盘 → DB 写入 → Chroma 向量化 → 知识点归位，Agent 不需要知道细节
 3. **ingestion 层无 LLM 决策**：所有输入必须是结构化数据，不做内容理解、不做格式判断
 4. **每个工具可独立测试**：mock 结构化数据即可测试，不依赖 LLM
-5. **知识点归位复用 store 层**：`src/store/vector/knowledge.py` 已提供 topics 查询/创建/别名管理，ingestion 层直接调用，不重复实现
+5. **知识点归位复用 store 层**：`src/store/db/topics.py`（`TopicsDB`）已提供 topics 查询/创建/别名管理（`search` / `create` / `add_alias`），ingestion 层直接调用，不重复实现。注意：不是 `store/vector/knowledge.py`——那是 Chroma 语义检索的查询侧组件，不管 topic 注册。
 
 ### 与 Agent 的协作方式
 
@@ -239,13 +239,15 @@ class IngestQuestionTool(FunctionTool):
     name = "ingest_question"
     description = "将一道题写入三层存储（SQLite + Chroma）"
     
-    async def execute(self, raw_file_path, question_text, answer_text="", 
-                     analysis_text="", topic_names=None, user_decision="a", ...):
+    async def execute(self, raw_file_path, question_text, answer_text="",
+                     analysis_text="", topic_names=None, ...):
         return ingestion.question.ingest_question(
             raw_file_path=raw_file_path,
             question_text=question_text,
             ...
         )
+        # 标记「错题」的题目：ingest_question 返回 question_id 后，
+        # 再由错题本体系调用独立的 ingest_error(question_id, user_reflection) 写错因
 ```
 
 Agent 运行时：
