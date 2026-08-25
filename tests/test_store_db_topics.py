@@ -1,4 +1,7 @@
-"""TopicsDB 测试：覆盖 create / get_by_name / search / add_alias / list_all / UNIQUE 约束。"""
+"""TopicsDB 测试：覆盖 create / get_by_name / search / add_alias / list_all / UNIQUE 约束。
+
+依赖 conftest._reset_state（每测试前清空业务表 + 重置单例），测试之间无顺序依赖。
+"""
 
 from __future__ import annotations
 
@@ -13,13 +16,7 @@ from src.store.db.topics import TopicsDB, get_topics_db
 
 @pytest.fixture()
 def db() -> TopicsDB:
-    """TopicsDB 实例（共享连接，每个测试独立数据）。"""
-    import src.store.db.topics as topics_mod
-    import src.store.db.questions as q_mod
-    import src.store.db.files as f_mod
-    topics_mod._topics_db = None
-    q_mod._questions_db = None
-    f_mod._files_db = None
+    """TopicsDB 实例（共享连接，数据由 conftest 每测试前清空）。"""
     return get_topics_db()
 
 
@@ -290,23 +287,13 @@ class TestAddAlias:
 class TestSingleton:
 
     def test_get_topics_db_returns_instance(self):
-        import src.store.db.topics as topics_mod
-        topics_mod._topics_db = None
-        try:
-            db = get_topics_db()
-            assert isinstance(db, TopicsDB)
-        finally:
-            topics_mod._topics_db = None
+        db = get_topics_db()
+        assert isinstance(db, TopicsDB)
 
     def test_get_topics_db_is_same_instance(self):
-        import src.store.db.topics as topics_mod
-        topics_mod._topics_db = None
-        try:
-            db1 = get_topics_db()
-            db2 = get_topics_db()
-            assert db1 is db2
-        finally:
-            topics_mod._topics_db = None
+        db1 = get_topics_db()
+        db2 = get_topics_db()
+        assert db1 is db2
 
 
 # ── 直接使用 ────────────────────────────────────────────────────────

@@ -1,4 +1,7 @@
-"""QuestionsDB 测试：覆盖 insert / 查询 / 过滤 / 更新 / 删除 / doc_id 桥接 / JSON 字段。"""
+"""QuestionsDB 测试：覆盖 insert / 查询 / 过滤 / 更新 / 删除 / doc_id 桥接 / JSON 字段。
+
+依赖 conftest._reset_state（每测试前清空业务表 + 重置单例），测试之间无顺序依赖。
+"""
 
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ from src.store.db.questions import QuestionsDB, _make_doc_id, get_questions_db
 
 @pytest.fixture()
 def db() -> QuestionsDB:
-    """QuestionsDB 实例（共享连接，每个测试独立数据）。"""
+    """QuestionsDB 实例（共享连接，数据由 conftest 每测试前清空）。"""
     return get_questions_db()
 
 
@@ -508,25 +511,13 @@ class TestDelete:
 class TestSingleton:
 
     def test_get_questions_db_returns_instance(self):
-        from src.store.db.questions import get_questions_db, _questions_db
-        # 重置单例
-        import src.store.db.questions as q_mod
-        q_mod._questions_db = None
-        try:
-            db = get_questions_db()
-            assert isinstance(db, QuestionsDB)
-        finally:
-            q_mod._questions_db = None
+        db = get_questions_db()
+        assert isinstance(db, QuestionsDB)
 
     def test_get_questions_db_is_same_instance(self):
-        import src.store.db.questions as q_mod
-        q_mod._questions_db = None
-        try:
-            db1 = get_questions_db()
-            db2 = get_questions_db()
-            assert db1 is db2
-        finally:
-            q_mod._questions_db = None
+        db1 = get_questions_db()
+        db2 = get_questions_db()
+        assert db1 is db2
 
 
 # ── JSON 字段往返 ──────────────────────────────────────────────────

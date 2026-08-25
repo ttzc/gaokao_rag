@@ -1,49 +1,242 @@
 # tests/conftest.py
-# 测试全局配置：每测试自动清理 SQLite 数据，保证测试隔离。
+# 测试隔离体系（唯一入口）：每测试【前】清空全部业务数据 + 重置单例 + patch 假嵌入。
+#
+# 数据策略（2026-08 决策）：
+#   - 不做"测试数据隔离"——测试直接使用 config 真实路径（data/gaokao.db、
+#     data/chroma_db、data/files）。开发阶段 data/ 不会有重要数据，测试清掉是
+#     预期行为，放心清理重置、不再提示；生产环境不跑测试。
+#   - _reset_state 在【测试前】执行，每个测试从确定状态开始，测试间无顺序依赖。
+#   - 绝对路径功能测试（TestAbsoluteDataDir）例外保留 tmp_path——它需要"项目外
+#     绝对目录"作输入，tmp_path 是测试输入沙箱而非数据隔离，不写 data/ 不冲突。
 
 from __future__ import annotations
 
+import os
+import shutil
 import sqlite3
+import time
 
+import chromadb
 import pytest
+from langchain_core.embeddings import Embeddings
 
+import src.store.db.files as _files_mod
+import src.store.db.questions as _questions_mod
+import src.store.db.topics as _topics_mod
+import src.store.db.question_topics as _qt_mod
+import src.store.file_store as _file_store_mod
+import src.store.vector.knowledge as _knowledge_mod
+import src.store.vector.vector_store as _vector_store_mod
+from src.config import config
 from src.store.db import get_shared_conn
-from src.store.db.files import _files_db, _schema_initialized as _files_schema_flag
-from src.store.db.questions import _questions_db, _schema_initialized as _questions_schema_flag
-from src.store.db.topics import _topics_db, _schema_initialized as _topics_schema_flag
-from src.store.db.question_topics import (
-    _question_topics_db,
-    _schema_initialized as _qt_schema_flag,
+from src.store.file_store import FileStore
+from src.store.vector.vector_store import VectorStore
+
+
+class FakeEmbeddings(Embeddings):
+    """测试用假嵌入模型，维度取自 ``config.embedding.dimension``，不真调 DashScope API。"""
+
+    def __init__(self, size: int | None = None) -> None:
+        self._dim = size if size is not None else config.embedding.dimension
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1] * self._dim for _ in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return [0.1] * self._dim
+
+
+# 清空顺序 = 外键依赖逆序（子表先删；foreign_keys=ON 下先删父表会报错）
+_BUSINESS_TABLES = (
+    "errors",
+    "question_topics",
+    "questions",
+    "exam_attempts",
+    "topics",
+    "review_plans",
+    "periodic_reports",
+    "files",
 )
 
 
-@pytest.fixture(autouse=True)
-def _reset_tables():
-    """每个测试前后清空所有表，保证数据隔离。
+def _clear_file_store_subdirs() -> None:
+    """清空 FileStore 5 个子目录下的文件（保留目录本身）。"""
+    fs = FileStore()
+    for d in fs._subdirs.values():
+        for p in d.iterdir():
+            if p.is_file():
+                p.unlink()
 
-    注意：不关闭共享连接（保持 WAL + foreign_keys 配置），
-    仅 DELETE 数据，schema 保留。缺失表时静默跳过。
+
+# 所有 VectorStore 实例登记册：chroma 的 sqlite 文件锁在 GC 时不释放（实测
+# del + gc.collect 后仍 LOCKED），只有显式 client.close() 才释放。直接构造的实例
+# （TestUpsertDocument / TestDimensionGuard 的 store1/store2 等）不入 _instance 单例，
+# 必须入册，reset 时才能统一关闭，rmtree 才能成功。
+_vector_store_instances: list[VectorStore] = []
+
+
+def _close_tracked_chroma_clients() -> None:
+    """关闭本次 reset 前创建过的全部 chroma client（Windows 文件锁下 rmtree 需要先释放）。
+
+    对 mock（test_knowledge 的 mock_vs）无副作用；已 close 的 client 幂等跳过。
     """
+    for holder in list(_vector_store_instances):
+        vectorstore = getattr(holder, "vectorstore", None)
+        client = getattr(vectorstore, "_client", None)
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+    # 单例兜底：GaokaoKnowledge._instance 可能持有未入册的 vectorstore
+    knowledge = _knowledge_mod._instance
+    vectorstore = getattr(knowledge, "vectorstore", None)
+    client = getattr(vectorstore, "_client", None)
+    if client is not None:
+        try:
+            client.close()
+        except Exception:
+            pass
+    _vector_store_instances.clear()
+
+
+def _wipe_chroma_dir() -> None:
+    """rmtree 整体清空 chroma 目录。
+
+    规避 chroma 1.5.9 的 bug：delete_collection 删同名 collection 再建时残留旧
+    segment 元数据（count=0 但新 doc 合并旧字段）。带 3 次重试（Windows 偶发瞬时
+    锁）；全失败才回退 delete_collection（文件锁异常环境下的兜底，对锁不敏感）。
+    """
+    if os.path.isdir(config.store.chroma_dir):
+        for _ in range(3):
+            try:
+                shutil.rmtree(config.store.chroma_dir)
+                break
+            except OSError:
+                time.sleep(0.2)
+        else:
+            client = chromadb.PersistentClient(path=config.store.chroma_dir)
+            for col in list(client.list_collections()):
+                client.delete_collection(col.name)
+            client.close()
+    os.makedirs(config.store.chroma_dir, exist_ok=True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _track_vector_store_instances() -> None:
+    """给 ``VectorStore.__init__`` 挂登记钩子：所有构造的实例入册，reset 时统一 close()。
+
+    只做簿记，不改行为；会话结束还原 __init__。
+    """
+    original_init = VectorStore.__init__
+
+    def tracked_init(self, *args, **kwargs):
+        try:
+            original_init(self, *args, **kwargs)
+        finally:
+            _vector_store_instances.append(self)  # 含 __init__ 中途 raise 的部分实例
+
+    VectorStore.__init__ = tracked_init
+    try:
+        yield
+    finally:
+        VectorStore.__init__ = original_init
+
+
+@pytest.fixture(autouse=True)
+def _reset_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """每个测试【前】清空全部业务数据 + 重置单例 + patch 假嵌入。
+
+    不关闭共享 SQLite 连接（保持 WAL + foreign_keys 配置），仅清数据保 schema。
+    """
+    # 1. SQLite：清空全部业务表（缺失表静默跳过）
     conn = get_shared_conn()
-    yield
-    for table in ("question_topics", "topics", "questions", "files"):
+    for table in _BUSINESS_TABLES:
         try:
             conn.execute(f"DELETE FROM {table}")
         except sqlite3.OperationalError:
-            pass  # 表尚未创建（仅测另一张表时）
+            pass  # 表尚未创建
     conn.commit()
 
+    # 2. Chroma：先关闭全部残留 client（GC 不释放 chroma 的 sqlite 文件锁，必须显式
+    #    close()），再整体清空目录重建 —— 规避 chroma 1.5.9 删同名 collection 的
+    #    segment 元数据残留 bug（count=0 但新 doc 合并旧字段）
+    _close_tracked_chroma_clients()
+    _wipe_chroma_dir()
 
-@pytest.fixture(autouse=True, scope="session")
-def _reset_singletons():
-    """Session 结束前清理单例 + schema 初始化标志。"""
-    yield
-    global _files_db, _questions_db, _topics_db, _question_topics_db
-    _files_db = None  # type: ignore[misc]
-    _questions_db = None  # type: ignore[misc]
-    _topics_db = None  # type: ignore[misc]
-    _question_topics_db = None  # type: ignore[misc]
-    _files_schema_flag.clear()
-    _questions_schema_flag.clear()
-    _topics_schema_flag.clear()
-    _qt_schema_flag.clear()
+    # 3. 重置全部单例 + schema 初始化标志（保证下次构造基于干净状态）
+    _files_mod._files_db = None
+    _files_mod._schema_initialized.clear()
+    _questions_mod._questions_db = None
+    _questions_mod._schema_initialized.clear()
+    _topics_mod._topics_db = None
+    _topics_mod._schema_initialized.clear()
+    _qt_mod._question_topics_db = None
+    _qt_mod._schema_initialized.clear()
+    _vector_store_mod._instance = None
+    _knowledge_mod._instance = None
+    _file_store_mod._file_store = None
+
+    # 4. FileStore：清空 5 个子目录下的文件（保留目录本身）
+    _clear_file_store_subdirs()
+
+    # 5. patch 假嵌入：任何无参 get_vector_store() 构造都用 FakeEmbeddings，不真调 API
+    monkeypatch.setattr(
+        "src.store.vector.vector_store.get_embedding_model",
+        lambda: FakeEmbeddings(config.embedding.dimension),
+    )
+
+
+# ── 公共 fixtures ──────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def files_db():
+    """``files`` 表单例（连接统一走共享 SQLite）。"""
+    return _files_mod.get_files_db()
+
+
+@pytest.fixture()
+def questions_db():
+    """``questions`` 表单例（连接统一走共享 SQLite）。"""
+    return _questions_mod.get_questions_db()
+
+
+@pytest.fixture()
+def topics_db():
+    """``topics`` 表单例（连接统一走共享 SQLite）。"""
+    return _topics_mod.get_topics_db()
+
+
+@pytest.fixture()
+def question_topics_db():
+    """``question_topics`` 表单例（连接统一走共享 SQLite）。"""
+    return _qt_mod.get_question_topics_db()
+
+
+@pytest.fixture()
+def file_store() -> FileStore:
+    """FileStore 实例（config 真实目录，conftest 每测试前清空）。"""
+    return FileStore()
+
+
+@pytest.fixture(scope="session")
+def fake_embeddings() -> FakeEmbeddings:
+    """共享假嵌入实例（无状态，维度 = config.embedding.dimension）。"""
+    return FakeEmbeddings()
+
+
+@pytest.fixture()
+def vector_store() -> VectorStore:
+    """VectorStore 实例（config 目录持久化 + FakeEmbeddings）。
+
+    同时写入 ``_instance``，使测试内 ``get_vector_store()`` 复用同一实例。
+    """
+    vs = VectorStore(
+        collection_name=config.store.collection_name,
+        persist_dir=config.store.chroma_dir,
+        expected_dim=config.embedding.dimension,
+        embedding_function=FakeEmbeddings(config.embedding.dimension),
+    )
+    _vector_store_mod._instance = vs
+    return vs

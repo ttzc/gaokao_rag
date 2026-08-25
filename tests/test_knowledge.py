@@ -7,40 +7,29 @@
 - metadata. 前缀正确去除
 - build_search_extra_params 返回格式
 - search 把 where 透传给 vectorstore.asearch（mock 验证）
-- 真实集成测试（FakeEmbeddings + tmp_path Chroma）
+- 真实集成测试（FakeEmbeddings + 真实 Chroma）
+
+依赖 conftest._reset_state（每测试前清空全部 Chroma collection + 重置单例 + patch 假嵌入），
+测试之间无顺序依赖。集成测试用 config 真实路径（data/chroma_db），单例由 conftest 复位。
 """
 
 from __future__ import annotations
 
 import pytest
 from langchain_core.documents import Document
-from langchain_core.embeddings import Embeddings
 from langchain_core.messages import HumanMessage
 from unittest.mock import AsyncMock, patch
 
+from conftest import FakeEmbeddings
 from trpc_agent_sdk.context import create_agent_context
 from trpc_agent_sdk.knowledge import SearchDocument, SearchParams, SearchRequest, SearchResult
 from trpc_agent_sdk.knowledge._filter_expr import KnowledgeFilterExpr
 from trpc_agent_sdk.server.knowledge.langchain_knowledge import LangchainKnowledge
 from trpc_agent_sdk.types import Part
 
+from src.config import config
 from src.store.vector.vector_store import VectorStore
 from src.store.vector.knowledge import GaokaoKnowledge, get_knowledge
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# FakeEmbeddings — 定长 1024 维，不真调 API
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class FakeEmbeddings(Embeddings):
-    """测试用假嵌入模型，返回固定 1024 维向量。"""
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [[0.1] * 1024 for _ in texts]
-
-    def embed_query(self, text: str) -> list[float]:
-        return [0.1] * 1024
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -49,16 +38,7 @@ class FakeEmbeddings(Embeddings):
 
 
 @pytest.fixture()
-def _reset_knowledge_singleton():
-    """每个测试前后重置 GaokaoKnowledge 单例，保证隔离。"""
-    import src.store.vector.knowledge as knowledge_module
-    knowledge_module._instance = None
-    yield
-    knowledge_module._instance = None
-
-
-@pytest.fixture()
-def mock_vs(tmp_path):
+def mock_vs():
     """Mock 底层 vectorstore（asearch 异步返回空列表）。"""
     mock_vectorstore = AsyncMock()
     mock_vectorstore.asearch.return_value = []
@@ -67,7 +47,7 @@ def mock_vs(tmp_path):
 
 
 @pytest.fixture()
-def knowledge(tmp_path, mock_vs, _reset_knowledge_singleton):
+def knowledge(mock_vs):
     """GaokaoKnowledge 实例，embedder + vectorstore 均 mock。"""
     with patch("src.store.vector.knowledge.get_embedding_model") as mock_emb, \
          patch("src.store.vector.knowledge.get_vector_store") as mock_vs_store:
@@ -462,12 +442,12 @@ class TestSearchPassesWhere:
 
 class TestSingletonFactory:
 
-    def test_get_knowledge_returns_instance(self, _reset_knowledge_singleton):
+    def test_get_knowledge_returns_instance(self):
         """get_knowledge() 返回 GaokaoKnowledge 实例。"""
         knowledge = get_knowledge()
         assert isinstance(knowledge, GaokaoKnowledge)
 
-    def test_get_knowledge_is_same_instance(self, _reset_knowledge_singleton):
+    def test_get_knowledge_is_same_instance(self):
         """多次调用返回同一实例。"""
         k1 = get_knowledge()
         k2 = get_knowledge()
@@ -475,23 +455,21 @@ class TestSingletonFactory:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 真实集成测试（FakeEmbeddings + tmp_path）
+# 真实集成测试（FakeEmbeddings + 真实 Chroma）
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
 class TestIntegration:
 
     @pytest.fixture()
-    def real_knowledge(self, tmp_path, _reset_knowledge_singleton):
-        """使用真实 Chroma + FakeEmbeddings 的 GaokaoKnowledge。"""
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
+    def real_knowledge(self):
+        """使用真实 Chroma（config 目录）+ FakeEmbeddings 的 GaokaoKnowledge。"""
         fake_emb = FakeEmbeddings()
 
         vector_store = VectorStore(
             collection_name="gaokao_test",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
             embedding_function=fake_emb,
         )
 

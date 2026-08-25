@@ -1,29 +1,22 @@
-"""QuestionTopicsDB 测试：覆盖 add / add_many / 查询 / 聚合 / 删除 / 与 questions/topics 联动。"""
+"""QuestionTopicsDB 测试：覆盖 add / add_many / 查询 / 聚合 / 删除 / 与 questions/topics 联动。
+
+依赖 conftest._reset_state（每测试前清空业务表 + 重置单例），测试之间无顺序依赖。
+"""
 
 from __future__ import annotations
 
-import sqlite3
-
 import pytest
 
-from src.store.db.questions import QuestionsDB, get_questions_db
+from src.store.db.questions import get_questions_db
 from src.store.db.question_topics import QuestionTopicsDB, get_question_topics_db
-from src.store.db.topics import TopicsDB, get_topics_db
+from src.store.db.topics import get_topics_db
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
 
 @pytest.fixture()
 def db() -> QuestionTopicsDB:
-    """QuestionTopicsDB 实例（共享连接，每个测试独立数据）。"""
-    import src.store.db.question_topics as qt_mod
-    import src.store.db.topics as t_mod
-    import src.store.db.questions as q_mod
-    import src.store.db.files as f_mod
-    qt_mod._question_topics_db = None
-    t_mod._topics_db = None
-    q_mod._questions_db = None
-    f_mod._files_db = None
+    """QuestionTopicsDB 实例（共享连接，数据由 conftest 每测试前清空）。"""
     return get_question_topics_db()
 
 
@@ -441,23 +434,13 @@ class TestCrossTable:
 class TestSingleton:
 
     def test_get_question_topics_db_returns_instance(self):
-        import src.store.db.question_topics as qt_mod
-        qt_mod._question_topics_db = None
-        try:
-            db = get_question_topics_db()
-            assert isinstance(db, QuestionTopicsDB)
-        finally:
-            qt_mod._question_topics_db = None
+        db = get_question_topics_db()
+        assert isinstance(db, QuestionTopicsDB)
 
     def test_get_question_topics_db_is_same_instance(self):
-        import src.store.db.question_topics as qt_mod
-        qt_mod._question_topics_db = None
-        try:
-            db1 = get_question_topics_db()
-            db2 = get_question_topics_db()
-            assert db1 is db2
-        finally:
-            qt_mod._question_topics_db = None
+        db1 = get_question_topics_db()
+        db2 = get_question_topics_db()
+        assert db1 is db2
 
 
 # ── 直接使用 ────────────────────────────────────────────────────────

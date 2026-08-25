@@ -1,10 +1,12 @@
-"""FilesDB 测试：覆盖注册去重、CRUD、sha256 校验、kind 过滤。"""
+"""FilesDB 测试：覆盖注册去重、CRUD、sha256 校验、kind 过滤。
+
+依赖 conftest._reset_state（每测试前清空业务表 + 重置单例），测试之间无顺序依赖。
+"""
 
 from pathlib import Path
 
 import pytest
 
-from src.store.db import close_shared_conn
 from src.store.db.files import FilesDB, get_files_db
 
 
@@ -12,7 +14,7 @@ from src.store.db.files import FilesDB, get_files_db
 
 @pytest.fixture()
 def db() -> FilesDB:
-    """FilesDB 实例（共享连接，每个测试独立数据）。"""
+    """FilesDB 实例（共享连接，数据由 conftest 每测试前清空）。"""
     return get_files_db()
 
 
@@ -403,12 +405,5 @@ class TestDirectUsage:
 class TestSingleton:
 
     def test_get_files_db_returns_instance(self):
-        from src.store.db.files import get_files_db, _files_db
-        # 重置单例（测试隔离）
-        import src.store.db.files as files_mod
-        files_mod._files_db = None
-        try:
-            db = get_files_db()
-            assert isinstance(db, FilesDB)
-        finally:
-            files_mod._files_db = None
+        db = get_files_db()
+        assert isinstance(db, FilesDB)

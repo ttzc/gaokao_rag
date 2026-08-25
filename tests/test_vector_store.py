@@ -11,6 +11,9 @@
 - 维度防呆：初始化时若现有向量维度 != expected_dim，raise RuntimeError
 - metadata 完整保留（含数组字段 exam_regions / topic_tags）
 - 边界：空列表、空 collection、missing doc_id
+
+依赖 conftest._reset_state（每测试前清空全部 Chroma collection + 重置单例 + patch 假嵌入），
+测试之间无顺序依赖。测试直接使用 config 真实路径（data/chroma_db）。
 """
 
 from __future__ import annotations
@@ -18,45 +21,10 @@ from __future__ import annotations
 import pytest
 
 from langchain_core.documents import Document
-from langchain_core.embeddings import Embeddings
 
+from conftest import FakeEmbeddings
+from src.config import config
 from src.store.vector.vector_store import VectorStore, get_vector_store
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# FakeEmbeddings — 定长 1024 维，不真调 API
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class FakeEmbeddings(Embeddings):
-    """测试用假嵌入模型，返回固定 1024 维向量。"""
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [[0.1] * 1024 for _ in texts]
-
-    def embed_query(self, text: str) -> list[float]:
-        return [0.1] * 1024
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-@pytest.fixture()
-def vector_store(tmp_path):
-    """VectorStore 实例（tmp_path 持久化 + FakeEmbeddings）。
-
-    每个测试获得独立的 Chroma 目录，保证数据隔离。
-    """
-    store_dir = tmp_path / "chroma_db"
-    store_dir.mkdir()
-    return VectorStore(
-        collection_name="gaokao",
-        persist_dir=str(store_dir),
-        expected_dim=1024,
-        embedding_function=FakeEmbeddings(),
-    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -75,26 +43,22 @@ class TestInit:
     def test_empty_collection_get_returns_none(self, vector_store: VectorStore):
         assert vector_store.get("q_1") is None
 
-    def test_collection_name_persisted(self, tmp_path):
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
+    def test_collection_name_persisted(self):
         vs = VectorStore(
             collection_name="my_collection",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
             embedding_function=FakeEmbeddings(),
         )
         assert vs._collection_name == "my_collection"
 
-    def test_dimension_guard_passes_on_empty_collection(self, tmp_path):
+    def test_dimension_guard_passes_on_empty_collection(self):
         """空 collection 不触发维度检查。"""
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
         # 不报错即通过
         vs = VectorStore(
             collection_name="gaokao",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
             embedding_function=FakeEmbeddings(),
         )
         assert vs.count() == 0
@@ -270,16 +234,13 @@ class TestUpsertMany:
 class TestUpsertDocument:
     """测试 Document 对象直接传入接口。"""
 
-    def test_upsert_document_single(self, tmp_path):
+    def test_upsert_document_single(self):
         """单个 Document 可 upsert，随后 search 能命中。"""
-        fake_embedding = FakeEmbeddings()
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
         vs = VectorStore(
             collection_name="test_doc",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
-            embedding_function=fake_embedding,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
+            embedding_function=FakeEmbeddings(),
         )
         doc = Document(page_content="椭圆离心率", metadata={"doc_id": "q_1", "subject": "数学"})
         vs.upsert_document(doc)
@@ -287,16 +248,13 @@ class TestUpsertDocument:
         assert len(results) == 1
         assert results[0][0].page_content == "椭圆离心率"
 
-    def test_upsert_documents_batch(self, tmp_path):
+    def test_upsert_documents_batch(self):
         """批量 Document 可 upsert，count 正确。"""
-        fake_embedding = FakeEmbeddings()
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
         vs = VectorStore(
             collection_name="test_doc_batch",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
-            embedding_function=fake_embedding,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
+            embedding_function=FakeEmbeddings(),
         )
         docs = [
             Document(page_content="题1", metadata={"doc_id": "q_1"}),
@@ -305,16 +263,13 @@ class TestUpsertDocument:
         vs.upsert_documents(docs)
         assert vs.count() == 2
 
-    def test_upsert_many_accepts_documents(self, tmp_path):
+    def test_upsert_many_accepts_documents(self):
         """upsert_many 同时支持 list[dict] 和 list[Document]。"""
-        fake_embedding = FakeEmbeddings()
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
         vs = VectorStore(
             collection_name="test_mixed",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
-            embedding_function=fake_embedding,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
+            embedding_function=FakeEmbeddings(),
         )
         # Document 输入
         vs.upsert_many([Document(page_content="doc", metadata={"doc_id": "q_d"})])
@@ -322,31 +277,25 @@ class TestUpsertDocument:
         vs.upsert_many([{"doc_id": "q_e", "text": "entry", "metadata": {}}])
         assert vs.count() == 2
 
-    def test_upsert_document_missing_doc_id_raises(self, tmp_path):
+    def test_upsert_document_missing_doc_id_raises(self):
         """Document 缺少 doc_id 时 raise ValueError。"""
-        fake_embedding = FakeEmbeddings()
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
         vs = VectorStore(
             collection_name="test_no_id",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
-            embedding_function=fake_embedding,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
+            embedding_function=FakeEmbeddings(),
         )
         doc = Document(page_content="no id", metadata={"subject": "数学"})
         with pytest.raises(ValueError, match="doc_id"):
             vs.upsert_document(doc)
 
-    def test_upsert_document_does_not_mutate_metadata(self, tmp_path):
+    def test_upsert_document_does_not_mutate_metadata(self):
         """upsert_document 不应修改传入 Document 的 metadata。"""
-        fake_embedding = FakeEmbeddings()
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
         vs = VectorStore(
             collection_name="test_no_mutate",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
-            embedding_function=fake_embedding,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
+            embedding_function=FakeEmbeddings(),
         )
         meta = {"doc_id": "q_1", "tags": ["椭圆"]}
         doc = Document(page_content="text", metadata=meta)
@@ -584,16 +533,13 @@ class TestCount:
 
 class TestDimensionGuard:
 
-    def test_dimension_mismatch_raises(self, tmp_path):
+    def test_dimension_mismatch_raises(self):
         """collection 已有向量但维度 != expected_dim 时 raise RuntimeError。"""
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
-
         # 第一实例：写入 1024 维向量
         store1 = VectorStore(
             collection_name="gaokao_dim_test",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
             embedding_function=FakeEmbeddings(),
         )
         store1.upsert("q_1", "题目内容", {"subject": "数学"})
@@ -605,20 +551,17 @@ class TestDimensionGuard:
         with pytest.raises(RuntimeError, match="维度.*不一致"):
             VectorStore(
                 collection_name="gaokao_dim_test",
-                persist_dir=str(store_dir),
+                persist_dir=config.store.chroma_dir,
                 expected_dim=512,
                 embedding_function=FakeEmbeddings(),
             )
 
-    def test_dimension_match_passes(self, tmp_path):
+    def test_dimension_match_passes(self):
         """维度一致时不报错。"""
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
-
         store1 = VectorStore(
             collection_name="gaokao_dim_ok",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
             embedding_function=FakeEmbeddings(),
         )
         store1.upsert("q_1", "题目", {"subject": "数学"})
@@ -627,21 +570,18 @@ class TestDimensionGuard:
         # 同维度重建 → 不报错
         store2 = VectorStore(
             collection_name="gaokao_dim_ok",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
             embedding_function=FakeEmbeddings(),
         )
         assert store2.count() == 1
 
-    def test_dimension_error_message_content(self, tmp_path):
+    def test_dimension_error_message_content(self):
         """RuntimeError 信息包含 collection 名和实际/期望维度。"""
-        store_dir = tmp_path / "chroma_db"
-        store_dir.mkdir()
-
         store1 = VectorStore(
             collection_name="my_collection",
-            persist_dir=str(store_dir),
-            expected_dim=1024,
+            persist_dir=config.store.chroma_dir,
+            expected_dim=config.embedding.dimension,
             embedding_function=FakeEmbeddings(),
         )
         store1.upsert("q_1", "题", {"subject": "数学"})
@@ -650,7 +590,7 @@ class TestDimensionGuard:
         with pytest.raises(RuntimeError, match="my_collection") as exc_info:
             VectorStore(
                 collection_name="my_collection",
-                persist_dir=str(store_dir),
+                persist_dir=config.store.chroma_dir,
                 expected_dim=512,
                 embedding_function=FakeEmbeddings(),
             )
@@ -667,26 +607,14 @@ class TestSingletonFactory:
 
     def test_get_vector_store_returns_instance(self):
         """get_vector_store() 返回 VectorStore 实例。"""
-        import src.store.vector.vector_store as vs_module
-
-        vs_module._instance = None
-        try:
-            vs = get_vector_store()
-            assert isinstance(vs, VectorStore)
-        finally:
-            vs_module._instance = None
+        vs = get_vector_store()
+        assert isinstance(vs, VectorStore)
 
     def test_get_vector_store_is_same_instance(self):
         """多次调用返回同一实例。"""
-        import src.store.vector.vector_store as vs_module
-
-        vs_module._instance = None
-        try:
-            vs1 = get_vector_store()
-            vs2 = get_vector_store()
-            assert vs1 is vs2
-        finally:
-            vs_module._instance = None
+        vs1 = get_vector_store()
+        vs2 = get_vector_store()
+        assert vs1 is vs2
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
