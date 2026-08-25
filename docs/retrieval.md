@@ -35,4 +35,4 @@
 ## 与 ingestion 的边界
 
 - 写入永远走 `ingestion`；本包只 `import` store 的**查询**能力。
-- Agent 的 tool（见 [Agent 设计](agent.md)）只调用本包与 `ingestion` 的函数，不得在 tool 内直接 `import src.store.*`。
+- Agent 的 tool（见 [Agent 编排设计](agent/README.md)）只调用本包与 `ingestion` 的函数，不得在 tool 内直接 `import src.store.*`。

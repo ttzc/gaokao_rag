@@ -57,7 +57,7 @@ flowchart TD
 
 ## 常见操作
 
-- 生成：REPORT_GEN 节点（见 `docs/agent.md`）——窗口计算 → 双源聚合 → 对比上周期 → LLM 建议 → 落库
+- 生成：REPORT_GEN 节点（见 `docs/agent/graph_fallback.md`）——窗口计算 → 双源聚合 → 对比上周期 → LLM 建议 → 落库
 - 查询：`WHERE user_id = ? AND period_type = ? AND period_end = ?`（幂等命中）
 - 重生成：同周期覆盖（先查后写，UNIQUE 冲突时 UPDATE）
 

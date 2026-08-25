@@ -113,4 +113,4 @@ def resolve(disk_path: str) -> Path:
 - 表结构：[db/questions.md](../db/questions.md)（`file_id` / `image_file_ids` / `content_text`）
 - 中间产物：[processed.md](processed.md)（`data/files/processed/`，可重建）
 - 配置：[config.toml `[store]` 段](../../../config.toml)（`data_dir`，子目录自动派生）
-- 摄入管线：PDF/图片 → 本层落盘 → files 注册 → 下游提取（见 `docs/ingestion.md`）
+- 摄入管线：PDF/图片 → 本层落盘 → files 注册 → 下游提取（见 `docs/ingestion/README.md`）

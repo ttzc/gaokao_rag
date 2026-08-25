@@ -57,7 +57,7 @@ flowchart TD
 
 ## TeamAgent 编排设计
 
-核心是一个 **TeamAgent**：Leader 自由委派任务给查询侧 + 摄入侧两组专业子 Agent（详见 [Agent 设计](agent.md)）。
+核心是一个 **TeamAgent**：Leader 自由委派任务给查询侧 + 摄入侧两组专业子 Agent（详见 [Agent 编排设计](agent/README.md)）。
 
 ### 系统总览（三层结构）
 

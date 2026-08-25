@@ -178,7 +178,7 @@
 - `CLAUDE.md`（分工边界 + 技术栈 + 决策记录——和 Claude Code 协作前必读）
 - `docs/architecture.md`（系统架构）
 - `docs/data_model.md`（存储与知识点树）
-- `docs/agent.md`（TeamAgent 子 Agent 编排）
+- `docs/agent/README.md`（TeamAgent 子 Agent 编排）
 - `docs/roadmap.md`（版本路线 V0.1 → V1.0）
 
 **独立可用的学习资源（现在就有的）**：

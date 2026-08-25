@@ -64,4 +64,4 @@ flowchart LR
 
 - 原始文件：[files/raw.md](raw.md)（raw 目录与 files 表设计）
 - 文件注册表：[db/files.md](../db/files.md)
-- 摄入管线：processed 是管线的中间产物（见 `docs/ingestion.md`）
+- 摄入管线：processed 是管线的中间产物（见 `docs/ingestion/README.md`）

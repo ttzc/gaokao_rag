@@ -1,0 +1,79 @@
+# Team Leader 编排（src/agent/leader.py）
+
+> 对应代码：`src/agent/leader.py`。本文档描述 Leader 的委派策略、实现要点与实测验证结论。
+
+## 定位
+
+Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给查询侧 5 个 / 摄入侧 4 个子 Agent，再综合成员结果输出最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。
+
+## 委派策略（Leader 自由决定）
+
+Leader 根据用户请求内容，自主决定：
+
+- **调谁**：题目查询 → 意图+搜索+(VLM)+输出；周报 → 意图+聚合+输出；复习 → 意图+聚合+搜索+输出；**发题入库 → 意图+文档识别+结构识别+(知识整理)+入库决策**
+- **调几个**：简单问题可只走 1-2 个成员；复杂问题多成员协作
+- **什么顺序**：无固定模板，Leader 动态编排
+
+**示例**：
+
+- "椭圆离心率最值怎么求" → Leader 委派：意图识别 → 搜索信息 →（检测到图）VLM 理解 → 输出整理
+- "生成周报" → Leader 委派：意图识别 → 聚合数据 → 输出整理
+- "我的薄弱知识点" → Leader 委派：意图识别 → 聚合数据 →（找推荐题）搜索信息 → 输出整理
+- "帮我存这道题/这道题我不会" → Leader 委派：意图识别（ingest）→ 文档识别 → 结构识别 → 回显清单 → 入库决策 → 输出整理
+
+## 实现要点
+
+```python
+from trpc_agent_sdk.teams import TeamAgent
+from trpc_agent_sdk.agents import LlmAgent
+
+# 查询侧：5 个专业子 Agent
+intent_agent = LlmAgent(name="intent", model=model, instruction=INTENT_PROMPT)
+search_agent = LlmAgent(name="search", model=model, tools=[KnowledgeSearchTool()], ...)
+vlm_agent = LlmAgent(name="vlm", model=model, tools=[VLMUnderstandTool()], ...)
+aggregate_agent = LlmAgent(name="aggregate", model=model, tools=[ErrorStatsTool()], ...)
+format_agent = LlmAgent(name="format", model=model, instruction=FORMAT_PROMPT)
+
+# 摄入侧：4 个专业子 Agent
+doc_agent = LlmAgent(name="doc_ingest", model=model, tools=[PDFExtractTool(), VLMImageTool()], ...)
+struct_agent = LlmAgent(name="struct", model=model, instruction=STRUCT_PROMPT)
+knowledge_agent = LlmAgent(name="knowledge_mgr", model=model, tools=[TopicWriteTool()], ...)
+store_agent = LlmAgent(name="store", model=model, tools=[QuestionWriteTool(), ErrorWriteTool()], ...)
+
+# Team Leader 自由委派（查询 + 摄入共用）
+gaokao_team = TeamAgent(
+    name="gaokao_team",
+    leader=LlmAgent(model=model, instruction=LEADER_PROMPT),
+    members=[intent_agent, search_agent, vlm_agent, aggregate_agent, format_agent,
+             doc_agent, struct_agent, knowledge_agent, store_agent],
+)
+```
+
+## 实现注意事项
+
+1. **Leader 委派机制依赖 tRPC-Agent 的 TeamAgent 原生能力**：`trpc_agent_sdk.teams.TeamAgent` 的 leader 自动具备自由委派能力，不需要手写路由逻辑
+2. **子 Agent 间通过 TeamAgent 内部消息传递共享结果**：每个子 Agent 的返回值自动汇入 Leader 的上下文，Leader 综合后决定下一步委派
+3. **State 设计沿用 `GaokaoState`**：字段不变（subject / query_type / retrieved_docs / vlm_descriptions / answer / review_suggestion + 摄入侧契约字段 raw_blocks / pending_questions / lecture_segments / topic_draft / ingest_results / ingest_decisions），reducer 字段 `execution_history` 记录子 Agent 委派链
+4. **GraphAgent 保留为备用**：若 TeamAgent 在 tRPC-Agent 当前版本中不可用，退回 GraphAgent 条件路由方案（见 [graph_fallback.md](graph_fallback.md)）
+5. **子 Agent 的 tools 是 FunctionTool**：VLM、知识点查询、错题统计等业务工具以 FunctionTool 形式挂到对应子 Agent，不走 MCP（MCP 仅对外暴露接口）
+6. **分层边界**：子 Agent 只调 `src/ingestion`（写）/ `src/retrieval`（读）门面暴露的函数，严禁 `import src.store.*`（见 [architecture.md](../architecture.md)）
+
+## 实测验证（2026-08-12，基于官方 `examples/team` + DeepSeek V4-Flash）
+
+官方 team 示例（Leader + researcher/writer 协作）跑通，验证了 TeamAgent 三个关键能力：
+
+| 验证项 | 观察结果 | 对设计的影响 |
+|--------|---------|-------------|
+| **Leader 自由委派** | Leader 自主决定"先取日期 → 派 researcher → 派 writer"，`delegate_to_member` 动态调用 | ✅ 主架构成立，"自由委派"是 Leader 自我状态检查 + 指令遵守 + 历史记忆的结合 |
+| **多轮上下文记忆** | Turn 2 记得"上轮任务已完成/派过谁/日期已取过"（share_team_history 生效） | ✅ 学生追问"第二问呢"时 Leader 能记住题目上下文 |
+| **指令约束执行** | Leader 引用 instruction 的 "delegate once per user request" 并遵守 | ✅ **Leader prompt 里的约束会被可靠执行** |
+
+**Leader prompt 设计要点（实测得出的 3 条铁律）**：
+
+1. **必须写清"任务完成的判断标准"**——实测 Leader 每一步会检查"还差什么"（"task is NOT finished, I need to..."）。不写清完成标准，Leader 可能提前收工或无限续派。示例："题目查询必须在给出带溯源的完整解题步骤后结束"
+2. **必须写清"每个意图的成员调用上限"**——实测 Leader 会引用并遵守 "delegate to researcher only once"。示例："周报生成只派聚合+输出，不派 VLM；每个成员最多调用一次"
+3. **子 Agent 的 prompt 必须自洽**——实测 researcher 的 instruction 写了 "keep reply within 50 characters"，与任务要求"详细总结"冲突，Agent 花大量推理纠结矛盾。**不要给子 Agent 互相矛盾的要求**
+
+## 可观测性（Langfuse，V0.5 接入）
+
+框架内置 OpenTelemetry（`invocation` span → `agent_run` / `call_llm` / `execute_tool` 子 span），官方提供 `server/langfuse/` 模块可对接 **Langfuse（LangSmith 的开源替代品，可自托管）**。V0.5 接入——TeamAgent 多 Agent 委派链用终端事件流看不清楚，Langfuse 的 trace 视图是调试刚需；自托管保证学生数据不出服务器。

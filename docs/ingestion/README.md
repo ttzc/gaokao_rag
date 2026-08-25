@@ -41,7 +41,7 @@ flowchart TD
 - LLM 需要判断一切：输入格式整理、内容三分、图像理解、知识点提取、回显策略
 - 固定流程无法覆盖这些灵活决策，应该由 Agent 自主编排
 
-摄入侧 4 个子 Agent 的职责与工具，见 [Agent 编排设计](agent.md)「摄入侧（写）」章节。
+摄入侧 4 个子 Agent 的职责与工具，见 [Agent 编排设计](../agent/README.md)「摄入侧（写）」章节。
 
 ---
 
@@ -104,7 +104,7 @@ flowchart TD
 
 **职责**：对题目进行知识点标注，与 `topics` 表交互实现 tag 归位。
 
-**挂载工具**（见 [agent.md](agent.md)「知识整理 Agent 详解」）：
+**挂载工具**（见 [agent/knowledge_organize.md](../agent/ingestion/knowledge_organize.md)「知识整理 Agent 详解」）：
 - `search_topic(keyword)`：按名字/别名模糊查节点
 - `create_topic(name, aliases=[])`：新增 tag
 - `add_alias(topic_id, alias)`：同义表述归并

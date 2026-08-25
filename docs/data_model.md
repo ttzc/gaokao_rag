@@ -98,7 +98,7 @@ Schema 设计见 [store/db/exam_attempts.md](store/db/exam_attempts.md)
 
 支撑「周报 / 月报」功能。报告生成后落库，可回溯、可对比、可缓存（同一周期不重复生成）：
 
-**生成流程**（详见 [Agent 设计](agent.md) 的 REPORT_GEN 节点）：
+**生成流程**（详见 [Agent 编排设计](agent/graph_fallback.md) 的 REPORT_GEN 节点）：
 
 ```mermaid
 flowchart TD

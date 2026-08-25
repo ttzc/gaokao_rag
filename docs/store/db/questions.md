@@ -58,4 +58,4 @@ flowchart LR
     QT --> T[topics]
 ```
 
-> 摄入链路：结构识别 Agent 出题目清单 → 回显确认 → 入库决策 Agent 写本表 + 关联 + Chroma（见 `docs/agent.md` 摄入侧设计）。
+> 摄入链路：结构识别 Agent 出题目清单 → 回显确认 → 入库决策 Agent 写本表 + 关联 + Chroma（见 `docs/agent/ingestion/storage_decision.md` 摄入侧设计）。

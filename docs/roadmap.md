@@ -25,7 +25,7 @@ flowchart LR
 - [ ] `pip install trpc-agent-py`
 - [ ] 配置 LLM API Key（DeepSeek 官方）+ VLM API Key（Qwen DashScope）——通过 `.env` 设置 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY`，`config.toml` 用 `${VAR}` 引用
 - [ ] 运行 tRPC-Agent 官方 quickstart 示例，验证模型调用
-- [ ] **验证 TeamAgent 可用性**（`trpc_agent_sdk.teams` 的 Leader 委派 API；若当前版本不可用，退回 GraphAgent——见 [Agent 设计](agent.md)）
+- [ ] **验证 TeamAgent 可用性**（`trpc_agent_sdk.teams` 的 Leader 委派 API；若当前版本不可用，退回 GraphAgent——见 [Agent 编排设计](agent/graph_fallback.md)）
 - [ ] **核对文档 vs 源码 API 清单**（Quickstart 跑通后，对照各文档的 API 假设：OpenAIModel 三件套、`AgenticLangchainKnowledgeSearchTool`、nanobot `channels.qq`；发现对不上则改文档不改代码）
 - [ ] 验证 Qwen3.7 多模态调用（OpenAI 协议图片输入）
 - [ ] 验证 Chroma + qwen3.7-text-embedding 嵌入链路（含 dimensions=1024 冒烟测试）
@@ -63,7 +63,7 @@ flowchart LR
 
 ## V0.3: 摄取管线（2 周）
 
-**目标**：任意文档 → 结构化题目 + 知识点 + 向量（统一摄入范式，见 [摄取管线](ingestion.md)）。
+**目标**：任意文档 → 结构化题目 + 知识点 + 向量（统一摄入范式，见 [摄取管线](ingestion/README.md)）。
 
 ### 任务
 
@@ -114,12 +114,12 @@ flowchart LR
 ### 任务
 
 - [ ] 集成 `LangchainKnowledge` + `AgenticLangchainKnowledgeSearchTool`
-- [ ] TeamAgent：Leader + **查询侧 5 个**（意图/搜索/VLM/聚合/输出）子 Agent 协作（Leader prompt 按 [Agent 设计](agent.md) 三条铁律：完成标准/调用上限/prompt 自洽）
-- [ ] **摄入侧 Agent**：文档识别/结构识别/知识整理/入库决策 4 个成员 + ingest 意图（学生 QQ 发照片 → 识别 → 回显 → 确认入库，见 [Agent 设计](agent.md)）
+- [ ] TeamAgent：Leader + **查询侧 5 个**（意图/搜索/VLM/聚合/输出）子 Agent 协作（Leader prompt 按 [Agent 编排设计](agent/leader.md) 三条铁律：完成标准/调用上限/prompt 自洽）
+- [ ] **摄入侧 Agent**：文档识别/结构识别/知识整理/入库决策 4 个成员 + ingest 意图（学生 QQ 发照片 → 识别 → 回显 → 确认入库，见 [Agent 编排设计](agent/README.md)）
 - [ ] VLM 条件触发节点
 - [ ] 答案生成带溯源（引用"2026南昌一模 第15题"）
 - [ ] 复习建议节点（基于错题统计）
-- [ ] **周报/月报节点**：`periodic_reports` 表 + 周期聚合 + LLM 针对性练习建议（见 [Agent 设计](agent.md) REPORT_GEN 节点）
+- [ ] **周报/月报节点**：`periodic_reports` 表 + 周期聚合 + LLM 针对性练习建议（见 [Agent 编排设计](agent/graph_fallback.md) REPORT_GEN 节点）
 - [ ] Session 接入：`SqlSessionService`（SQLite，持久化会话 + 多轮追问上下文）
 - [ ] **可观测性：接入 Langfuse**（框架内置 OpenTelemetry + `server/langfuse/` 模块；自托管，学生数据不出服务器；多 Agent 委派链调试刚需）
 - [ ] Prompt 优化（数学语境约束；输出整理 Agent 剥离 thought 思考痕迹）
