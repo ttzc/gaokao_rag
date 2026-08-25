@@ -25,7 +25,7 @@ flowchart LR
 - [ ] `pip install trpc-agent-py`
 - [ ] 配置 LLM API Key（DeepSeek 官方）+ VLM API Key（Qwen DashScope）——通过 `.env` 设置 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY`，`config.toml` 用 `${VAR}` 引用
 - [ ] 运行 tRPC-Agent 官方 quickstart 示例，验证模型调用
-- [ ] **验证 TeamAgent 可用性**（`trpc_agent_sdk.teams` 的 Leader 委派 API；若当前版本不可用，退回 GraphAgent——见 [Agent 编排设计](agent/graph_fallback.md)）
+- [x] **验证 TeamAgent 可用性**：trpc-agent 源码确认 `trpc_agent_sdk.teams` 的 Leader 委派 API 可用，2026-08-12 官方 examples/team 实测跑通——无备用方案（见 [Agent 编排设计](agent/leader.md) 实测验证）
 - [ ] **核对文档 vs 源码 API 清单**（Quickstart 跑通后，对照各文档的 API 假设：OpenAIModel 三件套、`AgenticLangchainKnowledgeSearchTool`、nanobot `channels.qq`；发现对不上则改文档不改代码）
 - [ ] 验证 Qwen3.7 多模态调用（OpenAI 协议图片输入）
 - [ ] 验证 Chroma + qwen3.7-text-embedding 嵌入链路（含 dimensions=1024 冒烟测试）
@@ -34,7 +34,7 @@ flowchart LR
 ### 验收标准
 
 - [ ] 本地能跑通一个"问天气"式的 LlmAgent
-- [ ] **TeamAgent 可用性结论明确**：Leader 委派跑通，或确认退回 GraphAgent 方案
+- [x] **TeamAgent 可用性结论明确**：Leader 委派跑通（源码 + 实测确认），无 GraphAgent 备用方案
 - [ ] VLM 能对一张数学图形图片返回文本描述
 - [ ] 至少 3 份试卷 PDF 已导入 `data/files/raw/`
 
@@ -119,7 +119,7 @@ flowchart LR
 - [ ] VLM 条件触发节点
 - [ ] 答案生成带溯源（引用"2026南昌一模 第15题"）
 - [ ] 复习建议节点（基于错题统计）
-- [ ] **周报/月报节点**：`periodic_reports` 表 + 周期聚合 + LLM 针对性练习建议（见 [Agent 编排设计](agent/graph_fallback.md) REPORT_GEN 节点）
+- [ ] **周报/月报节点**：`periodic_reports` 表 + 周期聚合 + LLM 针对性练习建议（见 [聚合数据子 Agent](agent/retrieval/aggregate.md) REPORT_GEN 逻辑）
 - [ ] Session 接入：`SqlSessionService`（SQLite，持久化会话 + 多轮追问上下文）
 - [ ] **可观测性：接入 Langfuse**（框架内置 OpenTelemetry + `server/langfuse/` 模块；自托管，学生数据不出服务器；多 Agent 委派链调试刚需）
 - [ ] Prompt 优化（数学语境约束；输出整理 Agent 剥离 thought 思考痕迹）

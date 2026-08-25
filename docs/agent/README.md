@@ -1,6 +1,6 @@
 # Agent 编排设计
 
-> 本目录是原 `docs/agent.md` 拆分后的 Agent 编排文档。**目录结构与 `src/agent/` 一一对应：每个 `.py` 文件对应一个 `.md` 文件**。整体架构沿用 TeamAgent 主架构、GraphAgent 备用。
+> 本目录是原 `docs/agent.md` 拆分后的 Agent 编排文档。**目录结构与 `src/agent/` 一一对应：每个 `.py` 文件对应一个 `.md` 文件**。整体架构为 TeamAgent（GraphAgent 备用方案已移除，2026-08-25）。
 
 ## 概述
 
@@ -15,7 +15,7 @@ Gaokao RAG 的 Agent 层基于 tRPC-Agent-Python 的 **TeamAgent** 构建（多 
 - 灵活委派：Leader 按需调用，不同场景走不同成员组合
 - **项目叙事**：单 Agent → 多 Agent 协作，是 README 亮点（对比 AlgoNotes）
 
-> 注：GraphAgent 仍可作 TeamAgent 成员或底层编排，但主架构是 TeamAgent。完整备用方案见 [graph_fallback.md](graph_fallback.md)。
+> 注：GraphAgent 曾作为备用方案，但 trpc-agent 源码已确认 TeamAgent 设计可用（2026-08-12 实测跑通），备用方案已移除（2026-08-25）。主架构即 TeamAgent。
 
 ## 团队结构
 
@@ -118,7 +118,6 @@ flowchart TD
 |--------|-------------------|------|
 | [README.md](README.md) | （包说明） | 总览、团队结构、摄入侧数据流契约、导航 |
 | [leader.md](leader.md) | `leader.py` | TeamLeader 编排、委派策略、实测 3 铁律、Langfuse |
-| [graph_fallback.md](graph_fallback.md) | （备用方案） | GraphAgent 7 节点设计（含 REPORT_GEN） |
 | [tools/vlm_tool.md](tools/vlm_tool.md) | `tools/vlm_tool.py` | VLM 图形理解工具 |
 | [tools/knowledge_tool.md](tools/knowledge_tool.md) | `tools/knowledge_tool.py` | 知识点查询 / tag 归位工具 |
 | [tools/error_tool.md](tools/error_tool.md) | `tools/error_tool.py` | 错题分析工具 |

@@ -28,5 +28,3 @@
 |------|------|
 | `query_type` | question / review / report / browse / ingest |
 | `period_type` | （仅 report）weekly / monthly |
-
-> 备用方案（GraphAgent）中该职责由 ROUTER 节点承担，见 [graph_fallback.md](../graph_fallback.md)。

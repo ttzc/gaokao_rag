@@ -54,7 +54,7 @@ gaokao_team = TeamAgent(
 1. **Leader 委派机制依赖 tRPC-Agent 的 TeamAgent 原生能力**：`trpc_agent_sdk.teams.TeamAgent` 的 leader 自动具备自由委派能力，不需要手写路由逻辑
 2. **子 Agent 间通过 TeamAgent 内部消息传递共享结果**：每个子 Agent 的返回值自动汇入 Leader 的上下文，Leader 综合后决定下一步委派
 3. **State 设计沿用 `GaokaoState`**：字段不变（subject / query_type / retrieved_docs / vlm_descriptions / answer / review_suggestion + 摄入侧契约字段 raw_blocks / pending_questions / lecture_segments / topic_draft / ingest_results / ingest_decisions），reducer 字段 `execution_history` 记录子 Agent 委派链
-4. **GraphAgent 保留为备用**：若 TeamAgent 在 tRPC-Agent 当前版本中不可用，退回 GraphAgent 条件路由方案（见 [graph_fallback.md](graph_fallback.md)）
+4. **TeamAgent 可用性已确认，无备用方案**：trpc-agent 源码确认 `trpc_agent_sdk.teams` 的 Leader 委派 API 可用，且 2026-08-12 官方 `examples/team` 实测跑通（见下）；GraphAgent 备用方案已移除（2026-08-25）
 5. **子 Agent 的 tools 是 FunctionTool**：VLM、知识点查询、错题统计等业务工具以 FunctionTool 形式挂到对应子 Agent，不走 MCP（MCP 仅对外暴露接口）
 6. **分层边界**：子 Agent 只调 `src/ingestion`（写）/ `src/retrieval`（读）门面暴露的函数，严禁 `import src.store.*`（见 [architecture.md](../architecture.md)）
 
