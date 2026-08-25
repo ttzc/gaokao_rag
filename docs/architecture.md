@@ -252,7 +252,8 @@ gaokao_rag/
 │   │   │   ├── vlm_tool.py    #     VLM 图形理解（挂到 VLM / 文档识别子 Agent）
 │   │   │   ├── knowledge_tool.py  #  知识点查询（挂到搜索 / 知识整理子 Agent）
 │   │   │   ├── error_tool.py  #    错题分析（挂到聚合子 Agent）
-│   │   │   └── extract_tool.py #    PDF / 图像提取（挂到文档识别子 Agent）
+│   │   │   ├── extract_tool.py #    PDF / 图像提取（挂到文档识别子 Agent）
+│   │   │   └── ingest_tool.py  #    题目/错题摄入（挂到入库决策子 Agent）
 │   │
 │   │   ├── ingestion/         #   摄入侧子 Agent（每文件一个 Agent，只调 src/ingestion 写门面）
 │   │   │   ├── doc_recognition.py      #  文档识别 Agent

@@ -118,10 +118,12 @@ flowchart TD
 |--------|-------------------|------|
 | [README.md](README.md) | （包说明） | 总览、团队结构、摄入侧数据流契约、导航 |
 | [leader.md](leader.md) | `leader.py` | TeamLeader 编排、委派策略、实测 3 铁律、Langfuse |
+| [tools/README.md](tools/README.md) | （工具总览） | FunctionTool 挂载矩阵与门面边界 |
 | [tools/vlm_tool.md](tools/vlm_tool.md) | `tools/vlm_tool.py` | VLM 图形理解工具 |
 | [tools/knowledge_tool.md](tools/knowledge_tool.md) | `tools/knowledge_tool.py` | 知识点查询 / tag 归位工具 |
 | [tools/error_tool.md](tools/error_tool.md) | `tools/error_tool.py` | 错题分析工具 |
 | [tools/extract_tool.md](tools/extract_tool.md) | `tools/extract_tool.py` | PDF / 图像提取工具 |
+| [tools/ingest_tool.md](tools/ingest_tool.md) | `tools/ingest_tool.py` | 题目 / 错题摄入（写库） |
 | [ingestion/doc_recognition.md](ingestion/doc_recognition.md) | `ingestion/doc_recognition.py` | 文档识别 Agent |
 | [ingestion/structure_recognition.md](ingestion/structure_recognition.md) | `ingestion/structure_recognition.py` | 结构识别 Agent |
 | [ingestion/knowledge_organize.md](ingestion/knowledge_organize.md) | `ingestion/knowledge_organize.py` | 知识整理 Agent |

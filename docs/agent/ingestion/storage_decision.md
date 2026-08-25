@@ -32,6 +32,8 @@ Bot: 已识别到 3 道题目：
 
 ## 原子化：先题后错（2026-08-25 决议）
 
+> 入库决策子 Agent 通过 **ingest_tool**（FunctionTool，见 [../tools/ingest_tool.md](../tools/ingest_tool.md)）调用写门面原子函数。
+
 `ingest_question` 与 `ingest_error` 是两个**独立原子工具**：
 
 - `ingest_question` 不接收任何 errors 参数，只把题写进三层存储，返回 `{question_id, doc_id}`——完全不感知 `errors`
