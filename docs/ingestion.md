@@ -4,6 +4,14 @@
 
 ---
 
+## 定位：写门面（增 / 删 / 改）
+
+`src/ingestion/` 是**唯一允许修改三层存储**的代码层——文件层（FileStore）+ SQLite（逐表）+ 向量层（Chroma）的三态一致性，由本包内的原子函数统一保证。**任何写入（新增 / 更新 / 删除题目、图片、试卷、错题、讲解、知识点、作答、复习计划、周报）都必须经由本包暴露的函数，Agent 的 tool 不得直接调用 `src.store.*`。**
+
+知识整理 Agent 的「归位」原语（`resolve_or_create_topics` / `create_topic` / `add_topic_alias` / `delete_topic`）也收敛到 `src/ingestion/topic.py`，供 `ingest_question` 与知识整理 tool 复用。
+
+---
+
 ## 架构视角：摄入侧 Agent 群
 
 摄取不是固定流程，而是 **TeamLeader 按需委派摄入侧 4 个子 Agent** 协作完成。LLM 贯穿始终：整理输入格式、判断有无答案/解析、分析图片、提取知识点、决定何时需要用户确认。

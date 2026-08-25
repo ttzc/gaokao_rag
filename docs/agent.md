@@ -80,7 +80,7 @@ flowchart TD
 
 ### 知识整理 Agent 详解（tag 归位）
 
-摄入链路的"tag 管家"。核心逻辑封装在 `store/db/topics.py`（独立模块，可单独测试），本 Agent 通过 FunctionTool 调用。
+摄入链路的"tag 管家"。核心逻辑封装在 `src/ingestion/topic.py`（`resolve_or_create_topics` / `create_topic` / `add_topic_alias`，独立可测），本 Agent 通过 FunctionTool 调用 ingestion 暴露的函数。
 
 **归位流程**（与 `topics` 表设计对应）：
 
