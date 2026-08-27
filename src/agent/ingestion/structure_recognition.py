@@ -16,6 +16,9 @@
 #   - 故采用 knowledge_only（SkillProfileNames.KNOWLEDGE_ONLY）：工具面收紧为
 #     skill_load / skill_select_docs / skill_list_docs，与本环节「取指令正文、不执行」的
 #     定位一致，prompt 噪声更小。
+#   - 共享构造：skill 仓库全员复用，create_skill_tool_set() / SKILLS_ROOT 在
+#     src/agent/skills/__init__.py；构造时传本 agent 的 skill 白名单（ALLOWED_SKILLS，
+#     硬约束：名单外不进 prompt、skill_load 报错），profile 收紧是本模块自己的事。
 #   - 注入时机：BaseAgent.before_agent_callback（FilterType.AGENT 过滤器）。此时
 #     run_async 已创建 agent_context（_base_agent.py run_async 内
 #     ctx.agent_context = create_agent_context()），且早于 LlmProcessor 构建请求时读取的
@@ -24,17 +27,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from trpc_agent_sdk.agents import LlmAgent
 from trpc_agent_sdk.agents.core import set_skill_processor_parameters
 from trpc_agent_sdk.context import InvocationContext
-from trpc_agent_sdk.skills import BaseSkillRepository
 from trpc_agent_sdk.skills import SkillProfileNames
-from trpc_agent_sdk.skills import SkillToolSet
-from trpc_agent_sdk.skills import create_default_skill_repository
 
 from src.agent.ingestion.prompts import STRUCTURE_RECOGNITION_INSTRUCTION
+from src.agent.skills import create_skill_tool_set
 from src.api.llm import get_llm_model
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -45,41 +44,12 @@ AGENT_NAME = "structure_recognition"
 
 AGENT_DESCRIPTION = "摄入侧结构识别：把整篇文本语义切分为讲解段（原样保留）与题目段，每道题目都按题目整理 Skill 归一为题目 / 答案 / 解析三段并各给一句话概括"
 
-# skill 根目录：src/agent/skills/（相对本文件 src/agent/ingestion/ 上跳一层）
-SKILLS_ROOT = Path(__file__).resolve().parent.parent / "skills"
-
 # 本 agent 的 skill 工具面：只加载（取指令正文），不执行任何内置 skill 命令
 SKILL_TOOL_PROFILE = str(SkillProfileNames.KNOWLEDGE_ONLY)
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Skill 工具集 / 仓库构造
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-def create_skill_tool_set() -> tuple[SkillToolSet, BaseSkillRepository]:
-    """构建本 agent 的 Skill ToolSet + Repository（指向 src/agent/skills/）。
-
-    Returns:
-        (tool_set, repository)：tool_set 挂进 LlmAgent.tools，repository 挂进
-        LlmAgent.skill_repository（两者配套，缺一 skill 工具不可用）。
-        导出供测试与后续 TeamAgent leader 构造复用。
-
-    参数取舍：
-      - enable_hot_reload=False：skills 目录是仓库内的静态文件，不需要后台热加载
-        扫描（官方示例默认开启，测试环境下热加载线程徒增不确定性）。
-      - use_cached_repository=True：与官方示例一致，用缓存型仓库索引 SKILL.md。
-    """
-    repository = create_default_skill_repository(
-        str(SKILLS_ROOT),
-        enable_hot_reload=False,
-        use_cached_repository=True,
-    )
-    tool_set = SkillToolSet(
-        repository=repository,
-        run_tool_kwargs={"save_as_artifacts": True, "omit_inline_content": False},
-    )
-    return tool_set, repository
+# 本 agent 的 skill 白名单（硬约束，构造仓库时烘焙）：结构识别只该用题目整理，
+# 未来加新 skill（如讲解段归并）也不会被本 agent 意外看见 / 加载
+ALLOWED_SKILLS: tuple[str, ...] = ("question-organize",)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -115,7 +85,7 @@ def create_structure_recognition_agent() -> LlmAgent:
 
     模型走 src/api/llm.py 的唯一工厂（DeepSeek，OpenAI 兼容），不重复造模型。
     """
-    skill_tool_set, skill_repository = create_skill_tool_set()
+    skill_tool_set, skill_repository = create_skill_tool_set(ALLOWED_SKILLS)
     return LlmAgent(
         name=AGENT_NAME,
         description=AGENT_DESCRIPTION,

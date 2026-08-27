@@ -19,6 +19,12 @@
 - 一题跨页 → 合并前后页文本后一起喂给 LLM
 - 无编号（如专题讲义例题）→ LLM 按语义段落切分
 
+## 技能挂载（2026-08-28）
+
+- **Skill 白名单**：`ALLOWED_SKILLS = ("question-organize",)` —— 本 agent 只该用题目整理；白名单外 skill 不进 prompt、`skill_load` 报错（框架层硬约束，见 [skills/README.md](../skills/README.md)）
+- **工具面收紧**：`knowledge_only`（`before_agent_callback` 注入）——只暴露 load / select_docs / list_docs，不暴露 run/exec（question-organize 纯指令无 scripts）
+- 共享构造：`create_skill_tool_set()` / `SKILLS_ROOT` 在 `src/agent/skills/__init__.py`，全员复用同一 skill 目录
+
 ## 输出（State 契约）
 
 | 字段 | 内容 | 去向 |

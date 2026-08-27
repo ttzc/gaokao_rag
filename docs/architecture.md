@@ -255,7 +255,7 @@ gaokao_rag/
 │   │   │   ├── extract_tool.py #    PDF / 图像提取（挂到文档识别子 Agent）
 │   │   │   └── ingest_tool.py  #    题目/错题摄入（挂到入库决策子 Agent）
 │   │   │
-│   │   ├── skills/            #   Agent Skills（可复用领域指令，渐进式披露）
+│   │   ├── skills/            #   Agent Skills：__init__.py 承载共享构造（SKILLS_ROOT / create_skill_tool_set / 白名单仓库），子目录各含一个 SKILL.md
 │   │   │   └── question-organize/     #    题目整理：整篇切出的题目段 / 零散输入 → 题目/答案/解析三段（已落地）
 │   │
 │   │   ├── ingestion/         #   摄入侧子 Agent（每文件一个 Agent，只调 src/ingestion 写门面）

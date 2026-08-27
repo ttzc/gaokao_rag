@@ -38,7 +38,7 @@
 
 ## 边界
 
-- **挂载 / 执行**：由结构识别 Agent `structure_recognition.py` 对每道题目单元逐题 `skill_load` 执行（或其下游归一化步骤），**不挂在入库决策 Agent**。
+- **挂载 / 执行**：由结构识别 Agent `structure_recognition.py` 对每道题目单元逐题 `skill_load` 执行（或其下游归一化步骤），**不挂在入库决策 Agent**。结构识别 Agent 经 `ALLOWED_SKILLS=("question-organize",)` 白名单挂载本 Skill（白名单外不可见、不可加载，见 [README.md](README.md)）。
 - **消费**：入库决策 Agent（`storage_decision.py`）只接收本 Skill 的输出 + 用户对每题的「入库 / 错题 / 跳过」意图，执行写库——不执行归一化。
 - 上游：文档识别（`raw_blocks`）/ 学生即时输入（口述 + 图）
 - 平行：知识整理（`knowledge_organize`）负责知识点标注，不在本 Skill 内

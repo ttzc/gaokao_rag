@@ -148,6 +148,8 @@ flowchart TD
 
 **真正的 Skill（仅一个）**：`question-organize`（[skills/question-organize.md](skills/question-organize.md)）——「单个题目单元（整篇切出的题目段 / 零散单题）→ 题目/答案/解析三段」是**可复用的领域指令**：由结构识别 Agent 对每题逐题 `skill_load` 执行、将来可被其他入口复用，且有明确的「何时加载」触发条件（讲解段不加载），才符合渐进式披露的适用场景。
 
+**Skill 挂载约束（2026-08-28 新增）**：使用 Skill 的子 Agent 通过共享构造 `create_skill_tool_set(ALLOWED_SKILLS)`（`src/agent/skills/__init__.py`）挂载——`ALLOWED_SKILLS` 白名单烘焙进仓库（名单外不可见、不可加载，框架层硬约束），`before_agent_callback` 收紧 `tool_profile`（knowledge_only / full）。详见 [skills/README.md](skills/README.md)。
+
 **边界**：保留 sub-agent 的 Leader 委派与 `GaokaoState` 回填结构；知识整理（挂 knowledge_tool）、聚合数据（经门面读写 SQLite）等挂载工具的子 Agent 不涉及 prompt 萃取。
 
 ## Session 与 Memory
