@@ -1,6 +1,7 @@
 # 结构识别 Agent（src/agent/ingestion/structure_recognition.py）
 
 > 对应代码：`src/agent/ingestion/structure_recognition.py`。摄入侧子 Agent 之一，**只做语义划分，不写库**。
+> Prompt 萃取：`src/agent/skills/structure_recognition/SKILL.md`（2026-08-27）—— 纯 LLM，不挂工具。
 
 ## 定位
 
