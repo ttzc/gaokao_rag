@@ -52,7 +52,7 @@ gaokao_rag/
 ## pyproject.toml 配置
 
 ```toml
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
@@ -60,7 +60,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v"
+addopts = "-v -m 'not integration'"
+markers = [
+    "integration: 真实 API 调用（DeepSeek / Qwen / DashScope 等），会产生计费；全量 pytest 默认排除，仅 `pytest -m integration` 显式运行。",
+]
 ```
 
 安装：`uv sync --extra dev`
@@ -71,9 +74,9 @@ addopts = "-v"
 | ------ | ------ | -------------- |
 | **纯单元测试** | 配置解析、工具函数、纯逻辑 | ❌ 不连 |
 | **模块测试** | 存储层（直接使用 config 路径库 + 每测试前清空）、摄入管线（mock VLM/LLM） | ❌ mock |
-| **集成测试** | 真实 API 调用（DeepSeek/Qwen） | ✅ 连，标 `@pytest.mark.integration` |
+| **集成测试** | 真实 API 调用（DeepSeek/Qwen/DashScope），会产生计费 | ✅ 连，标 `@pytest.mark.integration` |
 
-**默认只跑单元 + 模块测试**（快、稳定、CI 友好）；集成测试显式标记，本地手动跑。
+**默认 `pytest` 已强制排除 integration**（`addopts = "-v -m 'not integration'"`）；集成测试仅 `pytest -m integration` 显式运行（本地手动、需真实 Key）。注意：`tests/test_api_*.py` 是 mock 单测（仅验证 wrapper 构造/配置/分批逻辑），**不**标 integration，随默认跑、不计费。
 
 ## 测试规范细则
 
@@ -233,32 +236,37 @@ async def test_llm_call_mocked():
 
 **原则**：所有外部服务（LLM/VLM/嵌入 API）在单元/模块测试中一律 mock；真实调用只出现在显式标记的 integration 测试里。
 
-### 5. 集成测试（显式标记）
+### 5. 集成测试（显式标记，会计费）
+
+真实 API 调用的端到端测试必须标 `@pytest.mark.integration`，且默认 `pytest` 已自动排除（见 pyproject `addopts`）。约定：**Agent 层真实端到端测试统一放 `tests/test_agent_integration.py`**，文件级 `pytestmark = pytest.mark.integration`；纯行为/配置测试（mock LLM/VLM/嵌入）留在 `tests/test_agent_*.py`，随默认跑、不计费。
 
 ```python
-# tests/test_integration_real_api.py
+# tests/test_agent_integration.py
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = pytest.mark.integration   # 整个文件 = 真实 API，会计费
 
-def test_real_deepseek_call():
-    """真实调用 DeepSeek（需要 .env 真实 Key，本地手动跑）。"""
+def test_real_ingest_roundtrip():
+    """真实调用 DeepSeek/Qwen/DashScope（需要 .env 真实 Key，仅本地手动跑）。"""
     ...
 ```
+
+conftest 说明：autouse `_reset_state` 对标记 `integration` 的测试**跳过 FakeEmbeddings patch**，让嵌入层真正打到云端 API；数据清空与单例重置仍照常执行，保证每次从干净状态开始。
 
 运行方式：
 
 ```bash
-pytest                                   # 只跑单元+模块（默认）
-pytest -m integration                    # 只跑集成
-pytest -m "not integration"              # 排除集成
+pytest                          # 全量但排除 integration（默认，不计费）
+pytest -m integration           # 只跑集成（会计费，需真实 Key）
+pytest -m "not integration"     # 显式排除集成（等于默认）
+pytest -m ""                    # 真·全部（含 integration，会计费）
 ```
 
 ## 运行命令
 
 ```bash
 uv sync --extra dev              # 安装 pytest
-pytest                           # 跑全部单元测试
+pytest                           # 跑全部单元测试（自动排除 integration）
 pytest tests/test_config.py      # 跑单个文件
 pytest -k "config"               # 按名称过滤
 pytest --cov=src --cov-report=term-missing   # 覆盖率
@@ -280,4 +288,4 @@ pytest --cov=src --cov-report=term-missing   # 覆盖率
 - **每实现一个模块 → 同步写 test_<模块>.py**（TDD 可选，但"实现即测"必须）
 - **提交前**：`pytest` 全绿 + `pytest --cov` 检查新增模块覆盖
 - **重构后**：跑全量确认无回归
-- **CI（未来）**：GitHub Actions 跑 `pytest -m "not integration"`（不暴露真实 Key）
+- **CI（未来）**：GitHub Actions 跑默认 `pytest`（已 `addopts` 排除 integration，不暴露真实 Key）；计费集成测试不进 CI。

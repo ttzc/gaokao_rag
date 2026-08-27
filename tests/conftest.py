@@ -144,10 +144,13 @@ def _track_vector_store_instances() -> None:
 
 
 @pytest.fixture(autouse=True)
-def _reset_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    """每个测试【前】清空全部业务数据 + 重置单例 + patch 假嵌入。
+def _reset_state(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    """每个测试【前】清空全部业务数据 + 重置单例 + 条件 patch 假嵌入。
 
-    不关闭共享 SQLite 连接（保持 WAL + foreign_keys 配置），仅清数据保 schema。
+    带 integration 标记的测试（真实 API，会计费）不 patch 嵌入层，让嵌入真打
+    云端 API；其余照常 patch FakeEmbeddings。数据清空/单例重置对两类测试都执行，
+    保证每次从干净状态开始。不关闭共享 SQLite 连接（保持 WAL + foreign_keys
+    配置），仅清数据保 schema。
     """
     # 1. SQLite：清空全部业务表（缺失表静默跳过）
     conn = get_shared_conn()
@@ -180,11 +183,13 @@ def _reset_state(monkeypatch: pytest.MonkeyPatch) -> None:
     # 4. FileStore：清空 5 个子目录下的文件（保留目录本身）
     _clear_file_store_subdirs()
 
-    # 5. patch 假嵌入：任何无参 get_vector_store() 构造都用 FakeEmbeddings，不真调 API
-    monkeypatch.setattr(
-        "src.store.vector.vector_store.get_embedding_model",
-        lambda: FakeEmbeddings(config.embedding.dimension),
-    )
+    # 5. patch 假嵌入：除 integration 测试（真调云端嵌入，会计费）外，任何无参
+    #    get_vector_store() 构造都用 FakeEmbeddings，不真调 API
+    if not request.node.get_closest_marker("integration"):
+        monkeypatch.setattr(
+            "src.store.vector.vector_store.get_embedding_model",
+            lambda: FakeEmbeddings(config.embedding.dimension),
+        )
 
 
 # ── 公共 fixtures ──────────────────────────────────────────────────
