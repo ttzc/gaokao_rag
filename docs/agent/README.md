@@ -141,7 +141,7 @@ flowchart TD
 | 子 Agent | Skill 路径 | 说明 |
 |----------|-----------|------|
 | 意图识别 | `src/agent/skills/intent/SKILL.md` | 纯 LLM 分类（query_type / period_type） |
-| 结构识别 | `src/agent/skills/structure_recognition/SKILL.md` | 语义切分「讲解段 / 题目段」 |
+| 结构识别 | `src/agent/skills/structure-recognition/SKILL.md` | 语义切分「讲解段 / 题目段」 |
 | 输出整理 | `src/agent/skills/output/SKILL.md` | 排版 + 溯源引用 + 分片发送 |
 
 **边界**：保留 sub-agent 的 Leader 委派与 `GaokaoState` 回填结构 —— Skill 只承载 prompt，不替代 TeamAgent 的编排与并行委派能力。知识整理（挂 knowledge_tool）、聚合数据（经门面读写 SQLite）因依赖外部调用，不纳入本萃取。

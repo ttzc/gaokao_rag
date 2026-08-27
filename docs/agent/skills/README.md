@@ -13,9 +13,9 @@
 | Skill | 目录 | 对应子 Agent | 职责 | 挂载能力 |
 |-------|------|--------------|------|----------|
 | **意图识别** | `intent/` | `src/agent/retrieval/intent.py` | 判断意图 `question` / `review` / `report` / `browse` / `ingest`；`report` 时解析 `period_type`（weekly/monthly） | 纯 LLM |
-| **结构识别** | `structure_recognition/` | `src/agent/ingestion/structure_recognition.py` | 把 raw_blocks 语义切分为「讲解段 / 题目段」，每题生成一句话概括（`pending_questions` / `lecture_segments`） | 纯 LLM |
+| **结构识别** | `structure-recognition/` | `src/agent/ingestion/structure_recognition.py` | 把 raw_blocks 语义切分为「讲解段 / 题目段」，每题生成一句话概括（`pending_questions` / `lecture_segments`） | 纯 LLM |
 | **输出整理** | `output/` | `src/agent/retrieval/output.py` | 把聚合结果排版为可读输出：分步解题 + 溯源引用 + QQ 分片发送 + 追问引导 |  纯 LLM |
-| **题目整理** | `src/agent/skills/question_organize/SKILL.md`（文档：[question_organize.md](question_organize.md)） | （入库前归一化，非 sub-agent 萃取） | 把零散输入（口述/OCR/VLM/聊天片段）归一为「题目 / 答案 / 解析」三段，供入库决策导入 | 纯 LLM |
+| **题目整理** | `question-organize/`（文档：[question-organize.md](question-organize.md)） | （入库前归一化，非 sub-agent 萃取） | 把零散输入（口述/OCR/VLM/聊天片段）归一为「题目 / 答案 / 解析」三段，供入库决策导入 | 纯 LLM |
 
 ## 每个 SKILL.md 结构约定
 
@@ -35,7 +35,7 @@ description: <一句话，注入概览层用于路由选择>
 ```mermaid
 flowchart LR
     L[Team Leader] -->|skill_load| S1[intent/SKILL.md]
-    L -->|skill_load| S2[structure_recognition/SKILL.md]
+    L -->|skill_load| S2[structure-recognition/SKILL.md]
     L -->|skill_load| S3[output/SKILL.md]
     S1 -->|query_type / period_type| L
     S2 -->|pending_questions / lecture_segments| L
