@@ -1,6 +1,6 @@
 # CLAUDE.md — 给 Claude 的开发指导
 
-> 本文件是 Gaokao RAG 项目的开发交接文档。**代码实现由 Claude 负责**，文档（README、docs/*、本文件）由 WorkBuddy 维护。修改文档需同步。
+> 本文件是 Gaokao RAG 项目的开发交接文档。**代码实现由 Claude 负责**；文档（README、docs/*、本文件）由 **Claude 与 WorkBuddy 共同维护**（双方均可直接编辑，改动须与代码保持同步）。
 
 ## 项目一句话
 
@@ -11,14 +11,16 @@ Gaokao RAG：帮助高中学生备考的 AI 助手（核心目的），MVP 聚�
 | 事项 | 负责方 |
 | ------ | -------- |
 | 代码实现（src/、scripts/、tests/） | Claude |
-| 文档维护（README、docs/*、CLAUDE.md、config 骨架） | WorkBuddy |
+| 文档维护（README、docs/*、CLAUDE.md、config 骨架） | Claude / WorkBuddy 共同 |
 | 框架参考 | 本地 tRPC-Agent 源码 `D:\AI_study\learn\trpc-agent-python` |
 | 数据源 | ima「高考2026」知识库（233 条，含试卷/专题/错题） |
+| 外部工具（git / 部署 / CI 等） | **WorkBuddy 负责，Claude 不操作** |
 
 **规则**：
 
-- 文档和代码有冲突时，先改代码对齐文档，或找 WorkBuddy 更新文档
-- 新增架构级决策（新模块、改存储 schema、换模型）时，先同步给 WorkBuddy 更新文档再实现
+- **外部工具（git、部署、CI 等）一律由 WorkBuddy 操作，Claude 不执行任何 git / 部署 / CI 命令**——Claude 只改代码与文档；需要提交 / 推送 / 部署时，Claude 在回复里列清改动清单，交 WorkBuddy 处理
+- 文档和代码有冲突时，改到二者对齐即可——Claude 可直接编辑文档，不必等 WorkBuddy（反之亦然）
+- 新增架构级决策（新模块、改存储 schema、换模型）时，先更新文档再实现；文档 Claude/WorkBuddy 谁先触及谁改，改后同步另一方即可
 - 代码里不要写死模型名/API Key，统一走环境变量 + config.toml
 
 ## 技术栈（已定，不要改）
@@ -75,11 +77,11 @@ gaokao_rag/
 ├── config.toml                # 系统配置
 ├── src/
 │   ├── config.py              # 配置加载
-│   ├── api/                   # 模型客户端层
-│   ├── ingestion/             # 多模态摄取管线
+│   ├── api/                   # 模型客户端层（LLM / VLM / 嵌入）
+│   ├── ingestion/             # 摄取门面（写，无 LLM）
+│   ├── retrieval/             # 检索门面（读，无 LLM）
 │   ├── store/                 # 三层存储 + 知识点图谱
-│   ├── rag/                   # RAG Agent 与检索器
-│   ├── tools/                 # 自定义工具（VLM、知识点查询等）
+│   ├── agent/                 # Agent 编排层（TeamAgent：leader + 查询/摄入侧子 Agent + tools + skills）
 │   └── mcp/                   # MCP Server
 ├── scripts/
 │   ├── ingest.py              # 摄取 CLI

@@ -256,13 +256,14 @@ gaokao_rag/
 │   │   │   └── ingest_tool.py  #    题目/错题摄入（挂到入库决策子 Agent）
 │   │   │
 │   │   ├── skills/            #   Agent Skills（可复用领域指令，渐进式披露）
-│   │   │   └── question-organize/     #    题目整理：零散输入 → 题目/答案/解析三段（已落地）
+│   │   │   └── question-organize/     #    题目整理：整篇切出的题目段 / 零散输入 → 题目/答案/解析三段（已落地）
 │   │
 │   │   ├── ingestion/         #   摄入侧子 Agent（每文件一个 Agent，只调 src/ingestion 写门面）
 │   │   │   ├── doc_recognition.py       #  文档识别 Agent
 │   │   │   ├── structure_recognition.py #  结构识别 Agent
 │   │   │   ├── knowledge_organize.py    #  知识整理 Agent
-│   │   │   └── storage_decision.py      #  入库决策 Agent
+│   │   │   ├── storage_decision.py      #  入库决策 Agent
+│   │   │   └── prompts.py               #  摄入侧各 Agent 的 instruction 常量（长 prompt 独立成模块）
 │   │
 │   │   └── retrieval/         #   查询侧子 Agent（每文件一个 Agent，只调 src/retrieval 读门面）
 │   │       ├── intent.py      #    意图识别 Agent

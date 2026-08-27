@@ -12,7 +12,7 @@
 
 | Skill | 目录 | 执行方 / 消费方 | 职责 |
 |-------|------|----------------|------|
-| **题目整理** | `question-organize/`（文档：[question-organize.md](question-organize.md)） | 执行：摄入侧归一化（结构识别 Agent 侧）；消费：入库决策 Agent | 把零散输入（口述/OCR/VLM/聊天片段）归一为「题目 / 答案 / 解析」三段，供入库决策导入 |
+| **题目整理** | `question-organize/`（文档：[question-organize.md](question-organize.md)） | 执行：结构识别 Agent 逐题；消费：入库决策 Agent | 把单个题目单元（整篇切出的题目段 / 零散输入：口述/OCR/VLM/聊天片段）归一为「题目 / 答案 / 解析」三段，供入库决策导入；讲解段不加载 |
 
 > 曾被列为萃取候选、现已撤回（2026-08-27）：意图识别 / 结构识别 / 输出整理 —— 三者 prompt 即各自 agent 的系统提示词，留在 instruction，不建 SKILL.md。
 
@@ -37,7 +37,7 @@ flowchart LR
     Q -->|题目/答案/解析 三段| D[入库决策 Agent]
 ```
 
-`question-organize` 是摄入链路的归一化指令模块：结构识别 Agent 在收到零散单题输入时 `skill_load` 执行，产出交给入库决策 Agent 写库。它不替代 TeamAgent 的委派结构。
+`question-organize` 是摄入链路的归一化指令模块：结构识别 Agent 对**每道题目**（整篇切出的题目段，或零散单题）逐题 `skill_load` 执行，产出交给入库决策 Agent 写库；讲解段不走此 Skill。它不替代 TeamAgent 的委派结构。
 
 ## 落地状态（2026-08-27）
 

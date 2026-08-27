@@ -1,6 +1,7 @@
 # src/agent/ingestion/structure_recognition.py
 # 摄入侧「结构识别」子 Agent：摄入链路的第二棒，把文档内容从「整篇文本」切分为
-# 「讲解段 + 题目段」的集合；输入为零散单题时，加载 question-organize Skill 归一化。
+# 「讲解段 + 题目段」的集合；讲解段原样保留，每道题目（整篇切出的或零散单题）都加载
+# question-organize Skill 归一为「题目 / 答案 / 解析」三段。
 #
 # 职责边界（见 docs/agent/ingestion/structure_recognition.md）：
 #   - 只做语义划分与整理，**不写库**——tools 只有 skill_tool_set（question-organize 纯
@@ -42,7 +43,7 @@ from src.api.llm import get_llm_model
 
 AGENT_NAME = "structure_recognition"
 
-AGENT_DESCRIPTION = "摄入侧结构识别：把整篇文本语义切分为讲解段与题目段、每道题一句话概括；零散单题按题目整理 Skill 归一化"
+AGENT_DESCRIPTION = "摄入侧结构识别：把整篇文本语义切分为讲解段（原样保留）与题目段，每道题目都按题目整理 Skill 归一为题目 / 答案 / 解析三段并各给一句话概括"
 
 # skill 根目录：src/agent/skills/（相对本文件 src/agent/ingestion/ 上跳一层）
 SKILLS_ROOT = Path(__file__).resolve().parent.parent / "skills"

@@ -99,7 +99,7 @@ flowchart TD
 | 字段 | 产出者 | 内容 | 消费方 |
 |------|--------|------|--------|
 | `raw_blocks` | 文档识别 | 结构化文本块 + 图像列表 + 坐标信息 | 结构识别 |
-| `pending_questions` | 结构识别 | 题目清单（每题：一句话概括 + 原文块 + 关联图像） | 知识整理、入库决策（回显） |
+| `pending_questions` | 结构识别 | 题目清单（每题：一句话概括 + 题目 / 答案 / 解析三段 + 关联图像；不留原文块） | 知识整理、入库决策（回显） |
 | `lecture_segments` | 结构识别 | 讲解段文本列表 | 自动入库（knowledge_notes） |
 | `topic_draft` | 知识整理 | 每题知识点草案（topic_name 列表，待归位） | 入库决策 |
 | `ingest_decisions` | 用户 | 每题去向（入库 / 错题 / 跳过） | 入库决策 |
@@ -143,10 +143,10 @@ flowchart TD
 | 子 Agent | prompt 位置 | 说明 |
 |----------|------------|------|
 | 意图识别 | `src/agent/retrieval/intent.py` 的 instruction（可抽 `prompts.py`） | 纯 LLM 分类（query_type / period_type） |
-| 结构识别 | `src/agent/ingestion/structure_recognition.py` 的 instruction（可抽 `prompts.py`） | 语义切分「讲解段 / 题目段」+ 单题时 `skill_load question-organize` 归一化 |
+| 结构识别 | `src/agent/ingestion/structure_recognition.py` 的 instruction（可抽 `prompts.py`） | 语义切分「讲解段 / 题目段」；每道题目（切出的题目段或零散单题）都 `skill_load question-organize` 归一为三段，讲解段不过 Skill |
 | 输出整理 | `src/agent/retrieval/output.py` 的 instruction（可抽 `prompts.py`） | 排版 + 溯源引用 + 分片发送 |
 
-**真正的 Skill（仅一个）**：`question-organize`（[skills/question-organize.md](skills/question-organize.md)）——「零散单题 → 题目/答案/解析三段」是**可复用的领域指令**：由摄入侧归一化环节（结构识别 Agent 侧）执行、将来可被其他入口复用，且有明确的「何时加载」触发条件，才符合渐进式披露的适用场景。
+**真正的 Skill（仅一个）**：`question-organize`（[skills/question-organize.md](skills/question-organize.md)）——「单个题目单元（整篇切出的题目段 / 零散单题）→ 题目/答案/解析三段」是**可复用的领域指令**：由结构识别 Agent 对每题逐题 `skill_load` 执行、将来可被其他入口复用，且有明确的「何时加载」触发条件（讲解段不加载），才符合渐进式披露的适用场景。
 
 **边界**：保留 sub-agent 的 Leader 委派与 `GaokaoState` 回填结构；知识整理（挂 knowledge_tool）、聚合数据（经门面读写 SQLite）等挂载工具的子 Agent 不涉及 prompt 萃取。
 
