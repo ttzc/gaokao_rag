@@ -134,19 +134,21 @@ flowchart TD
 | [retrieval/aggregate.md](retrieval/aggregate.md) | `retrieval/aggregate.py` | 聚合数据 Agent |
 | [retrieval/output.md](retrieval/output.md) | `retrieval/output.py` | 输出整理 Agent |
 
-## 纯 LLM Agent 的 Skill 萃取（2026-08-27）
+## Skill 与 Agent prompt 的分工（2026-08-27）
 
-意图识别、结构识别、输出整理 三个子 Agent **不挂载任何 FunctionTool**，仅做 LLM 语义处理。为降低 context 占用并实现 prompt 沉淀，三者的核心指令抽取为 trpc-agent Skill，统一存放于 `src/agent/skills/<name>/SKILL.md`，由对应 sub-agent 在构造时通过 `skill_load` 注入（渐进式披露，详见 tRPC-Agent-Python 的 skills 子系统）。
+**结论**：纯 LLM 子 Agent 的 prompt **不抽取为 Skill**，留在各自 agent 的 `instruction` 中（为便于维护可独立成 `prompts.py` 常量模块，参考 tRPC-Agent-Python `examples/skills/agent/prompts.py` 的写法）。
 
-| 子 Agent | Skill 路径 | 说明 |
-|----------|-----------|------|
-| 意图识别 | `src/agent/skills/intent/SKILL.md` | 纯 LLM 分类（query_type / period_type） |
-| 结构识别 | `src/agent/skills/structure-recognition/SKILL.md` | 语义切分「讲解段 / 题目段」 |
-| 输出整理 | `src/agent/skills/output/SKILL.md` | 排版 + 溯源引用 + 分片发送 |
+**判断标准**：Skill 的语义是「按需拉取、可多入口复用的领域指令」；agent 的系统提示词是「每次请求必注入的角色定义」——一对一、无复用、无按需场景，抽成 Skill 只会多一轮 `skill_load` 调用，是形式主义。
 
-**边界**：保留 sub-agent 的 Leader 委派与 `GaokaoState` 回填结构 —— Skill 只承载 prompt，不替代 TeamAgent 的编排与并行委派能力。知识整理（挂 knowledge_tool）、聚合数据（经门面读写 SQLite）因依赖外部调用，不纳入本萃取。
+| 子 Agent | prompt 位置 | 说明 |
+|----------|------------|------|
+| 意图识别 | `src/agent/retrieval/intent.py` 的 instruction（可抽 `prompts.py`） | 纯 LLM 分类（query_type / period_type） |
+| 结构识别 | `src/agent/ingestion/structure_recognition.py` 的 instruction（可抽 `prompts.py`） | 语义切分「讲解段 / 题目段」+ 单题时 `skill_load question-organize` 归一化 |
+| 输出整理 | `src/agent/retrieval/output.py` 的 instruction（可抽 `prompts.py`） | 排版 + 溯源引用 + 分片发送 |
 
-**落地**：实际 SKILL.md 与 sub-agent 构造代码随 `src/agent/` 包落地（Claude 跟进）。
+**真正的 Skill（仅一个）**：`question-organize`（[skills/question-organize.md](skills/question-organize.md)）——「零散单题 → 题目/答案/解析三段」是**可复用的领域指令**：由摄入侧归一化环节（结构识别 Agent 侧）执行、将来可被其他入口复用，且有明确的「何时加载」触发条件，才符合渐进式披露的适用场景。
+
+**边界**：保留 sub-agent 的 Leader 委派与 `GaokaoState` 回填结构；知识整理（挂 knowledge_tool）、聚合数据（经门面读写 SQLite）等挂载工具的子 Agent 不涉及 prompt 萃取。
 
 ## Session 与 Memory
 

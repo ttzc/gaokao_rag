@@ -1,7 +1,6 @@
 # 意图识别 Agent（src/agent/retrieval/intent.py）
 
 > 对应代码：`src/agent/retrieval/intent.py`。查询侧子 Agent 之一，**只调 `src/retrieval` 读门面，严禁 `import src.store.*`**。
-> Prompt 萃取：`src/agent/skills/intent/SKILL.md`（2026-08-27）—— 纯 LLM，不查库。
 
 ## 定位
 

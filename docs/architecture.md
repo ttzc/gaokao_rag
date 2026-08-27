@@ -255,11 +255,8 @@ gaokao_rag/
 │   │   │   ├── extract_tool.py #    PDF / 图像提取（挂到文档识别子 Agent）
 │   │   │   └── ingest_tool.py  #    题目/错题摄入（挂到入库决策子 Agent）
 │   │   │
-│   │   ├── skills/            #   Agent Skills（纯 LLM prompt 萃取，渐进式披露）
-│   │   │   ├── question-organize/     #    题目整理：零散输入 → 题目/答案/解析三段（已落地）
-│   │   │   ├── intent/                #    意图识别（待实现）
-│   │   │   ├── structure-recognition/ #    结构识别（待实现）
-│   │   │   └── output/                #    输出整理（待实现）
+│   │   ├── skills/            #   Agent Skills（可复用领域指令，渐进式披露）
+│   │   │   └── question-organize/     #    题目整理：零散输入 → 题目/答案/解析三段（已落地）
 │   │
 │   │   ├── ingestion/         #   摄入侧子 Agent（每文件一个 Agent，只调 src/ingestion 写门面）
 │   │   │   ├── doc_recognition.py       #  文档识别 Agent
@@ -307,7 +304,7 @@ gaokao_rag/
 | 三层存储（原语） | `src/store/` | 最低层：文件(raw) / SQLite 逐表 CRUD / Chroma 原语 + `GaokaoKnowledge`。只被 ingestion、retrieval 依赖，不向上依赖 |
 | 摄取门面（写） | `src/ingestion/` | **封装三层存储的全部 增/删/改**：ingest_question / update_question / delete_question、ingest_image、ingest_exam_paper、ingest_error、ingest_knowledge_note、topic 归位（create_topic / add_topic_alias / resolve_or_create_topics / delete_topic）、record_exam_attempt、save_review_plan、save_report。保证三态一致，**无 LLM** |
 | 检索门面（读，**新增**） | `src/retrieval/` | **封装全部查询与聚合逻辑**：混合检索（题目+讲解 `hybrid_search`）、search_questions / get_question_detail / browse_questions、search_knowledge_notes、search_topics / list_topics、get_error_stats / get_weak_topics、aggregate_errors / aggregate_attempts / get_report / compute_trend。只读不写 |
-| Agent 编排 | `src/agent/` | TeamAgent 编排（leader.py）+ 子 Agent（ingestion/ 摄入侧、retrieval/ 查询侧，每文件一个 Agent）+ FunctionTool（tools/）+ Skills（skills/，纯 LLM prompt 萃取，渐进式披露）；**只调用 ingestion（写）/ retrieval（读）封装函数**，严禁 import `src.store.*` |
+| Agent 编排 | `src/agent/` | TeamAgent 编排（leader.py）+ 子 Agent（ingestion/ 摄入侧、retrieval/ 查询侧，每文件一个 Agent）+ FunctionTool（tools/）+ Skills（skills/，可复用领域指令，渐进式披露）；**只调用 ingestion（写）/ retrieval（读）封装函数**，严禁 import `src.store.*` |
 | MCP 服务 | `src/mcp/` | 对外暴露工具，委托 agent（含 tools） |
 | CLI 入口 | `scripts/` | ingest / chat / mcp_server 三个命令 |
 | 数据 | `data/` | 原始文件 + 处理后数据 + 两个数据库 |

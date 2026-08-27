@@ -1,7 +1,6 @@
 # 输出整理 Agent（src/agent/retrieval/output.py）
 
 > 对应代码：`src/agent/retrieval/output.py`。查询侧子 Agent 之一，**纯 LLM，不查库、不写库**。
-> Prompt 萃取：`src/agent/skills/output/SKILL.md`（2026-08-27）—— 纯 LLM，不挂工具。
 
 ## 定位
 
