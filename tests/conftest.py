@@ -180,15 +180,35 @@ def _reset_state(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
     _knowledge_mod._instance = None
     _file_store_mod._file_store = None
 
+    # 3b. 确保 SQLite schema 存在：clean env（CI 无残留 data/gaokao.db）下标从未
+    #     被创建，而第 1 步的 DELETE 对缺失表静默跳过、无法兜底建表。questions /
+    #     question_topics 的 FK 又引用 files/questions，插入前依赖表必须先存在。
+    #     注意 get_*_db() 只返回空壳单例（__init__ 为 pass，不建表），必须真实触碰
+    #     _connect() 才会触发 _init_schema 的 CREATE TABLE IF NOT EXISTS。
+    #     顺序 = FK 依赖序：files → questions → topics → question_topics。
+    _files_mod.get_files_db()._connect()
+    _questions_mod.get_questions_db()._connect()
+    _topics_mod.get_topics_db()._connect()
+    _qt_mod.get_question_topics_db()._connect()
+
     # 4. FileStore：清空 5 个子目录下的文件（保留目录本身）
     _clear_file_store_subdirs()
 
     # 5. patch 假嵌入：除 integration 测试（真调云端嵌入，会计费）外，任何无参
-    #    get_vector_store() 构造都用 FakeEmbeddings，不真调 API
+    #    get_vector_store() / get_knowledge() 构造都用 FakeEmbeddings，不真调 API。
+    #    三个目标都要替换（缺一即漏）：
+    #       - src.api.embedding：真实工厂入口（防未来模块 from-import 时绑定）
+    #       - src.store.vector.vector_store / knowledge：两个消费方模块的
+    #         from-import 绑定名 —— Python 在 import 时把函数对象绑进各模块全局，
+    #         只 patch 源模块不会重绑已导入模块的全局名（实测验证）
     if not request.node.get_closest_marker("integration"):
+        fake_factory = lambda: FakeEmbeddings(config.embedding.dimension)
+        monkeypatch.setattr("src.api.embedding.get_embedding_model", fake_factory)
         monkeypatch.setattr(
-            "src.store.vector.vector_store.get_embedding_model",
-            lambda: FakeEmbeddings(config.embedding.dimension),
+            "src.store.vector.vector_store.get_embedding_model", fake_factory
+        )
+        monkeypatch.setattr(
+            "src.store.vector.knowledge.get_embedding_model", fake_factory
         )
 
 
