@@ -10,6 +10,9 @@ dependencies = [
     "openai>=2.54.0",
     "python-dotenv>=1.2.2",
     "trpc-agent-py[knowledge,langfuse]>=1.1.16",
+    # mcp 2.0.0 移除了 mcp.shared.session，trpc_agent_sdk(<=1.1.16) 仍 import 它
+    # （trpc_agent_sdk/tools/mcp_tool/_utils.py），收紧上限避免 agent 层 import 失败
+    "mcp>=1.10.1,<2.0.0",
 ]
 
 [dependency-groups]
