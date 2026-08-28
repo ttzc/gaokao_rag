@@ -8,7 +8,7 @@
 def search_knowledge_notes(
     query: str,
     k: int = 6,
-    where: KnowledgeFilterExpr | dict | None = None,
+    filter_expr: KnowledgeFilterExpr | dict | None = None,
 ) -> list[KnowledgeNoteHit]:
 ```
 

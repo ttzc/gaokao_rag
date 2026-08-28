@@ -8,7 +8,7 @@
 def search_questions(
     query: str,                                 # 自然语言检索词（如"椭圆离心率最值"）
     k: int = 8,                                 # 召回题目数
-    where: KnowledgeFilterExpr | dict | None = None,  # 结构化过滤（年份/考区/题型/知识点）
+    filter_expr: KnowledgeFilterExpr | dict | None = None,  # 结构化过滤（年份/考区/题型/知识点）
 ) -> list[QuestionHit]:
 ```
 
