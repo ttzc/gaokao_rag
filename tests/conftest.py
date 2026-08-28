@@ -25,7 +25,7 @@ import src.store.db.questions as _questions_mod
 import src.store.db.topics as _topics_mod
 import src.store.db.question_topics as _qt_mod
 import src.store.file_store as _file_store_mod
-import src.store.vector.knowledge as _knowledge_mod
+import src.retrieval.knowledge as _knowledge_mod
 import src.store.vector.vector_store as _vector_store_mod
 from src.config import config
 from src.store.db import get_shared_conn
@@ -198,7 +198,7 @@ def _reset_state(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
     #    get_vector_store() / get_knowledge() 构造都用 FakeEmbeddings，不真调 API。
     #    三个目标都要替换（缺一即漏）：
     #       - src.api.embedding：真实工厂入口（防未来模块 from-import 时绑定）
-    #       - src.store.vector.vector_store / knowledge：两个消费方模块的
+    #       - src.store.vector.vector_store / src.retrieval.knowledge：两个消费方模块的
     #         from-import 绑定名 —— Python 在 import 时把函数对象绑进各模块全局，
     #         只 patch 源模块不会重绑已导入模块的全局名（实测验证）
     if not request.node.get_closest_marker("integration"):
@@ -208,7 +208,7 @@ def _reset_state(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
             "src.store.vector.vector_store.get_embedding_model", fake_factory
         )
         monkeypatch.setattr(
-            "src.store.vector.knowledge.get_embedding_model", fake_factory
+            "src.retrieval.knowledge.get_embedding_model", fake_factory
         )
 
 

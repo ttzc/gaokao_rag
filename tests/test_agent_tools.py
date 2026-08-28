@@ -1,7 +1,8 @@
 # tests/test_agent_tools.py
 """agent 工具层（src/agent/tools/）测试：导出面 + FunctionTool 元数据 + 调用转发 + 分层铁律。
 
-被测主体是模块级 FunctionTool 实例 ``ingest_question_tool``（子 Agent 挂载的交付物），
+被测主体是模块级工具实例（子 Agent 挂载的交付物）：写侧 ``ingest_question_tool``
+（FunctionTool）+ 读侧 ``knowledge_search_tool``（框架 LangchainKnowledgeSearchTool），
 非测试内自行包装的副本。全部 mock 写门面（src.ingestion），不触真实存储 / 网络 / 计费 API。
 
 工具函数经 `from src.ingestion.question import ingest_question as _ingest_question`
@@ -21,11 +22,14 @@ from unittest.mock import MagicMock
 
 import pytest
 from trpc_agent_sdk.context import InvocationContext
+from trpc_agent_sdk.server.knowledge.langchain_knowledge import SearchType
+from trpc_agent_sdk.server.knowledge.tools import LangchainKnowledgeSearchTool
 from trpc_agent_sdk.tools import FunctionTool
 from trpc_agent_sdk.tools.utils import get_mandatory_args
 
-from src.agent.tools import ingest_tool
+from src.agent.tools import ingest_tool, retrieve_tool
 from src.agent.tools.ingest_tool import ingest_question_tool
+from src.agent.tools.retrieve_tool import knowledge_search_tool
 
 
 def _fake_tool_context() -> MagicMock:
@@ -60,6 +64,30 @@ class TestToolExports:
     def test_public_names(self) -> None:
         """只导出 tool 实例；包装函数与未来工具不进公共接口面。"""
         assert ingest_tool.__all__ == ["ingest_question_tool"]
+
+
+class TestRetrieveToolExports:
+    """读侧交付物：框架检索工具实例（挂到搜索信息子 Agent）。
+
+    仅断言导出面与常量配置，不执行检索（rag 为 import 时实体化的
+    GaokaoKnowledge 单例，构造零网络调用）。
+    """
+
+    def test_instance_is_knowledge_search_tool(self) -> None:
+        assert isinstance(knowledge_search_tool, LangchainKnowledgeSearchTool)
+        assert knowledge_search_tool.name == "knowledge_search"
+
+    def test_public_names(self) -> None:
+        """只导出 tool 实例；get_knowledge 绑定与常量不进公共接口面。"""
+        assert retrieve_tool.__all__ == ["knowledge_search_tool"]
+
+    def test_search_config(self) -> None:
+        """MVP 基线：top-10 纯相似度，不配过滤（Agentic 版留待升级）。"""
+        assert retrieve_tool.TOP_K == 10
+        assert retrieve_tool.SEARCH_TYPE is SearchType.SIMILARITY
+        assert knowledge_search_tool.top_k == retrieve_tool.TOP_K
+        assert knowledge_search_tool.search_type is retrieve_tool.SEARCH_TYPE
+        assert knowledge_search_tool.knowledge_filter is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -270,7 +298,9 @@ class TestLayeringRule:
                 mods.add(node.module)
         return mods
 
-    @pytest.mark.parametrize("filename", ["__init__.py", "ingest_tool.py"])
+    @pytest.mark.parametrize(
+        "filename", ["__init__.py", "ingest_tool.py", "retrieve_tool.py"]
+    )
     def test_no_store_import(self, filename: str) -> None:
         mods = self._imported_modules(Path(ingest_tool.__file__).parent / filename)
         violations = [m for m in mods if m == "src.store" or m.startswith("src.store.")]

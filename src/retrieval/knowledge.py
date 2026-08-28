@@ -1,6 +1,8 @@
-# src/store/vector/knowledge.py
-# Layer 3b：语义检索的查询侧——将 ``embedder`` + ``vectorstore`` 注入框架 ``LangchainKnowledge``，
-# 重写 ``build_search_extra_params`` 将 ``KnowledgeFilterExpr`` 翻译为 Chroma 原生 where dict。
+# src/retrieval/knowledge.py
+# 读门面·知识检索组件：语义检索的查询侧——将 ``embedder`` + ``vectorstore`` 注入
+# 框架 ``LangchainKnowledge``，重写 ``build_search_extra_params`` 将
+# ``KnowledgeFilterExpr`` 翻译为 Chroma 原生 where dict。
+# （2026-08-28 组件归位：原 src/store/vector/knowledge.py 迁入读门面，见 docs/retrieval/knowledge.md）
 #
 # 设计：
 #   - _instance   — 模块级懒单例（GaokaoKnowledge 实例）
@@ -15,7 +17,7 @@
 #   - ``contains`` 操作符框架当前未验证，但防御性实现以应对未来扩展
 #
 # 用法：
-#     from src.store.vector.knowledge import get_knowledge
+#     from src.retrieval.knowledge import get_knowledge
 #     knowledge = get_knowledge()
 #     # search 由框架调用，build_search_extra_params 由框架在 search 前调用
 

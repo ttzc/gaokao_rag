@@ -1,5 +1,5 @@
 # tests/test_knowledge.py
-"""src/store/vector/knowledge.py 单元测试 + 集成测试。
+"""src/retrieval/knowledge.py 单元测试 + 集成测试。
 
 覆盖：
 - _translate 各操作符翻译正确性（eq/ne/gt/gte/lt/lte/in/not in/like/not like/between/contains）
@@ -29,7 +29,7 @@ from trpc_agent_sdk.types import Part
 
 from src.config import config
 from src.store.vector.vector_store import VectorStore
-from src.store.vector.knowledge import GaokaoKnowledge, get_knowledge
+from src.retrieval.knowledge import GaokaoKnowledge, get_knowledge
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -49,8 +49,8 @@ def mock_vs():
 @pytest.fixture()
 def knowledge(mock_vs):
     """GaokaoKnowledge 实例，embedder + vectorstore 均 mock。"""
-    with patch("src.store.vector.knowledge.get_embedding_model") as mock_emb, \
-         patch("src.store.vector.knowledge.get_vector_store") as mock_vs_store:
+    with patch("src.retrieval.knowledge.get_embedding_model") as mock_emb, \
+         patch("src.retrieval.knowledge.get_vector_store") as mock_vs_store:
         mock_emb.return_value = FakeEmbeddings()
         mock_vs_store.return_value.vectorstore = mock_vs
         knowledge = GaokaoKnowledge()
@@ -473,8 +473,8 @@ class TestIntegration:
             embedding_function=fake_emb,
         )
 
-        with patch("src.store.vector.knowledge.get_embedding_model") as mock_emb, \
-             patch("src.store.vector.knowledge.get_vector_store") as mock_vs_store:
+        with patch("src.retrieval.knowledge.get_embedding_model") as mock_emb, \
+             patch("src.retrieval.knowledge.get_vector_store") as mock_vs_store:
             mock_emb.return_value = fake_emb
             mock_vs_store.return_value.vectorstore = vector_store.vectorstore
             knowledge = GaokaoKnowledge()
