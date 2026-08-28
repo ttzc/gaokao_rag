@@ -47,5 +47,5 @@ if decision == "error_book":        # 先题后错：错因单独写
 ## 相关
 
 - 原子函数定义：`src/ingestion/`（写门面，见 [ingestion.md 实现工具集](../../ingestion/README.md)）
-- 子 Agent 交互：回显 → 收集决策 → 分流（见 [storage_decision.md](../ingestion/storage_decision.md)）
+- 子 Agent 交互：Leader 回显收集决策 → 入库决策 Agent 分流写库（见 [storage_decision.md](../ingestion/storage_decision.md)）
 - 挂载矩阵与边界：见 [tools/README.md](README.md)

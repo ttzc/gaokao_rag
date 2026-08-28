@@ -68,7 +68,7 @@ flowchart TD
 | **文档识别 Agent** | 接收照片/PDF → 提取内容（图片走 VLM，PDF 走 PyMuPDF） | VLM + PyMuPDF 工具 |
 | **结构识别 Agent** | 区分讲解段 vs 题目段 → **语义划分每题「题目/答案/解析」**（不依赖关键词）→ 生成题目清单（每题一句话概括） | LLM 分类 |
 | **知识整理 Agent** | 知识点提取 → tag 归位/别名归并（写 topics） | tag CRUD 工具（topics FunctionTool） |
-| **入库决策 Agent** | 回显题目清单 → 收集学生选择（入库/错题/跳过）→ 写 questions/errors | SQLite 写入工具 |
+| **入库决策 Agent** | 消费题目清单 + 用户去向（入库/错题/跳过）→ 写 questions/errors（**回显由 Leader 管理**） | SQLite 写入工具 |
 
 **设计要点**：
 
@@ -88,10 +88,9 @@ flowchart TD
     R -->|raw_blocks| S[结构识别 Agent]
     S -->|lecture_segments| KN[讲解段自动入库<br/>knowledge_notes]
     S -->|pending_questions| K[知识整理 Agent]
-    K -->|topic_draft| D[入库决策 Agent]
-    D -->|回显题目清单| U2[用户选择<br/>入库 / 错题 / 跳过]
-    U2 -->|ingest_decisions| D
-    D -->|ingest_results| OUT[写入 questions / errors<br/>回显结果]
+    K -->|topic_draft| L[Leader<br/>回显题目清单]
+    L -->|ingest_decisions<br/>用户选择入库/错题/跳过| D[入库决策 Agent<br/>分流写库]
+    D -->|ingest_results| OUT[写入 questions / errors<br/>汇总结果]
 ```
 
 **State 契约字段**（摄入侧新增）：
@@ -99,10 +98,10 @@ flowchart TD
 | 字段 | 产出者 | 内容 | 消费方 |
 |------|--------|------|--------|
 | `raw_blocks` | 文档识别 | 结构化文本块 + 图像列表 + 坐标信息 | 结构识别 |
-| `pending_questions` | 结构识别 | 题目清单（每题：一句话概括 + 题目 / 答案 / 解析三段 + 关联图像；不留原文块） | 知识整理、入库决策（回显） |
+| `pending_questions` | 结构识别 | 题目清单（每题：一句话概括 + 题目 / 答案 / 解析三段 + 关联图像；不留原文块） | 知识整理、Leader（回显）、入库决策 |
 | `lecture_segments` | 结构识别 | 讲解段文本列表 | 自动入库（knowledge_notes） |
 | `topic_draft` | 知识整理 | 每题知识点草案（topic_name 列表，待归位） | 入库决策 |
-| `ingest_decisions` | 用户 | 每题去向（入库 / 错题 / 跳过） | 入库决策 |
+| `ingest_decisions` | 用户（Leader 收集） | 每题去向（入库 / 错题 / 跳过） | 入库决策 |
 | `ingest_results` | 入库决策 | 写入结果（question_id / doc_id） | 输出整理 |
 
 **4 个澄清要点**：

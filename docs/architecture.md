@@ -101,7 +101,7 @@ flowchart TB
 - **入口层**：QQ（官方 API + nanobot 通道适配器）/ CLI / MCP / FastAPI 统一接入 trpc-claw 网关
 - **Agent 层**：Leader 按意图委派成员——**意图识别是分支点**：
   - **查询侧（读）**：question/browse 走搜索（含图触发 VLM）→ 输出；review/report 走聚合 → 输出
-  - **摄入侧（写）**：ingest 走文档识别 → 结构识别 → 知识整理 → 入库决策 → 输出（回显确认）
+  - **摄入侧（写）**：ingest 走文档识别 → 结构识别 → 知识整理 → Leader 回显确认 → 入库决策 → 输出
   - 不同意图走不同成员组合，不是所有成员每次都被调用
 - **存储层**：搜索 Agent 查询 Chroma（语义）+ SQLite（精确过滤）；聚合 Agent 读写 SQLite（错题/作答/报告）；摄入侧写入 Chroma + SQLite（题目/知识点/错题）
 
@@ -175,7 +175,7 @@ class GaokaoState(State):
 | 文档识别 Agent | 接收照片/PDF → 提取内容（图片走 VLM，PDF 走 PyMuPDF） | VLM + PyMuPDF 工具 |
 | 结构识别 Agent | 区分讲解段 vs 题目段 → 题目清单（每题一句话概括） | LLM 分类 |
 | 知识整理 Agent | 知识点提取 → tag 归位/别名归并（写 topics） | SQLite 写入工具 |
-| 入库决策 Agent | 回显清单 → 收集学生选择 → 写 questions/errors | SQLite 写入工具 |
+| 入库决策 Agent | 消费题目清单 + 用户去向（入库/错题/跳过）→ 写 questions/errors（回显由 Leader 管理） | SQLite 写入工具 |
 
 ## 三层存储架构
 
