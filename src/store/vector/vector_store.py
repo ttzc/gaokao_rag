@@ -124,6 +124,14 @@ class VectorStore:
         meta["doc_id"] = doc_id
         doc = Document(page_content=text, metadata=meta)
         self.vectorstore.add_documents(documents=[doc], ids=[doc_id])
+        # 只记元信息，不打印文本内容
+        logger.info(
+            "Vector upserted: doc_id=%s meta=(doc_type=%s, subject=%s, topic_tags=%d)",
+            doc_id,
+            meta.get("doc_type", "-"),
+            meta.get("subject", "-"),
+            len(meta.get("topic_tags") or []),
+        )
 
     def upsert_many(self, docs: list[dict | Document]) -> None:
         """批量写入/更新（doc_id 幂等）。
@@ -144,7 +152,7 @@ class VectorStore:
 
         if isinstance(docs[0], Document):
             doc_list = cast(list[Document], docs)
-            self.upsert_documents(doc_list)
+            self.upsert_documents(doc_list)  # 日志由 upsert_documents 输出
         elif isinstance(docs[0], dict):
             dict_list = cast(list[dict], docs)
             doc_ids = [d["doc_id"] for d in dict_list]
@@ -156,6 +164,12 @@ class VectorStore:
                 for d in dict_list
             ]
             self.vectorstore.add_documents(documents=documents, ids=doc_ids)
+            logger.info(
+                "Vector upserted %d docs: first=%s last=%s",
+                len(doc_ids),
+                doc_ids[0],
+                doc_ids[-1],
+            )
         else:
             raise TypeError(
                 f"upsert_many 不支持 {type(docs[0]).__name__} 类型，"
@@ -177,7 +191,7 @@ class VectorStore:
         if doc_id is None:
             raise ValueError("Document metadata must contain 'doc_id'")
         metadata = dict(doc.metadata)
-        self.upsert(doc_id=doc_id, text=doc.page_content, metadata=metadata)
+        self.upsert(doc_id=doc_id, text=doc.page_content, metadata=metadata)  # 日志由 upsert 输出
 
     def upsert_documents(self, docs: list[Document]) -> None:
         """批量写入/更新 LangChain Document 列表（doc_id 幂等）。
@@ -216,6 +230,12 @@ class VectorStore:
             prepared.append(Document(page_content=d.page_content, metadata=meta))
 
         self.vectorstore.add_documents(documents=prepared, ids=doc_ids)
+        logger.info(
+            "Vector upserted %d docs: first=%s last=%s",
+            len(doc_ids),
+            doc_ids[0],
+            doc_ids[-1],
+        )
 
     # ── 查询 ───────────────────────────────────────────────────────
 

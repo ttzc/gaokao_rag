@@ -82,7 +82,7 @@ class TestFunctionToolMetadata:
         assert "exam" in tool.description  # source_type 取值说明对 LLM 可见
 
     def test_declaration_schema(self) -> None:
-        """schema 覆盖全部 11 个子集参数；question_text 为必填。
+        """schema 覆盖全部 12 个子集参数；question_text 为必填。
 
         默认 api_variant 下 genai Schema 不写 required 字段，必填性由
         get_mandatory_args（签名推导，FunctionTool 运行时校验同源）+ 无 default
@@ -97,7 +97,7 @@ class TestFunctionToolMetadata:
         assert set(props.keys()) == {
             "question_text", "answer_text", "analysis_text", "topic_names",
             "raw_file_path", "question_type", "source_type", "subject",
-            "exam_year", "exam_month", "question_number",
+            "exam_year", "exam_month", "question_number", "exam_regions",
         }
         # question_text：必填（无 default）且类型为 STRING
         qt = props["question_text"].model_dump(exclude_none=True)
@@ -105,22 +105,23 @@ class TestFunctionToolMetadata:
         assert get_mandatory_args(ingest_question_tool.func) == ["question_text"]
 
     def test_complex_facade_params_not_exposed(self) -> None:
-        """门面的列表/复杂参数（exam_regions/image_file_ids/vlm_descriptions）
-        不进工具 schema——薄封装存在的意义就是收紧 LLM 参数面。"""
+        """门面剩余复杂参数（image_file_ids/vlm_descriptions）不进工具 schema——
+        薄封装存在的意义就是收紧 LLM 参数面。exam_regions 已于 2026-08-28 打通
+        来源链路时放开（扁平 str 列表，LLM 可稳定产出形状）。"""
         tool = ingest_question_tool
         props = tool._get_declaration().parameters.properties
-        assert "exam_regions" not in props
         assert "image_file_ids" not in props
         assert "vlm_descriptions" not in props
 
-    def test_topic_names_schema_is_nullable_string_array(self) -> None:
+    @pytest.mark.parametrize("param", ["topic_names", "exam_regions"])
+    def test_list_params_schema_is_nullable_string_array(self, param: str) -> None:
         """list 参数在 typing.Optional 写法下能生成合法 schema（ARRAY + items STRING）。
 
         回归保护：`list[str] | None`（PEP 604 UnionType）会让 schema 生成器直接抛
         ValueError，故可空参数必须用 typing.Optional[...] 写法。
         """
         tool = ingest_question_tool
-        tn = tool._get_declaration().parameters.properties["topic_names"]
+        tn = tool._get_declaration().parameters.properties[param]
         assert tn.type.value == "ARRAY"
         assert tn.nullable is True
         assert tn.items.type.value == "STRING"
@@ -154,6 +155,7 @@ class TestCallForwarding:
                 "exam_year": 2026,
                 "exam_month": 6,
                 "question_number": "第15题",
+                "exam_regions": ["深圳", "广东", "全国一卷"],
             },
         )
 
@@ -170,6 +172,7 @@ class TestCallForwarding:
             "exam_year": 2026,
             "exam_month": 6,
             "question_number": "第15题",
+            "exam_regions": ["深圳", "广东", "全国一卷"],
             "topic_names": ["二次函数", "配方法"],
         }
 
@@ -194,6 +197,7 @@ class TestCallForwarding:
         assert fwd["analysis_text"] == ""
         assert fwd["topic_names"] is None
         assert fwd["raw_file_path"] is None
+        assert fwd["exam_regions"] is None
         # 门面是 keyword-only：转发不得出现位置参数（recorder 只收 kwargs，能跑通即证明）
 
     @pytest.mark.asyncio

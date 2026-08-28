@@ -93,6 +93,12 @@ class TestInstructionConstraints:
         for marker in ("入库", "错题", "跳过", "先题后错", "error_pending"):
             assert marker in STORAGE_DECISION_INSTRUCTION
 
+    def test_source_decomposition_mapping(self) -> None:
+        """来源链路贯通（2026-08-28）：条目「来源」行 → 拆解映射参数写进指令，
+        卷型/考区有落库路径（exam_regions），不再是只留题号。"""
+        for marker in ("来源", "exam_regions", "exam_year", "question_number", "全国1卷"):
+            assert marker in STORAGE_DECISION_INSTRUCTION
+
     def test_missing_decision_returns_pending(self) -> None:
         """决策缺失 → 标 pending 交还 Leader，不擅自猜测。"""
         assert "pending" in STORAGE_DECISION_INSTRUCTION

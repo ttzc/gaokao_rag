@@ -51,6 +51,9 @@ class TestCreateStructureRecognitionAgent:
         assert "question-organize" in agent.instruction
         assert "lecture_segments" in agent.instruction
         assert "pending_questions" in agent.instruction
+        # 来源链路贯通（2026-08-28）：source_hint 以「来源」行随条目下传，不被三段收敛误伤
+        assert "来源" in agent.instruction
+        assert "source_hint" in agent.instruction
 
     def test_tools_contains_skill_toolset(self) -> None:
         agent = self._make_agent()

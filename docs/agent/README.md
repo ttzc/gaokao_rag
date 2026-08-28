@@ -99,7 +99,7 @@ flowchart TD
 | 字段 | 产出者 | 内容 | 消费方 |
 |------|--------|------|--------|
 | `raw_blocks` | 文档识别 | 结构化文本块 + 图像列表 + 坐标信息 | 结构识别 |
-| `pending_questions` | 结构识别 | 题目清单（每题：一句话概括 + 题目 / 答案 / 解析三段 + 关联图像；不留原文块） | 知识整理、Leader（回显）、入库决策 |
+| `pending_questions` | 结构识别 | 题目清单（每题：一句话概括 + 题目 / 答案 / 解析三段 + 关联图像 / 来源（source_hint）；不留原文块） | 知识整理、Leader（回显）、入库决策 |
 | `lecture_segments` | 结构识别 | 讲解段文本列表 | 自动入库（knowledge_notes） |
 | `topic_draft` | 知识整理 | 每题知识点草案（topic_name 列表，待归位） | 入库决策 |
 | `ingest_decisions` | 用户（Leader 收集） | 每题去向（入库 / 错题 / 跳过） | 入库决策 |

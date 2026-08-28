@@ -10,7 +10,7 @@
 
 | 字段 | 内容 |
 |------|------|
-| `pending_questions` | 题目清单（每题：一句话概括 + 题目/答案/解析三段 + 关联图像） |
+| `pending_questions` | 题目清单（每题：一句话概括 + 题目/答案/解析三段 + 关联图像 / 来源）——有「来源」行则拆解映射：年份→`exam_year`、题号→`question_number`、卷型/考区→`exam_regions`、性质→`source_type` |
 | `ingest_decisions` | 每题去向（入库 / 错题 / 跳过）——Leader 已收集好的用户意图 |
 
 回显示意（**Leader 侧**，非本 Agent 职责）：

@@ -17,8 +17,9 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from trpc_agent_sdk.log import logger
 
 from src.store.db.questions import get_questions_db
 from src.store.db.question_topics import get_question_topics_db
@@ -26,8 +27,6 @@ from src.store.db.topics import get_topics_db
 from src.store.db.files import get_files_db
 from src.store.file_store import get_file_store
 from src.store.vector import get_vector_store
-
-logger = logging.getLogger(__name__)
 
 
 def ingest_question(
@@ -155,5 +154,15 @@ def ingest_question(
     if exam_regions:
         meta["exam_regions"] = exam_regions
     get_vector_store().upsert(doc_id, embedding_text, meta)
+
+    # 四层全部写完（能走到这里说明 upsert 未抛异常），汇总一条便于运行期观察
+    logger.info(
+        "ingest_question done: question_id=%d doc_id=%s file_id=%s topics=%d vector=%s",
+        qid,
+        doc_id,
+        file_id if file_id is not None else "-",
+        len(resolved),
+        "ok",
+    )
 
     return {"question_id": qid, "doc_id": doc_id}

@@ -10,7 +10,7 @@
 
 | Tool | 签名 | 用途 | 内建约束 |
 |------|------|------|---------|
-| `ingest_question` ✅已实现 | (question_text, answer_text="", analysis_text="", topic_names=None, raw_file_path=None, question_type="", source_type="exam", subject="数学", exam_year=None, exam_month=None, question_number=None) → {question_id, doc_id} | 一道题入库：文件 + SQLite（questions + question_topics）+ Chroma（doc_id = `q_{id}`） | **不接收 errors 参数**；门面的复杂列表参数（exam_regions / image_file_ids / vlm_descriptions）不暴露给 LLM，走默认值 |
+| `ingest_question` ✅已实现 | (question_text, answer_text="", analysis_text="", topic_names=None, raw_file_path=None, question_type="", source_type="exam", subject="数学", exam_year=None, exam_month=None, question_number=None, exam_regions=None) → {question_id, doc_id} | 一道题入库：文件 + SQLite（questions + question_topics）+ Chroma（doc_id = `q_{id}`） | **不接收 errors 参数**；门面的复杂参数（image_file_ids / vlm_descriptions）不暴露给 LLM，走默认值；exam_regions 已放开（2026-08-28 来源链路贯通，扁平 str 列表 LLM 可稳定产出） |
 | `ingest_error` ⏳门面未落地 | (question_id, user_reflection) → error_id | 错题写错因：LLM 结构化 `error_summary` + 关联题目 | errors.question_id FK → questions；**先题后错** |
 | `ingest_image` ⏳门面未落地 | (image_path, source) → file_id | 图片入库（文件 + files 表） | sha256 UNIQUE 去重 |
 | `ingest_exam_paper` ⏳门面未落地 | (pdf_path, title="") → file_id | 试卷文件注册（文件 + files 表） | sha256 UNIQUE 去重 |
@@ -23,6 +23,7 @@
 - **异常不吞**：任一层写入失败原样抛出，由框架转成 error 告知子 Agent（本题未入库，不重试猜测）。
 - **注解写法硬约束**：可空参数必须写 `typing.Optional[...]`，不能写 `X | None`——FunctionTool 的 schema 生成器只识别 typing 写法，PEP 604 UnionType 直接抛 `ValueError`（实测）。
 - **必填校验**：仅 `question_text` 无默认值（必填）；缺失时 FunctionTool 返回 error 提示 LLM 补参重试，不触门面。
+- **exam_regions 透传与来源拆解映射**（2026-08-28 来源链路贯通）：工具暴露 `exam_regions: Optional[list[str]]`（考区/卷型层级，从小到大），由**入库决策 Agent 的 instruction** 负责从结构识别下传的「来源」行拆解映射——如「2026高考全国1卷第13题」→ `exam_year=2026`、`question_number="第13题"`、`exam_regions=["全国1卷"]`、`source_type="exam"`；纯口述无来源则全部省略走默认。落库两层同步受益：SQLite `questions.exam_regions`（JSON 数组）+ Chroma metadata `exam_regions`（`$contains` 过滤）。工具本身不做解析，只透传。
 - 错题分支（`ingest_error`）待其门面落地后再补，本轮只封装 `ingest_question`。
 
 ## 调用链（入库决策子 Agent）

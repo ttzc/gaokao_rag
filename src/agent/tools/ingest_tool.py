@@ -40,6 +40,7 @@ async def ingest_question(
     exam_year: Optional[int] = None,
     exam_month: Optional[int] = None,
     question_number: Optional[str] = None,
+    exam_regions: Optional[list[str]] = None,
 ) -> dict:
     """将一道题目写入三层存储（文件 + SQLite + 知识点关联 + 向量索引），返回业务 ID。
 
@@ -55,6 +56,7 @@ async def ingest_question(
         exam_year: 考试年份，如 2026；未知时传 None。
         exam_month: 考试月份 1-12；未知时传 None。
         question_number: 题号，如 "第15题"；无题号时传 None。
+        exam_regions: 考区/卷型层级列表（从小到大），如 ["全国一卷"] 或 ["深圳","广东","全国一卷"]；从来源描述提取卷型/考区，无来源或判断不了时传 None。
 
     Returns:
         成功时返回 {"question_id": 题目自增 ID（int）, "doc_id": 向量文档 ID（str，形如 "q_1"）}。
@@ -76,6 +78,7 @@ async def ingest_question(
         exam_year=exam_year,
         exam_month=exam_month,
         question_number=question_number,
+        exam_regions=exam_regions,
         topic_names=topic_names,
     )
 
