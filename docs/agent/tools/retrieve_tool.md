@@ -100,7 +100,7 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 
 - 薄封装 + async 经 `asyncio.to_thread` 下沉同步 DB 调用
 - 可空参数写 `typing.Optional[...]`（非 PEP 604 `X | None`，否则 FunctionTool schema 生成抛 `ValueError`）
-- **模块级实例的副作用要区分**：业务查询工具（薄封装 FunctionTool）构造零副作用；框架检索工具 `knowledge_search_tool = LangchainKnowledgeSearchTool(rag=get_knowledge(), ...)` 在 import 时实体化 `GaokaoKnowledge` 懒单例——离线构造 `OpenAIEmbeddings` + Chroma `PersistentClient`（文件句柄），**需 `.env` 有 `DASHSCOPE_API_KEY`**（缺失则 import 直接 `RuntimeError`）；不发网络请求、不计费
+- **模块级实例用 PEP 562 惰性导出**（`__getattr__` 首次访问才构造，import 模块本身零副作用——CI 无 `.env` 也能 collect）；`knowledge_search_tool` 首次访问时实体化 `GaokaoKnowledge` 懒单例——离线构造 `OpenAIEmbeddings` + Chroma `PersistentClient`（文件句柄），**需 `.env` 有 `DASHSCOPE_API_KEY`**（缺失则访问时 `RuntimeError`）；不发网络请求、不计费
 - 严禁 `import src.store.*`
 
 ## 挂载矩阵（读侧）
