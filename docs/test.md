@@ -38,7 +38,7 @@ gaokao_rag/
 │   ├── test_store_db_question_topics.py  # 测 src/store/db/question_topics.py
 │   ├── test_store_file.py                # 测 src/store/file_store.py
 │   ├── test_vector_store.py              # 测 src/store/vector/vector_store.py
-│   ├── test_knowledge.py                 # 测 src/store/vector/knowledge.py
+│   ├── test_knowledge.py                 # 测 src/retrieval/knowledge.py
 │   └── test_ingestion_question.py        # 测 src/ingestion/question.py
 └── pyproject.toml
 ```

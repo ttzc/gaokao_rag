@@ -14,7 +14,7 @@ def search_questions(
 
 **内部流程**：
 
-1. `hybrid_search(query, k, where)` 返回框架 `SearchResult`（题目 + 讲解同 Collection，见 [retriever.md](retriever.md)）
+1. `get_knowledge().search(query, k, filter_expr)` 返回框架 `SearchResult`（题目 + 讲解同 Collection，见 [knowledge.md](knowledge.md)）
 2. 遍历 `result.documents`，仅保留 `doc.document.metadata["doc_type"] == "question"` 的命中
 3. 用 `doc.document.metadata["doc_id"]` → `questions.id` 回查 `src.store.db.questions` 补全结构化字段（题号、题型、考区、年份、图）
 4. 封装为 `QuestionHit`（业务语义对象，非裸 Row）

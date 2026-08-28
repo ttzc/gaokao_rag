@@ -1,6 +1,6 @@
 # 向量存储（Layer 3a：Chroma 增删读写）
 
-> 对应 `src/store/vector/vector_store.py`（Chroma 封装）。负责**语义检索的写入侧**：文本 + metadata → 向量 → Chroma collection `gaokao`，供搜索子 Agent 按语义召回（配合 SQLite 精确过滤形成混合检索，见 [architecture.md](../../architecture.md)）。嵌入模型客户端见 [src/api/embedding.py](../../../src/api/embedding.py) 的工厂说明（下文「嵌入模型选型」「向量维度」同源决策）。检索查询侧（Knowledge 对象构建）见 [knowledge.md](./knowledge.md)。
+> 对应 `src/store/vector/vector_store.py`（Chroma 封装）。负责**语义检索的写入侧**：文本 + metadata → 向量 → Chroma collection `gaokao`，供搜索子 Agent 按语义召回（配合 SQLite 精确过滤形成混合检索，见 [architecture.md](../../architecture.md)）。嵌入模型客户端见 [src/api/embedding.py](../../../src/api/embedding.py) 的工厂说明（下文「嵌入模型选型」「向量维度」同源决策）。检索查询侧（Knowledge 对象构建）见 [retrieval/knowledge.md](../../retrieval/knowledge.md)。
 
 ## 功能定位
 
@@ -172,7 +172,7 @@ def __init__(self, collection_name: str, persist_dir: str, expected_dim: int) ->
 
 ### 实现注意：langchain Filter vs Chroma where
 
-⚠️ langchain 的 Filter 语法（`$eq/$ne/$in/$gt...`）**不含 `$contains`**——它是 Chroma 专有操作符。`AgenticLangchainKnowledgeSearchTool` 生成的 filter 若覆盖不到数组语义，`VectorStore.search()` 需要支持直接透传 **chromadb 原生 where**（或加 langchain Filter → Chroma where 的翻译层），否则数组字段（知识点/考区）无法过滤。实现时以实测为准，测试里覆盖"数组 $contains 过滤"用例。该翻译层由 [knowledge.md](./knowledge.md) 的 `GaokaoKnowledge` 子类负责。
+⚠️ langchain 的 Filter 语法（`$eq/$ne/$in/$gt...`）**不含 `$contains`**——它是 Chroma 专有操作符。`AgenticLangchainKnowledgeSearchTool` 生成的 filter 若覆盖不到数组语义，`VectorStore.search()` 需要支持直接透传 **chromadb 原生 where**（或加 langchain Filter → Chroma where 的翻译层），否则数组字段（知识点/考区）无法过滤。实现时以实测为准，测试里覆盖"数组 $contains 过滤"用例。该翻译层由 [retrieval/knowledge.md](../../retrieval/knowledge.md) 的 `GaokaoKnowledge` 子类负责（读门面组件，2026-08-28 自本目录迁出）。
 
 ## 组件装配
 
@@ -194,7 +194,7 @@ flowchart LR
     VS -->|persist_directory| DB[("data/chroma_db")]
 ```
 
-> 查询侧 Knowledge 对象如何消费 `embedder` / `vectorstore`，以及 `GaokaoKnowledge` 子类的过滤翻译，见 [knowledge.md](./knowledge.md)。
+> 查询侧 Knowledge 对象如何消费 `embedder` / `vectorstore`，以及 `GaokaoKnowledge` 子类的过滤翻译，见 [retrieval/knowledge.md](../../retrieval/knowledge.md)。
 
 ### src/api/embedding.py —— embedder（OpenAIEmbeddings 工厂）
 
@@ -211,7 +211,7 @@ flowchart LR
 | `delete(doc_ids)` | 删除题目/讲解时同步删对应 document |
 | `get(doc_id)` | 按 id 取 document（更新前查重、一致性校验） |
 | `count()` | collection 内 document 总数 |
-| `vectorstore` 属性 | 底层 Chroma 实例，**供 LangchainKnowledge 注入**（见 [knowledge.md](./knowledge.md)） |
+| `vectorstore` 属性 | 底层 Chroma 实例，**供 LangchainKnowledge 注入**（见 [retrieval/knowledge.md](../../retrieval/knowledge.md)） |
 
 `get_vector_store()` 懒初始化单例。
 
@@ -224,7 +224,7 @@ flowchart LR
 5. **不混用原生 chromadb API 与 langchain Chroma**（同库双写会不一致）
 6. **数组过滤走 Chroma 原生 where**：`$contains` 不在 langchain Filter 语法内（见「Metadata 格式与过滤语义 · 实现注意」），数组字段过滤不能只依赖 langchain 翻译
 7. **依赖版本约束**：`langchain-chroma` 必须 `>=1.1.0`——当前 `uv.lock` 锁定 `langchain-core==1.5.4`（新版主版本线），旧版 langchain-chroma（0.1/0.2/0.3）要求 `langchain-core<0.4`，会依赖冲突导致 `uv sync` 失败。**已落地**（commit e72021d）：`langchain-chroma>=1.1.0` + `langchain-openai>=1.4.3` + `openai>=2.54.0`。`chromadb` 不必单独声明（langchain-chroma 传递依赖）
-8. **DashScope 拒收 token-ID 格式（实测确认，2026-08-20）**：`OpenAIEmbeddings` 在 `check_embedding_ctx_length=True`（默认）时经 tiktoken 把文本编码为 token-ID 列表，发送 `{"input":[[token_id,...]]}`；DashScope 返回 400 `contents is neither str nor list of str`。设 `check_embedding_ctx_length=False`（发纯文本）才正常（返回 1024 维，见探针 Test 3）。**因此 `embedding.py` 必须显式保留 `check_embedding_ctx_length=False`，不可删**。该 flag 还有独立作用：让 `chunk_size=20` 当每批条数切分，保障不超 DashScope 单次 ≤20 条限制。探针代码：`D:\AI_study\learn\qwen_test\qwen_tiktoken_probe.py`（对标 Gitee issue IJUQ06，项目外本地运行，不进仓库）。**检索查询侧同样适用**：查询子 Agent 复用同一 `get_embedding_model()` 实例，故该约束对 [knowledge.md](./knowledge.md) 的检索路径同样生效。
+8. **DashScope 拒收 token-ID 格式（实测确认，2026-08-20）**：`OpenAIEmbeddings` 在 `check_embedding_ctx_length=True`（默认）时经 tiktoken 把文本编码为 token-ID 列表，发送 `{"input":[[token_id,...]]}`；DashScope 返回 400 `contents is neither str nor list of str`。设 `check_embedding_ctx_length=False`（发纯文本）才正常（返回 1024 维，见探针 Test 3）。**因此 `embedding.py` 必须显式保留 `check_embedding_ctx_length=False`，不可删**。该 flag 还有独立作用：让 `chunk_size=20` 当每批条数切分，保障不超 DashScope 单次 ≤20 条限制。探针代码：`D:\AI_study\learn\qwen_test\qwen_tiktoken_probe.py`（对标 Gitee issue IJUQ06，项目外本地运行，不进仓库）。**检索查询侧同样适用**：查询子 Agent 复用同一 `get_embedding_model()` 实例，故该约束对 [retrieval/knowledge.md](../../retrieval/knowledge.md) 的检索路径同样生效。
 
    **为何 LangChain 默认发 token-ID（设计溯源，2026-08-20 查文档）**：token-ID 格式是 LangChain 为 **OpenAI 官方 API** 设计的——官方 `input` 明确支持 `array of number / array of array of number`（"array of integers that will be turned into an embedding"）。但大量第三方 OpenAI 兼容端点没完整复刻该细节。LangChain 官方对此的明确建议（[OpenAIEmbeddings API reference](https://reference.langchain.com/python/integrations/langchain_openai/openai-embeddings/)）：
 
@@ -253,5 +253,5 @@ flowchart LR
 - 题目表：[db/questions.md](../db/questions.md)（`doc_id` 桥接、`has_image` 过滤快照）
 - 讲解表：[db/knowledge_notes.md](../db/knowledge_notes.md)（`kn_*` document）
 - 知识树：[db/topics.md](../db/topics.md)（`topic_tags` 名字快照，MVP 直接匹配无树展开）
-- 检索查询侧：[knowledge.md](./knowledge.md)（LangchainKnowledge + LangchainKnowledgeSearchTool + GaokaoKnowledge 子类）
+- 检索查询侧：[retrieval/knowledge.md](../../retrieval/knowledge.md)（LangchainKnowledge + LangchainKnowledgeSearchTool + GaokaoKnowledge 子类）
 - 配置：`config.toml` `[embedding]` / `[store]` 段（`dimension` / `collection_name`）

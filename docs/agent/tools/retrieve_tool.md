@@ -1,7 +1,7 @@
 # 检索工具（读门面适配层 + 框架检索工具介绍）
 
 > 对应代码：`src/agent/tools/retrieve_tool.py`（合并自原 `knowledge_tool` 查询侧 / `error_tool`）。
-> 读侧 FunctionTool 集合，封装 `src.retrieval` 读门面，**严禁 `import src.store.*`**（见 [architecture.md 分层边界契约](../../architecture.md)）。
+> 读侧 FunctionTool 集合，封装 `src.retrieval` 读门面，**严禁 `import src.store.*`**（见 [architecture.md 分层边界契约](../../architecture.md)）；框架检索工具经 `src.retrieval.knowledge.get_knowledge()` 注入 `GaokaoKnowledge`，完全符合分层铁律（2026-08-28 `GaokaoKnowledge` 已归位读门面，无需特例）。
 
 ## 定位
 
@@ -11,7 +11,7 @@
 
 ## 框架检索工具介绍（LangchainKnowledgeSearchTool / AgenticLangchainKnowledgeSearchTool）
 
-tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge_searchtool` 内置两个检索工具。它们直接消费 `LangchainKnowledge` 实例（本项目为 `src/store/vector/knowledge.py` 的 `GaokaoKnowledge` 子类），把向量库的「语义检索 + metadata 过滤」封装成 LLM 可调的 FunctionTool。**MVP 搜索信息子 Agent（查询侧）挂基础版 `LangchainKnowledgeSearchTool`（纯向量比较，`knowledge_filter` 暂不配）；Agentic 版（LLM 动态过滤）留待具体带条件检索需求时再上**（2026-08-28 决策，见 [../retrieval/search.md](../retrieval/search.md)）。
+tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge_searchtool` 内置两个检索工具。它们直接消费 `LangchainKnowledge` 实例（本项目为 `src/retrieval/knowledge.py` 的 `GaokaoKnowledge` 子类，经 `get_knowledge()` 获取），把向量库的「语义检索 + metadata 过滤」封装成 LLM 可调的 FunctionTool。**MVP 搜索信息子 Agent（查询侧）挂基础版 `LangchainKnowledgeSearchTool`（纯向量比较，`knowledge_filter` 暂不配）；Agentic 版（LLM 动态过滤）留待具体带条件检索需求时再上**（2026-08-28 决策，见 [../retrieval/search.md](../retrieval/search.md)）。
 
 ### LangchainKnowledgeSearchTool — 静态过滤检索
 
@@ -52,7 +52,7 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 ### 与 GaokaoKnowledge 的关系
 
 - 检索工具本身**不实现**过滤翻译——它委托 `rag.build_search_extra_params(knowledge_filter)`。
-- 本项目 `GaokaoKnowledge`（`src/store/vector/knowledge.py`，`LangchainKnowledge` 子类）重写该方法，把 `KnowledgeFilterExpr` 翻译成 Chroma `where` 子句（含 `doc_type` 区分 `question` / `note`、年份 / 题型 / 考区等）。
+- 本项目 `GaokaoKnowledge`（`src/retrieval/knowledge.py`，`LangchainKnowledge` 子类，已落地）重写该方法，把 `KnowledgeFilterExpr` 翻译成 `{"filter": chroma_filter}`（langchain_chroma 的 `filter` 参数映射为底层 `where`；含 `doc_type` 区分 `question` / `note`、年份 / 题型 / 考区等）。
 - 因此「挂哪个 Knowledge」决定过滤语义；工具代码与具体字段解耦，换模型 / 维度只需换 Knowledge 实例。
 
 ### 返回格式（序列化）
@@ -69,7 +69,7 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 ]
 ```
 
-> 上层（搜索信息子 Agent）直接取 `doc.document.metadata[...]`，**不二次包装**（见 [retriever.md](../../retrieval/retriever.md)「不包装框架 SearchResult」约定，2026-08-28 决策）。
+> 上层（搜索信息子 Agent）直接取 `doc.document.metadata[...]`，**不二次包装**（见 [retrieval/README.md](../../retrieval/README.md)「混合检索语义」与 [knowledge.md](../../retrieval/knowledge.md)「不包装框架 SearchResult」约定，2026-08-28 决策）。
 
 ## 工具清单（读侧规划）
 
@@ -114,6 +114,6 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 
 ## 与门面的边界
 
-- 读：本文件工具封装 `src.retrieval` 门面函数（及框架 `GaokaoKnowledge` 检索）；子 Agent 不直接碰存储
+- 读：本文件工具封装 `src.retrieval` 门面函数（含 `knowledge.get_knowledge()` 注入的 `GaokaoKnowledge` 检索）；子 Agent 不直接碰存储
 - 语义检索走框架工具；结构化业务查询走薄封装——二者都经门面，杜绝「入口直连存储」
 - 严禁 `import src.store.*`；违规 import 由 CI lint 拒绝（机制堵死「入口直连存储」）

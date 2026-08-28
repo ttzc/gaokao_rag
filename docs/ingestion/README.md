@@ -238,7 +238,7 @@ python scripts/ingest.py --source ima --kb "高考2026" --folder "数学/试卷"
 2. **函数内部封装所需的所有存储操作**：比如 `ingest_question()` 内部自动完成文件落盘 → DB 写入 → Chroma 向量化 → 知识点归位，Agent 不需要知道细节
 3. **ingestion 层无 LLM 决策**：所有输入必须是结构化数据，不做内容理解、不做格式判断
 4. **每个工具可独立测试**：mock 结构化数据即可测试，不依赖 LLM
-5. **知识点归位复用 store 层**：`src/store/db/topics.py`（`TopicsDB`）已提供 topics 查询/创建/别名管理（`search` / `create` / `add_alias`），ingestion 层直接调用，不重复实现。注意：不是 `store/vector/knowledge.py`——那是 Chroma 语义检索的查询侧组件，不管 topic 注册。
+5. **知识点归位复用 store 层**：`src/store/db/topics.py`（`TopicsDB`）已提供 topics 查询/创建/别名管理（`search` / `create` / `add_alias`），ingestion 层直接调用，不重复实现。注意：不是 `src/retrieval/knowledge.py`——那是读门面的知识检索组件（`GaokaoKnowledge` 语义检索），不管 topic 注册。
 
 ### 与 Agent 的协作方式
 

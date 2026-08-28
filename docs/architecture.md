@@ -214,7 +214,7 @@ gaokao_rag/
 │   │   └── error.py           #   ingest_error() - 存储错题（DB + 关联题目）
 │   │
 │   ├── retrieval/             # 检索门面（读，封装全部查询与聚合，只读不写，无 LLM）
-│   │   ├── retriever.py       #   hybrid_search() - 混合检索（题目+讲解 Chroma 语义 + SQLite 过滤）
+│   │   ├── knowledge.py       #   知识检索组件（GaokaoKnowledge + get_knowledge，过滤翻译）
 │   │   ├── question.py        #   search_questions / get_question_detail / browse_questions
 │   │   ├── knowledge_note.py  #   search_knowledge_notes
 │   │   ├── topic.py           #   search_topics / list_topics
@@ -236,9 +236,8 @@ gaokao_rag/
 │   │   │   ├── exam_attempts.py
 │   │   │   ├── review_plans.py
 │   │   │   └── periodic_reports.py
-│   │   ├── vector/             #   Layer 3：Chroma 向量库（存储读写 / Knowledge 构建两层）
-│   │   │   ├── vector_store.py #     Layer 3a：Chroma 增删读写（document 入库，切片细则 V0.3 定）
-│   │   │   └── knowledge.py    #     Layer 3b：Knowledge 对象构建（GaokaoKnowledge 子类）
+│   │   ├── vector/             #   Layer 3：Chroma 向量库（存储读写原语）
+│   │   │   └── vector_store.py #     Chroma 增删读写 + 懒单例（document 入库，切片细则 V0.3 定）
 │   │   └── __init__.py
 │   │
 │   ├── agent/                 # Agent 编排层（TeamAgent + 子 Agent + 工具 + Skills）
@@ -293,9 +292,9 @@ gaokao_rag/
 | ---- | ------ | ------ |
 | 配置 | `config.toml` + `.env` | 模型、存储、VLM 参数，代码不硬编码 |
 | 模型接入 | `src/api/` | OpenAI 兼容协议封装，LLM / VLM / Embedding 统一接口 |
-| 三层存储（原语） | `src/store/` | 最低层：文件(raw) / SQLite 逐表 CRUD / Chroma 原语 + `GaokaoKnowledge`。只被 ingestion、retrieval 依赖，不向上依赖 |
+| 三层存储（原语） | `src/store/` | 最低层：文件(raw) / SQLite 逐表 CRUD / Chroma 原语。只被 ingestion、retrieval 依赖，不向上依赖 |
 | 摄取门面（写） | `src/ingestion/` | **封装三层存储的全部 增/删/改**：ingest_question / update_question / delete_question、ingest_image、ingest_exam_paper、ingest_error、ingest_knowledge_note、topic 归位（create_topic / add_topic_alias / resolve_or_create_topics / delete_topic）、record_exam_attempt、save_review_plan、save_report。保证三态一致，**无 LLM** |
-| 检索门面（读，**新增**） | `src/retrieval/` | **封装全部查询与聚合逻辑**：混合检索（题目+讲解 `hybrid_search`）、search_questions / get_question_detail / browse_questions、search_knowledge_notes、search_topics / list_topics、get_error_stats / get_weak_topics、aggregate_errors / aggregate_attempts / get_report / compute_trend。只读不写 |
+| 检索门面（读，**新增**） | `src/retrieval/` | **封装全部查询与聚合逻辑**：知识检索组件（`GaokaoKnowledge.search` 语义召回 + 过滤翻译）、search_questions / get_question_detail / browse_questions、search_knowledge_notes、search_topics / list_topics、get_error_stats / get_weak_topics、aggregate_errors / aggregate_attempts / get_report / compute_trend。只读不写 |
 | Agent 编排 | `src/agent/` | TeamAgent 编排（leader.py）+ 子 Agent（ingestion/ 摄入侧、retrieval/ 查询侧，每文件一个 Agent）+ FunctionTool（tools/）+ Skills（skills/，可复用领域指令，渐进式披露）；**只调用 ingestion（写）/ retrieval（读）封装函数**，严禁 import `src.store.*` |
 | MCP 服务 | `src/mcp/` | 对外暴露工具，委托 agent（含 tools） |
 | CLI 入口 | `scripts/` | ingest / chat / mcp_server 三个命令 |
@@ -309,10 +308,12 @@ gaokao_rag/
 src/store  ←  { src/ingestion, src/retrieval }  ←  { src/agent, src/mcp }
 ```
 
-- **store（原语层）**：只提供单表 / 单文件 / 单向量的原子 CRUD，以及 `GaokaoKnowledge` 检索组件。不依赖 ingestion / retrieval / agent。测试可直接 import 以断言三层状态。
+- **store（原语层）**：只提供单表 / 单文件 / 单向量的原子 CRUD。不依赖 ingestion / retrieval / agent。测试可直接 import 以断言三层状态。
 - **ingestion（写门面）**：组合 store 原语，把「文件层 + SQLite + 向量层」三态作为一个原子业务操作保持一致。拥有所有 增/删/改；不含任何 LLM 调用。
-- **retrieval（读门面）**：组合 store 原语 + `get_knowledge()`，封装所有查询与聚合（含周报双源统计）。只读不写。
+- **retrieval（读门面）**：组合 store 原语，封装所有查询与聚合（含周报双源统计）；**包含知识检索组件 `GaokaoKnowledge`（对 Chroma 的读包装应用，语义召回 + 过滤翻译）**。只读不写。
 - **agent / mcp（业务入口）**：只允许 `import src.ingestion`（写）与 `import src.retrieval`（读）。**严禁**在任一入口模块里 `import src.store`、`import src.store.db`、`import src.store.vector`、`import src.store.file_store` —— 任何存储访问必须经由两个门面。
+
+> **2026-08-28 决策**：`GaokaoKnowledge`（原 `src/store/vector/knowledge.py`）迁入 `src/retrieval/knowledge.py`——它是「对第三层存储的读包装应用」而非存储原语，归属读门面。由此框架检索工具注入 `get_knowledge()` 走 `src.retrieval`，分层铁律无需任何特例放行。
 
 > 注意命名：`src/agent/ingestion/`（摄入侧子 Agent，含 LLM）与 `src/ingestion/`（写门面，无 LLM）是**两层不同概念**；`src/agent/retrieval/`（查询侧子 Agent）与 `src/retrieval/`（读门面）同理。**意图匹配与编排决策归 Leader**（系统提示词内联），子 Agent 只处理分内任务，**具体存储读写一律委托给两个门面**，子 Agent 本身也不允许 import src.store。
 
