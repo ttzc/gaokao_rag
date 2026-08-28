@@ -29,7 +29,6 @@ from trpc_agent_sdk.tools.utils import get_mandatory_args
 
 from src.agent.tools import ingest_tool, retrieve_tool
 from src.agent.tools.ingest_tool import ingest_question_tool
-from src.agent.tools.retrieve_tool import knowledge_search_tool
 
 
 def _fake_tool_context() -> MagicMock:
@@ -69,25 +68,33 @@ class TestToolExports:
 class TestRetrieveToolExports:
     """读侧交付物：框架检索工具实例（挂到搜索信息子 Agent）。
 
-    仅断言导出面与常量配置，不执行检索（rag 为 import 时实体化的
-    GaokaoKnowledge 单例，构造零网络调用）。
+    仅断言导出面与常量配置，不执行检索。knowledge_search_tool 为 PEP 562
+    惰性导出——顶层 import 模块不实体化（CI 无 .env 也能 collect），实例必须在
+    测试函数内经 retrieve_tool.knowledge_search_tool 取（此时 conftest autouse
+    已把 get_embedding_model 换成 fake，实体化安全），严禁提到模块顶层。
     """
 
     def test_instance_is_knowledge_search_tool(self) -> None:
-        assert isinstance(knowledge_search_tool, LangchainKnowledgeSearchTool)
-        assert knowledge_search_tool.name == "knowledge_search"
+        tool = retrieve_tool.knowledge_search_tool
+        assert isinstance(tool, LangchainKnowledgeSearchTool)
+        assert tool.name == "knowledge_search"
+
+    def test_lazy_export_is_singleton(self) -> None:
+        """__getattr__ 每次经 _build_tool 返回同一缓存实例。"""
+        assert retrieve_tool.knowledge_search_tool is retrieve_tool.knowledge_search_tool
 
     def test_public_names(self) -> None:
-        """只导出 tool 实例；get_knowledge 绑定与常量不进公共接口面。"""
+        """只导出 tool 实例；get_knowledge 绑定与内部机制不进公共接口面。"""
         assert retrieve_tool.__all__ == ["knowledge_search_tool"]
 
     def test_search_config(self) -> None:
         """MVP 基线：top-10 纯相似度，不配过滤（Agentic 版留待升级）。"""
+        tool = retrieve_tool.knowledge_search_tool
         assert retrieve_tool.TOP_K == 10
         assert retrieve_tool.SEARCH_TYPE is SearchType.SIMILARITY
-        assert knowledge_search_tool.top_k == retrieve_tool.TOP_K
-        assert knowledge_search_tool.search_type is retrieve_tool.SEARCH_TYPE
-        assert knowledge_search_tool.knowledge_filter is None
+        assert tool.top_k == retrieve_tool.TOP_K
+        assert tool.search_type is retrieve_tool.SEARCH_TYPE
+        assert tool.knowledge_filter is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
