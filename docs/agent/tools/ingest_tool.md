@@ -10,10 +10,20 @@
 
 | Tool | 签名 | 用途 | 内建约束 |
 |------|------|------|---------|
-| `ingest_question` | (raw_file_path, question_text, answer_text="", analysis_text="", topic_names=None) → {question_id, doc_id} | 一道题入库：文件 + SQLite（questions + question_topics）+ Chroma（doc_id = `q_{id}`） | **不接收 errors 参数**；同 file_id + 题号幂等 |
-| `ingest_error` | (question_id, user_reflection) → error_id | 错题写错因：LLM 结构化 `error_summary` + 关联题目 | errors.question_id FK → questions；**先题后错** |
-| `ingest_image` | (image_path, source) → file_id | 图片入库（文件 + files 表） | sha256 UNIQUE 去重 |
-| `ingest_exam_paper` | (pdf_path, title="") → file_id | 试卷文件注册（文件 + files 表） | sha256 UNIQUE 去重 |
+| `ingest_question` ✅已实现 | (question_text, answer_text="", analysis_text="", topic_names=None, raw_file_path=None, question_type="", source_type="exam", subject="数学", exam_year=None, exam_month=None, question_number=None) → {question_id, doc_id} | 一道题入库：文件 + SQLite（questions + question_topics）+ Chroma（doc_id = `q_{id}`） | **不接收 errors 参数**；门面的复杂列表参数（exam_regions / image_file_ids / vlm_descriptions）不暴露给 LLM，走默认值 |
+| `ingest_error` ⏳门面未落地 | (question_id, user_reflection) → error_id | 错题写错因：LLM 结构化 `error_summary` + 关联题目 | errors.question_id FK → questions；**先题后错** |
+| `ingest_image` ⏳门面未落地 | (image_path, source) → file_id | 图片入库（文件 + files 表） | sha256 UNIQUE 去重 |
+| `ingest_exam_paper` ⏳门面未落地 | (pdf_path, title="") → file_id | 试卷文件注册（文件 + files 表） | sha256 UNIQUE 去重 |
+
+## 实现说明（ingest_question，2026-08-28）
+
+- **交付物只有一个 FunctionTool 实例**：模块导出 `ingest_question_tool = FunctionTool(ingest_question)`，`__all__` 仅此一项；工具如何组合成 `tools=[...]` 归 agent 层（入库决策子 Agent 构造时决定），包装函数不导出（其 `__name__` 即 LLM 可见工具名，故定义处名字保持 `ingest_question`）。模块级实例安全：FunctionTool 构造只读函数名 + docstring，schema 懒生成，import 零副作用。
+- **薄封装而非直接 `FunctionTool(门面)`**：门面 14 个 keyword-only 参数含多个列表结构，LLM 易传错形状；工具只暴露上表的 LLM 友好子集，其余参数走门面默认值。
+- **async 包装**：门面是同步实现（文件 IO + SQLite + Chroma 嵌入调用），工具内经 `asyncio.to_thread` 下沉工作线程，防阻塞 Agent 事件循环。
+- **异常不吞**：任一层写入失败原样抛出，由框架转成 error 告知子 Agent（本题未入库，不重试猜测）。
+- **注解写法硬约束**：可空参数必须写 `typing.Optional[...]`，不能写 `X | None`——FunctionTool 的 schema 生成器只识别 typing 写法，PEP 604 UnionType 直接抛 `ValueError`（实测）。
+- **必填校验**：仅 `question_text` 无默认值（必填）；缺失时 FunctionTool 返回 error 提示 LLM 补参重试，不触门面。
+- 错题分支（`ingest_error`）待其门面落地后再补，本轮只封装 `ingest_question`。
 
 ## 调用链（入库决策子 Agent）
 
