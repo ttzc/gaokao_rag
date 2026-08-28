@@ -20,6 +20,7 @@ from trpc_agent_sdk.skills import BaseSkillRepository
 from trpc_agent_sdk.skills import CachedFsSkillRepository
 from trpc_agent_sdk.skills import SkillToolSet
 from trpc_agent_sdk.skills import create_default_skill_repository
+from trpc_agent_sdk.skills.tools import CopySkillStager
 
 # skill 根目录：即本包目录 src/agent/skills/（仓库只认含 SKILL.md 的子目录，
 # __init__.py / __pycache__ 不会被误当作 skill）
@@ -73,6 +74,10 @@ def create_skill_tool_set(
       - enable_hot_reload=False：skills 目录是仓库内的静态文件，不需要后台热加载
         扫描（官方示例默认开启，测试环境下热加载线程徒增不确定性）。
       - use_cached_repository=True：与官方示例一致，用缓存型仓库索引 SKILL.md。
+      - skill_stager=CopySkillStager()：框架默认 LinkSkillStager 用符号链接 staging
+        SKILL.md，Windows 无管理员/开发者模式时建符号链接被拒（WinError 1314）；
+        改用纯复制。我们的 skill 都是纯 prompt（无 scripts、无大文件），复制开销
+        可忽略，且能跨 Windows/Linux/macOS 一致工作。
     """
     if allowed_skills is None:
         repository: BaseSkillRepository = create_default_skill_repository(
@@ -88,6 +93,9 @@ def create_skill_tool_set(
         )
     tool_set = SkillToolSet(
         repository=repository,
+        # Windows 无符号链接权限，用复制代替（WinError 1314）；纯 prompt skill
+        # 无 scripts，复制开销可忽略。框架默认 LinkSkillStager 走 os.symlink。
+        skill_stager=CopySkillStager(),
         run_tool_kwargs={"save_as_artifacts": True, "omit_inline_content": False},
     )
     return tool_set, repository

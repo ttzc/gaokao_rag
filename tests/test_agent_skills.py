@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 from trpc_agent_sdk.skills import SkillToolSet
+from trpc_agent_sdk.skills.tools import CopySkillStager
 
 from src.agent.skills import SKILLS_ROOT, create_skill_tool_set
 
@@ -46,6 +47,13 @@ class TestCreateSkillToolSet:
     def test_repo_has_index(self) -> None:
         _, repo = create_skill_tool_set()
         assert repo.summaries
+
+    def test_stager_is_copy_for_windows(self) -> None:
+        """stager 必须是 CopySkillStager——框架默认 LinkSkillStager 走 os.symlink，
+        Windows 无符号链接权限时 skill_load 报 WinError 1314。断言防止未来改回。"""
+        tool_set, _ = create_skill_tool_set()
+        assert isinstance(tool_set._skill_stager, CopySkillStager)
+        assert tool_set._skill_stager._stage_mode == "copy"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
