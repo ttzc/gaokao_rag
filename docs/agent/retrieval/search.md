@@ -10,7 +10,7 @@
 
 | 能力 | 说明 |
 |------|------|
-| `AgenticLangchainKnowledgeSearchTool` | tRPC-Agent 内置，LLM 自动构建过滤条件（KnowledgeFilterExpr），无需手写 metadata 过滤 |
+| `LangchainKnowledgeSearchTool` | tRPC-Agent 内置，纯向量相似度检索（MVP 不配过滤条件）；后续带条件检索时升级 `AgenticLangchainKnowledgeSearchTool`（LLM 自动构建 `KnowledgeFilterExpr`） |
 | `src/retrieval` 读门面 | retriever / question / knowledge_note / topic 的查询函数（回查 SQLite 权威数据、文件层） |
 
 ## 混合检索设计说明

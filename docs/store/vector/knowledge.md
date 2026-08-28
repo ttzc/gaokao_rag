@@ -21,7 +21,7 @@ tRPC-Agent 的 `knowledge` 模块分四层，彼此解耦：
 | ---- | ---- | ---- |
 | `get_embedding_model()` → OpenAIEmbeddings | `LangchainKnowledge.embedder` | 查询侧 Chroma 自带 embedding_function，search 路径不强制要 embedder，但显式传更清晰 |
 | `get_vector_store().vectorstore` → Chroma("gaokao") | `LangchainKnowledge.vectorstore` | 持久化单例直接喂入（见 [vector_store.md](./vector_store.md)） |
-| `AgenticLangchainKnowledgeSearchTool` | 查询侧子 Agent 工具 | 直接拿到"LLM 动态生成过滤条件"能力（MEMORY.md 既定方案） |
+| `LangchainKnowledgeSearchTool` | 查询侧子 Agent 工具 | MVP 用基础版（纯向量比较，不配过滤条件）；后续带条件检索时换 `AgenticLangchainKnowledgeSearchTool`（LLM 动态过滤，2026-08-28 决策） |
 | `KnowledgeNodeAction` | TeamAgent 图节点 | 查询子 Agent 挂此节点即可，框架归一化结果写回图状态，不用自造工具编排 |
 
 rag 层装配：
@@ -48,10 +48,10 @@ class GaokaoKnowledge(LangchainKnowledge):
         return {"where": chroma_where}
 ```
 
-### 工具：LangchainKnowledgeSearchTool vs Agentic
+### 工具：LangchainKnowledgeSearchTool vs Agentic（2026-08-28 采用决策）
 
-- `LangchainKnowledgeSearchTool`：包成名为 `knowledge_search` 的工具，只声明 `query` 一个参数；支持静态 `knowledge_filter` + `top_k` + `min_score`。
-- **`AgenticLangchainKnowledgeSearchTool`（采用）**：在父类基础上额外暴露 `dynamic_filter`（`KnowledgeFilterExpr` JSON），LLM 可在运行时自生成过滤条件；动态 filter 与静态 `knowledge_filter` 用 `and` 合并后再搜。这正是"LLM 自动构建过滤条件"的官方实现——用户问"2026 年南昌一模椭圆题"，LLM 自动生成 `topic_tags contains "椭圆"` 等过滤条件。
+- `LangchainKnowledgeSearchTool`（**MVP 采用**）：包成名为 `knowledge_search` 的工具，只声明 `query` 一个参数；支持静态 `knowledge_filter` + `top_k` + `min_score`。MVP 只做纯向量相似度比较，**`knowledge_filter` 暂不配**——用户问"椭圆离心率最值"，向量召回就够用。
+- **`AgenticLangchainKnowledgeSearchTool`（后续升级路径）**：在父类基础上额外暴露 `dynamic_filter`（`KnowledgeFilterExpr` JSON），LLM 可在运行时自生成过滤条件；动态 filter 与静态 `knowledge_filter` 用 `and` 合并后再搜。等写具体带条件检索（如"2026 年南昌一模的椭圆题"）时再上——用户问这类问题时，LLM 自动生成 `topic_tags contains "椭圆"`、`exam_year eq 2026` 等过滤条件。
 
 ```json
 {

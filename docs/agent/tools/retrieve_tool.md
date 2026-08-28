@@ -11,7 +11,7 @@
 
 ## 框架检索工具介绍（LangchainKnowledgeSearchTool / AgenticLangchainKnowledgeSearchTool）
 
-tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge_searchtool` 内置两个检索工具。它们直接消费 `LangchainKnowledge` 实例（本项目为 `src/store/vector/knowledge.py` 的 `GaokaoKnowledge` 子类），把向量库的「语义检索 + metadata 过滤」封装成 LLM 可调的 FunctionTool。**搜索信息子 Agent（查询侧）默认挂载 `AgenticLangchainKnowledgeSearchTool`**（见 [../retrieval/search.md](../retrieval/search.md)）。
+tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge_searchtool` 内置两个检索工具。它们直接消费 `LangchainKnowledge` 实例（本项目为 `src/store/vector/knowledge.py` 的 `GaokaoKnowledge` 子类），把向量库的「语义检索 + metadata 过滤」封装成 LLM 可调的 FunctionTool。**MVP 搜索信息子 Agent（查询侧）挂基础版 `LangchainKnowledgeSearchTool`（纯向量比较，`knowledge_filter` 暂不配）；Agentic 版（LLM 动态过滤）留待具体带条件检索需求时再上**（2026-08-28 决策，见 [../retrieval/search.md](../retrieval/search.md)）。
 
 ### LangchainKnowledgeSearchTool — 静态过滤检索
 
@@ -77,7 +77,7 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 
 | 工具 | 类型 | 封装门面 | 挂载子 Agent | 状态 |
 |------|------|----------|--------------|------|
-| `AgenticLangchainKnowledgeSearchTool` | 框架内置 | `GaokaoKnowledge`（向量） | 搜索信息 | ✅ 框架提供 |
+| `LangchainKnowledgeSearchTool` | 框架内置 | `GaokaoKnowledge`（向量） | 搜索信息（MVP） | ✅ 框架提供 |
 | `search_questions` | 业务查询 | `src.retrieval.question` | 搜索信息 | ⏳ 门面未落地 |
 | `get_question_detail` | 业务查询 | `src.retrieval.question` | 搜索信息 / 输出整理 | ⏳ 门面未落地 |
 | `browse_questions` | 业务查询 | `src.retrieval.question` | 浏览 | ⏳ 门面未落地 |
@@ -91,7 +91,7 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 
 读侧工具与写侧（`ingest_tool`）对称：**只透传 `src.retrieval` 门面函数，不包装框架 `SearchResult`**。
 
-- **语义检索**：直接用框架 `AgenticLangchainKnowledgeSearchTool`（已内置），不另建 `search` 工具——重复造轮子无意义。
+- **语义检索**：直接用框架 `LangchainKnowledgeSearchTool`（已内置，纯向量比较），不另建 `search` 工具——重复造轮子无意义。后续需要 metadata 条件检索时升级为 `AgenticLangchainKnowledgeSearchTool`（LLM 运行时自生成 `dynamic_filter`，见上节）。
 - **题目 / 知识点详情**：`search_questions` / `get_question_detail` / `browse_questions` / `search_knowledge_notes` 调 `src.retrieval` 对应函数，回查 SQLite 权威数据（题目完整四要素、讲解原文），不依赖 Chroma 返回的截断文本。
 - **统计聚合**：`error` / `exam_attempt` / `report` 三组工具调 `src.retrieval` 统计函数；周报落库走 `src.ingestion` 写门面（聚合数据子 Agent 是唯一会写库的查询侧成员，见 [../retrieval/aggregate.md](../retrieval/aggregate.md)）。
 - **topic 查询**：`search_topics` 复用在摄入侧已挂载的 tag 归位原语（见 [ingest_tool.md](ingest_tool.md)「KnowledgeTool」），查询侧与摄入侧共用同一套 `src.ingestion.topic` 逻辑。
@@ -107,7 +107,7 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 
 | 子 Agent | 挂载工具 |
 |----------|----------|
-| 搜索信息 | `AgenticLangchainKnowledgeSearchTool` + 业务查询工具（`search_questions` / `search_knowledge_notes` / `search_topics` 等） |
+| 搜索信息 | `LangchainKnowledgeSearchTool` + 业务查询工具（`search_questions` / `search_knowledge_notes` / `search_topics` 等） |
 | VLM 理解 | `VLMUnderstandTool`（见 [ingest_tool.md](ingest_tool.md)，理解检索到的题图） |
 | 聚合数据 | 业务查询工具（`get_error_stats` / `get_attempt_stats` / `aggregate_*` / `get_report`） |
 | 输出整理 | —（纯 LLM 格式化，可选 `get_question_detail`） |

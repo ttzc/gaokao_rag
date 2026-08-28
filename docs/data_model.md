@@ -231,4 +231,4 @@ metadata 的**格式、字段规范与过滤语义**见 [store/vector/vector_sto
 
 ## tRPC-Agent Knowledge 集成
 
-利用 tRPC-Agent 的 `LangchainKnowledge` + `AgenticLangchainKnowledgeSearchTool`，Agent 可以根据用户问题自动构建 metadata 过滤条件（`KnowledgeFilterExpr`，示例见 [store/vector/knowledge.md「框架集成」](store/vector/knowledge.md)）。
+利用 tRPC-Agent 的 `LangchainKnowledge` + `LangchainKnowledgeSearchTool`（MVP 纯向量相似度检索，不配过滤条件）；后续需要 metadata 条件检索时升级 `AgenticLangchainKnowledgeSearchTool`（LLM 自动构建 `KnowledgeFilterExpr`，示例见 [store/vector/knowledge.md「框架集成」](store/vector/knowledge.md)）。

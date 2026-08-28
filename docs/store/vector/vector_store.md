@@ -253,5 +253,5 @@ flowchart LR
 - 题目表：[db/questions.md](../db/questions.md)（`doc_id` 桥接、`has_image` 过滤快照）
 - 讲解表：[db/knowledge_notes.md](../db/knowledge_notes.md)（`kn_*` document）
 - 知识树：[db/topics.md](../db/topics.md)（`topic_tags` 名字快照，MVP 直接匹配无树展开）
-- 检索查询侧：[knowledge.md](./knowledge.md)（LangchainKnowledge + AgenticLangchainKnowledgeSearchTool + GaokaoKnowledge 子类）
+- 检索查询侧：[knowledge.md](./knowledge.md)（LangchainKnowledge + LangchainKnowledgeSearchTool + GaokaoKnowledge 子类）
 - 配置：`config.toml` `[embedding]` / `[store]` 段（`dimension` / `collection_name`）

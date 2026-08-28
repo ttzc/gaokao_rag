@@ -26,7 +26,7 @@ flowchart LR
 - [ ] 配置 LLM API Key（DeepSeek 官方）+ VLM API Key（Qwen DashScope）——通过 `.env` 设置 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY`，`config.toml` 用 `${VAR}` 引用
 - [ ] 运行 tRPC-Agent 官方 quickstart 示例，验证模型调用
 - [x] **验证 TeamAgent 可用性**：trpc-agent 源码确认 `trpc_agent_sdk.teams` 的 Leader 委派 API 可用，2026-08-12 官方 examples/team 实测跑通——无备用方案（见 [Agent 编排设计](agent/leader.md) 实测验证）
-- [ ] **核对文档 vs 源码 API 清单**（Quickstart 跑通后，对照各文档的 API 假设：OpenAIModel 三件套、`AgenticLangchainKnowledgeSearchTool`、nanobot `channels.qq`；发现对不上则改文档不改代码）
+- [ ] **核对文档 vs 源码 API 清单**（Quickstart 跑通后，对照各文档的 API 假设：OpenAIModel 三件套、`LangchainKnowledgeSearchTool` / `AgenticLangchainKnowledgeSearchTool` 两版、nanobot `channels.qq`；发现对不上则改文档不改代码）
 - [ ] 验证 Qwen3.7 多模态调用（OpenAI 协议图片输入）
 - [ ] 验证 Chroma + qwen3.7-text-embedding 嵌入链路（含 dimensions=1024 冒烟测试）
 - [ ] 从 ima 知识库导出数学试卷 PDF 到 `data/files/raw/`
@@ -113,8 +113,8 @@ flowchart LR
 
 ### 任务
 
-- [ ] 集成 `LangchainKnowledge` + `AgenticLangchainKnowledgeSearchTool`
-- [ ] TeamAgent：Leader + **查询侧 5 个**（意图/搜索/VLM/聚合/输出）子 Agent 协作（Leader prompt 按 [Agent 编排设计](agent/leader.md) 三条铁律：完成标准/调用上限/prompt 自洽）
+- [ ] 集成 `LangchainKnowledge` + `LangchainKnowledgeSearchTool`（MVP 纯向量比较；`AgenticLangchainKnowledgeSearchTool` 动态过滤后续升级）
+- [ ] TeamAgent：Leader + **查询侧 4 个**（搜索/VLM/聚合/输出）子 Agent 协作（Leader prompt 按 [Agent 编排设计](agent/leader.md) 三条铁律：完成标准/调用上限/prompt 自洽；意图路由内联 Leader 系统提示词）
 - [ ] **摄入侧 Agent**：文档识别/结构识别/知识整理/入库决策 4 个成员 + ingest 意图（学生 QQ 发照片 → 识别 → 回显 → 确认入库，见 [Agent 编排设计](agent/README.md)）
 - [ ] VLM 条件触发节点
 - [ ] 答案生成带溯源（引用"2026南昌一模 第15题"）

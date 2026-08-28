@@ -37,7 +37,7 @@ flowchart TD
 | 能力 | 框架组件 | 我们的用法 |
 | ------ | --------- | ----------- |
 | Agent 编排 | TeamAgent | Leader 自由委派 4 个子 Agent（搜索/VLM/聚合/输出；意图路由内联 Leader 系统提示词） |
-| RAG 检索 | LangchainKnowledge + AgenticLangchainKnowledgeSearchTool | 接入 Chroma 向量库，支持 metadata 过滤 |
+| RAG 检索 | LangchainKnowledge + LangchainKnowledgeSearchTool（MVP 纯向量比较；`AgenticLangchainKnowledgeSearchTool` 动态过滤后续升级） | 接入 Chroma 向量库 |
 | 模型接入 | OpenAIModel | **模型中立**：OpenAI 兼容协议抽象，理论上用户可自选任何兼容模型；开发期默认 DeepSeek + Qwen |
 | MCP Server | MCPToolset (stdio/sse/streamable-http) | 暴露检索、查询、复习建议工具 |
 | 会话记忆 | SessionService + SqlMemoryService | **V0.5 用 SqlSessionService（SQLite 持久化）**；摘要机制 + SqlMemoryService 用户画像 V1.1 |
