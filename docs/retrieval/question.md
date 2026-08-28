@@ -19,7 +19,7 @@ def search_questions(
 3. 用 `doc.document.metadata["doc_id"]` → `questions.id` 回查 `src.store.db.questions` 补全结构化字段（题号、题型、考区、年份、图）
 4. 封装为 `QuestionHit`（业务语义对象，非裸 Row）
 
-**返回**：`QuestionHit` 列表，每个含 `doc_id / question_id / content_text(摘要) / question_type / exam_regions / exam_year / question_number / has_image / score`。
+**返回**：`QuestionHit` 列表，每个含 `doc_id / question_id / content_text(摘要) / question_type / exam_regions / exam_year / exam_month / question_number / has_image / score`。
 
 ## get_question_detail — 题目完整详情
 
