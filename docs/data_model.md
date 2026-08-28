@@ -139,16 +139,67 @@ vectorstore = Chroma(
 
 ### Document 策略
 
-**入库单位 = 一篇完整 document**（不是按 chunk 拆分）：
+**入库单位 = 一篇完整 document**（不是按 chunk 拆分）。一个业务实体 = 一个 doc_id = 一篇完整内容，整体作为一个向量存入 Chroma（当前实现不切片：`upsert` 直接 `add_documents([doc])` 嵌入整篇文本，未接 text splitter；将来若题目过长需切，须保证 doc_id 仍唯一对应实体）。
 
-| document | 内容 | 来源 |
+| document | page_content 组成 | 来源 |
 | -------- | ---- | ---- |
-| **题目 document** | 题干 + 答案 + 解析 + VLM 图形描述（合并为一篇） | `questions` 行 |
-| **讲解 document** | 知识点讲解段（概念/公式/方法） | `knowledge_notes` 行 |
+| **题目 document**（`doc_type=question`） | 题干 + 答案 + 解析 + VLM 图形描述，四段以换行连接，空段跳过 | `questions` 行 |
+| **讲解 document**（`doc_type=note`） | 知识点讲解段文本（概念/公式/方法），为一篇 | `knowledge_notes` 行 |
 
-**切片分块细则（切多大/怎么切/是否切片存储）属于 `vector_store.py` 实现细节，V0.3 实现时再定**——document 层只保证"一个实体 = 一个 doc_id = 一篇完整内容"。
+**page_content 拼接规则**（来自 `src/ingestion/question.py` 的 `ingest_question`）：
 
-**检索**：题目 document 与讲解 document 在同一个 Collection 混合召回（用户问"什么是分离参数法" → 命中讲解 document；搜题 → 命中题目 document），由 LLM 综合组织。
+```python
+parts = [question_text, answer_text, analysis_text]
+if vlm_descriptions:
+    parts.append("\n".join(vlm_descriptions))
+embedding_text = "\n".join(p for p in parts if p)   # 仅拼接非空段
+```
+
+即「题干 → 答案 → 解析 → VLM 描述」顺序，缺答案 / 缺解析 / 无图时不留空行。题目 document 与讲解 document 在同一个 Collection 混合召回（用户问"什么是分离参数法" → 命中讲解 document；搜题 → 命中题目 document），由 LLM 综合组织。
+
+#### 题目 document 实例
+
+下面是一篇题目 document 在 Chroma 中的真实形态——由 `ingest_question` 调用 `VectorStore.upsert(doc_id, embedding_text, meta)` 写入，`upsert` 内部再注入 `doc_id` 到 metadata：
+
+```python
+from langchain_core.documents import Document
+
+Document(
+    page_content=(
+        "已知椭圆 C: x²/a² + y²/b² = 1 (a>b>0) 的左右焦点为 F1, F2，\n"
+        "点 P 在 C 上，且 ∠F1PF2 = 90°，求 △F1PF2 面积的最大值。\n"
+        "设 |PF1|=m, |PF2|=n，则 m+n=2a，m²+n²=(2c)²。\n"
+        "面积 S = ½mn。由 (m+n)² = m²+n²+2mn 得 4a² = 4c²+2mn，\n"
+        "mn = 2(a²-c²) = 2b²，故 S = b²（定值）。\n"
+        "利用椭圆定义 m+n=2a 与勾股定理 m²+n²=4c²，结合展开求 mn，\n"
+        "关键：焦点三角形面积只与 b 有关。\n"
+        "图形为水平椭圆，左焦点 F1(-c,0)、右焦点 F2(c,0)，\n"
+        "点 P 在第一象限弧上，连线 PF1、PF2 构成三角形。"
+    ),
+    metadata={
+        "doc_id": "q_42",                       # upsert 自动注入
+        "doc_type": "question",
+        "subject": "数学",
+        "source_type": "exam",
+        "title": "2026 南昌一模 理科数学",         # 取自 files 表标题；无源文件则取题干前 40 字
+        "exam_year": 2026,                       # 缺省落 0，不是 None（Chroma 拒绝 None）
+        "question_type": "解答题",
+        "has_image": True,                       # 布尔快照，Chroma 侧判断含图用
+        "topic_tags": ["椭圆", "焦点三角形", "离心率"],  # 知识点名字快照；空列表则不写该字段
+        "exam_regions": ["南昌", "江西"],          # 考区层级；空则不写该字段
+    },
+)
+```
+
+**值得注意的几点（与代码一致）**：
+
+- `page_content` 是**文本拼接**，VLM 描述已并入题干文本，下游全走文本 RAG；VLM 原始内容不存 Chroma（存 `processed/vlm_desc/`）。
+- metadata **只存检索快照**，不存 `image_file_ids` / `file_id` / `question_number`（这些在 `questions` 表权威）；含图与否用 `has_image` 布尔判断，避免检索时回查 SQLite。
+- `exam_year` 缺省落 `0`（`exam_year or 0`），不是 `None`——Chroma metadata 不接受 `None`。
+- `topic_tags` / `exam_regions` 为空时**整个字段不写入**（Chroma 拒绝空列表 metadata：`ValueError: non-empty`）。
+- `doc_id` 由 `upsert` 从参数注入 metadata，调用方无需在 `meta` 里手写。
+
+**讲解 document 与题目 document 结构镜像**：`doc_type=note`，`page_content` 为讲解段文本，`metadata` 同样含 `subject` / `topic_tags`（若有）/ `title` 等检索字段，差异仅在 `doc_type` 与无 `question_type` / `exam_*` 等题目专属字段。
 
 ### doc_id 生成规则
 

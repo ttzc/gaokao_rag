@@ -1,6 +1,6 @@
 # 源文件存储（Layer 1：文件系统）
 
-> 对应 `src/store/file_store.py`。管理两类源文件：**原始 PDF**（试卷/专题/讲义）和**题目图片**（学生 QQ 上传照片 / 从 PDF 提取的图），以及处理后中间产物。文件元数据统一登记在 `files` 表（见 [store/db/files.md](db/files.md)）。
+> 对应 `src/store/file_store.py`。管理两类源文件：**原始 PDF**（试卷/专题/讲义）和**题目图片**（学生 QQ 上传照片 / 从 PDF 提取的图），以及处理后中间产物。文件元数据统一登记在 `files` 表（见 [store/db/files.md](../db/files.md)）。
 
 ## 功能定位
 

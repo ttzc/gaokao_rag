@@ -1,6 +1,6 @@
 # 向量存储（Layer 3a：Chroma 增删读写）
 
-> 对应 `src/store/vector/vector_store.py`（Chroma 封装）。负责**语义检索的写入侧**：文本 + metadata → 向量 → Chroma collection `gaokao`，供搜索子 Agent 按语义召回（配合 SQLite 精确过滤形成混合检索，见 [architecture.md](../../architecture.md)）。嵌入模型客户端见 [src/api/embedding.py](../../api/embedding.py) 的工厂说明（下文「嵌入模型选型」「向量维度」同源决策）。检索查询侧（Knowledge 对象构建）见 [knowledge.md](./knowledge.md)。
+> 对应 `src/store/vector/vector_store.py`（Chroma 封装）。负责**语义检索的写入侧**：文本 + metadata → 向量 → Chroma collection `gaokao`，供搜索子 Agent 按语义召回（配合 SQLite 精确过滤形成混合检索，见 [architecture.md](../../architecture.md)）。嵌入模型客户端见 [src/api/embedding.py](../../../src/api/embedding.py) 的工厂说明（下文「嵌入模型选型」「向量维度」同源决策）。检索查询侧（Knowledge 对象构建）见 [knowledge.md](./knowledge.md)。
 
 ## 功能定位
 

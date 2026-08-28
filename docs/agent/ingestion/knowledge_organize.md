@@ -4,7 +4,7 @@
 
 ## 定位
 
-对题目与讲解段做知识点标注，与 `topics` 表交互实现 tag 归位。核心逻辑封装在 `src/ingestion/topic.py`（`resolve_or_create_topics` / `create_topic` / `add_topic_alias` / `delete_topic`，独立可测），本 Agent 通过 knowledge_tool（FunctionTool）调用（见 [../tools/knowledge_tool.md](../tools/knowledge_tool.md)）。
+对题目与讲解段做知识点标注，与 `topics` 表交互实现 tag 归位。核心逻辑封装在 `src/ingestion/topic.py`（`resolve_or_create_topics` / `create_topic` / `add_topic_alias` / `delete_topic`，独立可测），本 Agent 通过 KnowledgeTool（FunctionTool，见 [../tools/ingest_tool.md](../tools/ingest_tool.md)）调用。
 
 ## 双路由知识提取
 

@@ -119,11 +119,8 @@ flowchart TD
 | [README.md](README.md) | （包说明） | 总览、团队结构、摄入侧数据流契约、导航 |
 | [leader.md](leader.md) | `leader.py` | TeamLeader 编排、委派策略、实测 3 铁律、Langfuse |
 | [tools/README.md](tools/README.md) | （工具总览） | FunctionTool 挂载矩阵与门面边界 |
-| [tools/vlm_tool.md](tools/vlm_tool.md) | `tools/vlm_tool.py` | VLM 图形理解工具 |
-| [tools/knowledge_tool.md](tools/knowledge_tool.md) | `tools/knowledge_tool.py` | 知识点查询 / tag 归位工具 |
-| [tools/error_tool.md](tools/error_tool.md) | `tools/error_tool.py` | 错题分析工具 |
-| [tools/extract_tool.md](tools/extract_tool.md) | `tools/extract_tool.py` | PDF / 图像提取工具 |
-| [tools/ingest_tool.md](tools/ingest_tool.md) | `tools/ingest_tool.py` | 题目 / 错题摄入（写库） |
+| [tools/ingest_tool.md](tools/ingest_tool.md) | `tools/ingest_tool.py` | 摄入工具（写门面适配层：提取 / VLM / 知识点归位 / 题目摄入） |
+| [tools/retrieve_tool.md](tools/retrieve_tool.md) | `tools/retrieve_tool.py` | 检索工具（读门面适配层 + 框架检索工具介绍） |
 | [ingestion/doc_recognition.md](ingestion/doc_recognition.md) | `ingestion/doc_recognition.py` | 文档识别 Agent |
 | [ingestion/structure_recognition.md](ingestion/structure_recognition.md) | `ingestion/structure_recognition.py` | 结构识别 Agent |
 | [ingestion/knowledge_organize.md](ingestion/knowledge_organize.md) | `ingestion/knowledge_organize.py` | 知识整理 Agent |
@@ -150,7 +147,7 @@ flowchart TD
 
 **Skill 挂载约束（2026-08-28 新增）**：使用 Skill 的子 Agent 通过共享构造 `create_skill_tool_set(ALLOWED_SKILLS)`（`src/agent/skills/__init__.py`）挂载——`ALLOWED_SKILLS` 白名单烘焙进仓库（名单外不可见、不可加载，框架层硬约束），`before_agent_callback` 收紧 `tool_profile`（knowledge_only / full）。详见 [skills/README.md](skills/README.md)。
 
-**边界**：保留 sub-agent 的 Leader 委派与 `GaokaoState` 回填结构；知识整理（挂 knowledge_tool）、聚合数据（经门面读写 SQLite）等挂载工具的子 Agent 不涉及 prompt 萃取。
+**边界**：保留 sub-agent 的 Leader 委派与 `GaokaoState` 回填结构；知识整理（挂 ingest_tool 的 KnowledgeTool）、聚合数据（经门面读写 SQLite）等挂载工具的子 Agent 不涉及 prompt 萃取。
 
 ## Session 与 Memory
 

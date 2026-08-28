@@ -248,12 +248,9 @@ gaokao_rag/
 │   │
 │   ├── agent/                 # Agent 编排层（TeamAgent + 子 Agent + 工具 + Skills）
 │   │   ├── leader.py          #   Team Leader 编排（TeamAgent + 自由委派）
-│   │   ├── tools/             #   FunctionTool（每文件一个工具，挂到各子 Agent）
-│   │   │   ├── vlm_tool.py    #     VLM 图形理解（挂到 VLM / 文档识别子 Agent）
-│   │   │   ├── knowledge_tool.py  #  知识点查询（挂到搜索 / 知识整理子 Agent）
-│   │   │   ├── error_tool.py  #    错题分析（挂到聚合子 Agent）
-│   │   │   ├── extract_tool.py #    PDF / 图像提取（挂到文档识别子 Agent）
-│   │   │   └── ingest_tool.py  #    题目/错题摄入（挂到入库决策子 Agent）
+│   │   ├── tools/             #   FunctionTool（按写/读拆两个文件：ingest_tool / retrieve_tool，挂到各子 Agent）
+│   │   │   ├── ingest_tool.py  #    写侧工具（合并自原 extract/vlm/knowledge/ingest 4 个 tool 文件；挂到文档识别/知识整理/入库决策/VLM 理解子 Agent）
+│   │   │   └── retrieve_tool.py #   读侧工具（合并自原 knowledge_tool 查询侧 / error_tool；框架检索工具 + 业务查询，挂到搜索/聚合子 Agent）
 │   │   │
 │   │   ├── skills/            #   Agent Skills：__init__.py 承载共享构造（SKILLS_ROOT / create_skill_tool_set / 白名单仓库），子目录各含一个 SKILL.md
 │   │   │   └── question-organize/     #    题目整理：整篇切出的题目段 / 零散输入 → 题目/答案/解析三段（已落地）
