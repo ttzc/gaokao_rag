@@ -6,6 +6,35 @@
 
 Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给查询侧 5 个 / 摄入侧 4 个子 Agent，再综合成员结果输出最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。
 
+## 上下文隔离策略（函数式委派，2026-08-28 决策）
+
+**子 Agent 默认「函数式隔离」**：像函数一样只拿 leader 打包好的格式化输入，处理后返回结构化输出，**不共享全量对话记录**。
+
+**框架机制**（无需额外实现，默认即此行为）：
+- `TeamAgent.share_team_history` / `share_member_interactions` **默认 `False`**（`trpc_agent_sdk/teams/_team_agent.py:127,133`）
+- `delegate_to_member` 用 `override_messages` 精确构造成员输入（`_team_agent.py:736`）——成员只看到 leader 委派时打包的消息，不翻历史（`agents/core/_request_processor.py:143-147`：有 override_messages 时直接使用，不走历史过滤）
+
+**分工**：
+- **Leader**：唯一看全量对话的节点——回显、确认、追问、上下文打包都集中在 Leader（与「回显/对话归 Leader」是同一件事的两面）
+- **子 Agent**：纯函数——摄入侧（结构识别吃口述/原文 → 出 pending_questions；入库决策吃题目+意图 → 出 ingest_results）、查询侧（搜索吃 query → 出结果）都不需要全局视野
+
+**理由**：token 省（摄入侧吃长文本，全量历史放大成本）；职责硬边界（子 Agent 只碰该碰的）；可测试（单元测试直接喂输入断言输出）；上下文「翻译层」集中 Leader 一处。
+
+**例外**：个别成员确需上下文时，二选一——Leader 在 task 里显式打包（推荐，如追问时把上轮题目塞进 task），或对特定成员开 `share_member_interactions=True`。
+
+## MVP 临时版（2026-08-28 落地，`create_gaokao_leader()`）
+
+`src/agent/leader.py` 当前只串摄入侧两个已落地成员，跑通「待清洗题目文本 → 入库」单闭环：
+
+- **输入泛化**（2026-08-28 用户修正）：入口不假定题目来源——口述题意、OCR 识别的多题原文、粘贴/抄写文本都是**待清洗信息**，来源形式无本质区别；Leader 只转不洗，清洗切分归结构识别
+- **members** = `structure_recognition`（结构识别）+ `storage_decision`（入库决策），其余 7 个成员后续按 roadmap 补齐
+- **不做意图分流**——用户发来题目相关内容一律按摄入处理；错题意图降级为「错因记录暂不支持」提示；`topic_names` 本轮不传
+- **流程**：收原文 → 委派结构识别 → 回显题目清单问去向（入库/跳过）→ 打包 `pending_questions` + `ingest_decisions` 委派入库决策 → 汇总 `ingest_results` 返回用户
+- `share_member_interactions=False` 显式写出（框架默认即 False），把「函数式隔离」钉进构造
+- `LEADER_INSTRUCTION` 直接定义在 `leader.py` 内——leader 层只有这一个 Agent，不抽独立 prompts 模块
+- 3 条铁律（完成标准 / 每成员每任务最多委派一次 / 不自相矛盾）写死在 instruction 里
+- 入口（CLI/runner）与真实 LLM 端到端验证留后续任务；测试见 `tests/test_agent_leader.py`（全 mock，不计费）
+
 ## 委派策略（Leader 自由决定）
 
 Leader 根据用户请求内容，自主决定：

@@ -73,6 +73,7 @@ flowchart TD
 **设计要点**：
 
 - 查询侧与摄入侧**共用底层工具**（VLM、SQLite），但职责相反——查询侧读、摄入侧写
+- **上下文隔离（函数式委派，2026-08-28）**：子 Agent 默认只拿 Leader 打包的格式化输入、输出结构化结果，不共享全量对话记录（框架 `override_messages` 机制，`share_member_interactions` 默认关）；只有 Leader 看全量对话——回显/确认/追问/上下文打包都集中 Leader（详见 [leader.md](leader.md)）
 - **批量摄入**（ima 导出 20 份 PDF）走 CLI 脚本 `scripts/ingest.py`（开发者初始化用），不占 Agent 团队
 - **即时摄入**（学生 QQ 发作业/错题照片）走摄入侧 Agent——这是学生侧唯一的资料录入入口
 - 分层边界：`src/agent/ingestion/`（摄入侧子 Agent，含 LLM）与 `src/ingestion/`（写门面，无 LLM）是两层不同概念；子 Agent 只做意图判断与编排，具体存储读写一律委托给两个门面（详见 [architecture.md](../architecture.md)）
