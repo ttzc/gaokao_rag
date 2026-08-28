@@ -22,7 +22,6 @@
 
 | 子 Agent | 侧 | 挂载工具（文件） |
 |----------|----|------------------|
-| 意图识别 | 查询 | —（纯 LLM 分类） |
 | 搜索信息 | 查询 | `retrieve_tool`（框架检索 + 业务查询） |
 | VLM 理解 | 查询 | `ingest_tool`（`VLMUnderstandTool`） |
 | 聚合数据 | 查询 | `retrieve_tool`（统计 / 周报） |

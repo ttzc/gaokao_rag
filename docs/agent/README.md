@@ -6,7 +6,7 @@
 
 Gaokao RAG 的 Agent 层基于 tRPC-Agent-Python 的 **TeamAgent** 构建（多 Agent 协作模式）。这是与 AlgoNotes RAG（单 RAG Agent）拉开差距的核心差异点。
 
-**核心架构**：一个 **Team Leader**（LLM）接收用户请求，**自由委派**任务给 5 个查询侧子 Agent（意图识别/搜索信息/VLM 理解/聚合数据/输出整理）+ 4 个摄入侧子 Agent（文档识别/结构识别/知识整理/入库决策），再汇总成员结果生成最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。
+**核心架构**：一个 **Team Leader**（LLM）接收用户请求，**自由委派**任务给 4 个查询侧子 Agent（搜索信息/VLM 理解/聚合数据/输出整理）+ 4 个摄入侧子 Agent（文档识别/结构识别/知识整理/入库决策），再汇总成员结果生成最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。**意图识别不是独立子 Agent，而是 Leader 系统提示词内的一项路由能力**（系统提示词列出已实现子 Agent 清单，Leader 自行匹配意图后委派，2026-08-28 决策，详见 [leader.md](leader.md)）。
 
 **为什么用 TeamAgent 而非 GraphAgent**：
 
@@ -26,11 +26,10 @@ flowchart TD
     U[用户请求] --> L[Team Leader<br/>自由委派 + 综合]
 
     subgraph "查询侧（读）"
-        L --> A1[意图识别 Agent]
-        L --> A2[搜索信息 Agent]
-        L --> A3[VLM 理解 Agent]
-        L --> A4[聚合数据 Agent]
-        L --> A5[输出整理 Agent]
+        L --> A1[搜索信息 Agent]
+        L --> A2[VLM 理解 Agent]
+        L --> A3[聚合数据 Agent]
+        L --> A4[输出整理 Agent]
     end
 
     subgraph "摄入侧（写）"
@@ -44,7 +43,6 @@ flowchart TD
     A2 --> L
     A3 --> L
     A4 --> L
-    A5 --> L
     B1 --> L
     B2 --> L
     B3 --> L
@@ -55,7 +53,6 @@ flowchart TD
 
 | 子 Agent | 职责 | 挂载能力 |
 | --------- | ------ | --------- |
-| **意图识别 Agent** | 判断用户意图（question/review/report/browse/**ingest**） | LLM 分类 |
 | **搜索信息 Agent** | 混合检索（Chroma + SQLite，不分子意图） | AgenticLangchainKnowledgeSearchTool |
 | **VLM 理解 Agent** | 图形描述（有图才调用） | VLM FunctionTool |
 | **聚合数据 Agent** | 错题/作答统计、周报聚合（**读写** SQLite：errors/exam_attempts 统计 + periodic_reports 落库） | SQLite 查询/写入工具 |
@@ -125,7 +122,6 @@ flowchart TD
 | [ingestion/structure_recognition.md](ingestion/structure_recognition.md) | `ingestion/structure_recognition.py` | 结构识别 Agent |
 | [ingestion/knowledge_organize.md](ingestion/knowledge_organize.md) | `ingestion/knowledge_organize.py` | 知识整理 Agent |
 | [ingestion/storage_decision.md](ingestion/storage_decision.md) | `ingestion/storage_decision.py` | 入库决策 Agent |
-| [retrieval/intent.md](retrieval/intent.md) | `retrieval/intent.py` | 意图识别 Agent |
 | [retrieval/search.md](retrieval/search.md) | `retrieval/search.py` | 搜索信息 Agent |
 | [retrieval/vlm.md](retrieval/vlm.md) | `retrieval/vlm.py` | VLM 理解 Agent（查询侧） |
 | [retrieval/aggregate.md](retrieval/aggregate.md) | `retrieval/aggregate.py` | 聚合数据 Agent |
@@ -139,7 +135,7 @@ flowchart TD
 
 | 子 Agent | prompt 位置 | 说明 |
 |----------|------------|------|
-| 意图识别 | `src/agent/retrieval/intent.py` 的 instruction（可抽 `prompts.py`） | 纯 LLM 分类（query_type / period_type） |
+| 意图路由 | 内联 `src/agent/leader.py` 的 `LEADER_INSTRUCTION`（2026-08-28 决策，非独立 Agent） | 系统提示词内置子 Agent 能力清单 + 意图集合表，Leader 匹配后委派（query_type / period_type 由 Leader 写入） |
 | 结构识别 | `src/agent/ingestion/structure_recognition.py` 的 instruction（可抽 `prompts.py`） | 语义切分「讲解段 / 题目段」；每道题目（切出的题目段或零散单题）都 `skill_load question-organize` 归一为三段，讲解段不过 Skill |
 | 输出整理 | `src/agent/retrieval/output.py` 的 instruction（可抽 `prompts.py`） | 排版 + 溯源引用 + 分片发送 |
 

@@ -34,7 +34,7 @@
 
 **用户需求**：新高三的朋友最想体验的功能——"通过指令唤起周报/月报，给出建议针对性练习的知识点"。
 
-**执行流程**（`query_type="report"` 时由意图识别子 Agent 解析 `period_type`，本 Agent 聚合 + 落库）：
+**执行流程**（`query_type="report"` 时由 Leader 解析 `period_type` 并写入 State，本 Agent 聚合 + 落库）：
 
 ```python
 async def report_generate(state: GaokaoState) -> dict:
@@ -43,7 +43,7 @@ async def report_generate(state: GaokaoState) -> dict:
     指令示例："生成周报" / "这个月的月报" / "上周的学习报告"
     """
     user_id = state.get("user_id", "default")
-    period_type = state["period_type"]      # "weekly" | "monthly"，由意图识别解析
+    period_type = state["period_type"]      # "weekly" | "monthly"，由 Leader 解析
     period_start, period_end = resolve_period_window(period_type)
     
     # ① 幂等检查：同周期已生成过，直接返回缓存

@@ -200,7 +200,6 @@ gaokao_team = TeamAgent(
     name="gaokao_team",
     leader=LlmAgent(model=model, instruction=LEADER_PROMPT),
     members=[
-        LlmAgent(name="intent", model=model, instruction=INTENT_PROMPT),
         search_agent,
         vlm_agent,
         aggregate_agent,

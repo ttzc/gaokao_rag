@@ -31,7 +31,7 @@
 |-------|------|----------------|------|
 | **题目整理** | `question-organize/`（文档：[question-organize.md](question-organize.md)） | 执行：结构识别 Agent 逐题（`ALLOWED_SKILLS` 白名单）；消费：入库决策 Agent | 把单个题目单元（整篇切出的题目段 / 零散输入：口述/OCR/VLM/聊天片段）归一为「题目 / 答案 / 解析」三段，供入库决策导入；讲解段不加载 |
 
-> 曾被列为萃取候选、现已撤回（2026-08-27）：意图识别 / 结构识别 / 输出整理 —— 三者 prompt 即各自 agent 的系统提示词，留在 instruction，不建 SKILL.md。
+> 曾被列为萃取候选、现已撤回（2026-08-27）：意图识别 / 结构识别 / 输出整理 —— 三者 prompt 即各自 agent 的系统提示词，留在 instruction，不建 SKILL.md。其中**意图识别已于 2026-08-28 内联 Leader 系统提示词**（非独立 Agent，无 prompt 可萃），剩余结构识别 / 输出整理两条仍成立。
 
 ## 每个 SKILL.md 结构约定
 

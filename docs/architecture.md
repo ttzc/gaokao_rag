@@ -9,7 +9,7 @@ tRPC-Agent 已经提供了 Agent 编排、Knowledge/RAG、Session/Memory、MCP�
 - **VLM 图形理解管线** —— 框架的 Knowledge 层是文本 RAG，VLM 调用需要封装为 FunctionTool
 - **PDF 多模态摄取** —— 业务逻辑，框架不管；但摄取的核心决策（内容三分、题目切分、知识点提取）由 Agent 层完成，ingestion 层只提供纯 I/O 工具集
 - **知识点图谱** —— SQLite schema 设计 + 知识点查询工具
-- **意图识别与委派** —— TeamAgent 的 Leader 自由委派机制，意图由独立子 Agent 判断
+- **意图路由与委派** —— TeamAgent 的 Leader 自由委派机制；意图匹配内联 Leader 系统提示词（2026-08-28 决策：非独立子 Agent），Leader 按子 Agent 能力清单匹配后委派
 
 ## 系统架构总览
 
@@ -17,11 +17,10 @@ tRPC-Agent 已经提供了 Agent 编排、Knowledge/RAG、Session/Memory、MCP�
 flowchart TD
     A[用户接口层<br/>trpc-claw: QQ（官方 API + 通道适配器）<br/>开发接口: CLI · MCP · FastAPI] --> B[Agent 编排层<br/>TeamAgent · Leader 自由委派]
 
-    B --> C[意图识别 Agent]
-    B --> D[搜索信息 Agent<br/>Knowledge/RAG 混合检索]
-    B --> E[VLM 理解 Agent<br/>VLM FunctionTool]
-    B --> F[聚合数据 Agent<br/>错题/作答统计]
-    B --> G[输出整理 Agent<br/>格式化 + 分片]
+    B --> C[搜索信息 Agent<br/>Knowledge/RAG 混合检索]
+    B --> D[VLM 理解 Agent<br/>VLM FunctionTool]
+    B --> E[聚合数据 Agent<br/>错题/作答统计]
+    B --> F[输出整理 Agent<br/>格式化 + 分片]
 
     B --> H[Session/Memory<br/>跨会话记忆]
 
@@ -37,7 +36,7 @@ flowchart TD
 
 | 能力 | 框架组件 | 我们的用法 |
 | ------ | --------- | ----------- |
-| Agent 编排 | TeamAgent | Leader 自由委派 5 个子 Agent（意图/搜索/VLM/聚合/输出） |
+| Agent 编排 | TeamAgent | Leader 自由委派 4 个子 Agent（搜索/VLM/聚合/输出；意图路由内联 Leader 系统提示词） |
 | RAG 检索 | LangchainKnowledge + AgenticLangchainKnowledgeSearchTool | 接入 Chroma 向量库，支持 metadata 过滤 |
 | 模型接入 | OpenAIModel | **模型中立**：OpenAI 兼容协议抽象，理论上用户可自选任何兼容模型；开发期默认 DeepSeek + Qwen |
 | MCP Server | MCPToolset (stdio/sse/streamable-http) | 暴露检索、查询、复习建议工具 |
@@ -52,7 +51,7 @@ flowchart TD
 | VLM 图形理解 | FunctionTool | 挂到 VLM 子 Agent 的 tools |
 | 知识点查询 | FunctionTool | 挂到搜索子 Agent 的 tools 列表 |
 | PDF 摄取管线 | 业务 I/O 工具集（Agent 调用） | ingestion 层提供写入函数（ingest_question / ingest_image / ingest_exam_paper / ingest_error 等）；知识点归位复用 src/ingestion/topic.py |
-| 意图识别 | LLM 子 Agent | TeamAgent 成员（意图识别 Agent） |
+| 意图路由 | Leader 系统提示词能力 | `LEADER_INSTRUCTION` 内置子 Agent 能力清单 + 意图集合表，Leader 匹配后委派（2026-08-28 决策，原独立意图识别子 Agent 已移除） |
 | 错题分析 | FunctionTool + Memory | 挂到聚合子 Agent，读取错题记录 |
 
 ## TeamAgent 编排设计
@@ -70,10 +69,9 @@ flowchart TB
 
     subgraph Agent 层
         CLAW --> L[Team Leader<br/>自由委派 + 综合]
-        L --> INTENT[意图识别 Agent]
-        INTENT -->|question / browse| SEARCH[搜索信息 Agent]
-        INTENT -->|review / report| AGG[聚合数据 Agent]
-        INTENT -->|ingest| DOC[文档识别 Agent]
+        L -->|question / browse| SEARCH[搜索信息 Agent]
+        L -->|review / report| AGG[聚合数据 Agent]
+        L -->|ingest| DOC[文档识别 Agent]
         SEARCH -->|含图题目| VLM[VLM 理解 Agent]
         SEARCH --> OUT[输出整理 Agent]
         AGG --> OUT
@@ -99,7 +97,7 @@ flowchart TB
 **三层结构说明**：
 
 - **入口层**：QQ（官方 API + nanobot 通道适配器）/ CLI / MCP / FastAPI 统一接入 trpc-claw 网关
-- **Agent 层**：Leader 按意图委派成员——**意图识别是分支点**：
+- **Agent 层**：Leader 按意图委派成员——**意图匹配在 Leader 系统提示词内完成**（2026-08-28 决策，非独立子 Agent）：
   - **查询侧（读）**：question/browse 走搜索（含图触发 VLM）→ 输出；review/report 走聚合 → 输出
   - **摄入侧（写）**：ingest 走文档识别 → 结构识别 → 知识整理 → Leader 回显确认 → 入库决策 → 输出
   - 不同意图走不同成员组合，不是所有成员每次都被调用
@@ -112,11 +110,10 @@ flowchart TD
     U[用户请求] --> L[Team Leader<br/>自由委派 + 综合]
 
     subgraph 查询侧-读
-        L --> A1[意图识别 Agent]
-        L --> A2[搜索信息 Agent]
-        L --> A3[VLM 理解 Agent]
-        L --> A4[聚合数据 Agent]
-        L --> A5[输出整理 Agent]
+        L --> A1[搜索信息 Agent]
+        L --> A2[VLM 理解 Agent]
+        L --> A3[聚合数据 Agent]
+        L --> A4[输出整理 Agent]
     end
 
     subgraph 摄入侧-写
@@ -130,7 +127,6 @@ flowchart TD
     A2 --> L
     A3 --> L
     A4 --> L
-    A5 --> L
     B1 --> L
     B2 --> L
     B3 --> L
@@ -143,8 +139,8 @@ flowchart TD
 class GaokaoState(State):
     # 业务字段
     subject: str                    # 学科（MVP 固定 "math"）
-    query_type: str                 # "question" | "review" | "report" | "browse" | "ingest"
-    period_type: str                # "weekly" | "monthly"（report 意图时由 ROUTER 解析）
+    query_type: str                 # "question" | "review" | "report" | "browse" | "ingest"（Leader 匹配意图后写入）
+    period_type: str                # "weekly" | "monthly"（report 意图时由 Leader 解析）
     retrieved_docs: list[dict]     # 检索到的题目/解析（含知识点信息）
     vlm_descriptions: list[str]    # VLM 生成的图形描述
     answer: str                     # 最终答案
@@ -162,7 +158,6 @@ class GaokaoState(State):
 
 | 子 Agent | 职责 | 挂载能力 |
 | --------- | ------ | --------- |
-| 意图识别 Agent | 判断学科 + 意图 | LLM 分类 |
 | 搜索信息 Agent | 混合检索（Chroma + SQLite） | LangchainKnowledgeSearchTool |
 | VLM 理解 Agent | 图形理解（有图才调） | VLM FunctionTool |
 | 聚合数据 Agent | 错题/作答统计、周报聚合（**读写** SQLite：errors/exam_attempts 统计 + periodic_reports 落库） | SQLite 查询/写入工具 |
@@ -262,8 +257,7 @@ gaokao_rag/
 │   │   │   ├── storage_decision.py      #  入库决策 Agent
 │   │   │   └── prompts.py               #  摄入侧各 Agent 的 instruction 常量（长 prompt 独立成模块）
 │   │
-│   │   └── retrieval/         #   查询侧子 Agent（每文件一个 Agent，只调 src/retrieval 读门面）
-│   │       ├── intent.py      #    意图识别 Agent
+│   │   └── retrieval/         #   查询侧子 Agent（每文件一个 Agent，只调 src/retrieval 读门面；意图路由内联 Leader 系统提示词，无 intent.py）
 │   │       ├── search.py      #    搜索信息 Agent
 │   │       ├── vlm.py         #    VLM 理解 Agent
 │   │       ├── aggregate.py   #    聚合数据 Agent
@@ -320,7 +314,7 @@ src/store  ←  { src/ingestion, src/retrieval }  ←  { src/agent, src/mcp }
 - **retrieval（读门面）**：组合 store 原语 + `get_knowledge()`，封装所有查询与聚合（含周报双源统计）。只读不写。
 - **agent / mcp（业务入口）**：只允许 `import src.ingestion`（写）与 `import src.retrieval`（读）。**严禁**在任一入口模块里 `import src.store`、`import src.store.db`、`import src.store.vector`、`import src.store.file_store` —— 任何存储访问必须经由两个门面。
 
-> 注意命名：`src/agent/ingestion/`（摄入侧子 Agent，含 LLM）与 `src/ingestion/`（写门面，无 LLM）是**两层不同概念**；`src/agent/retrieval/`（查询侧子 Agent）与 `src/retrieval/`（读门面）同理。子 Agent 负责意图判断与编排，**具体存储读写一律委托给两个门面**，子 Agent 本身也不允许 import src.store。
+> 注意命名：`src/agent/ingestion/`（摄入侧子 Agent，含 LLM）与 `src/ingestion/`（写门面，无 LLM）是**两层不同概念**；`src/agent/retrieval/`（查询侧子 Agent）与 `src/retrieval/`（读门面）同理。**意图匹配与编排决策归 Leader**（系统提示词内联），子 Agent 只处理分内任务，**具体存储读写一律委托给两个门面**，子 Agent 本身也不允许 import src.store。
 
 > 校验（可选）：在 `src/agent/__init__.py` 或 CI lint 中拒绝 agent 包出现对 `src.store` 的 import，从机制上堵死「入口直连存储」。
 

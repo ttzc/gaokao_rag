@@ -18,6 +18,8 @@
 | `KnowledgeTool` | `knowledge_tool` | 知识点查询 / tag 归位（`search` / `create` / `add_alias`） | `src.ingestion.topic` | 搜索信息（查询侧）、知识整理（摄入侧） |
 | `IngestQuestionTool` | `ingest_tool` | 题目 / 错题摄入（`ingest_question` → `ingest_error`，先题后错） | `src.ingestion.question` | 入库决策（摄入侧） |
 
+> **实现现状（2026-08-28）**：代码侧当前仅落地 `IngestQuestionTool`（`src/agent/tools/ingest_tool.py`，导出 `ingest_question_tool`）；`ExtractTool` / `VLMUnderstandTool` / `KnowledgeTool` 及读侧工具**逐个按链路需要实现中，不急于归并**——写齐后再对齐本文件与 `retrieve_tool.md` 的两文件结构。本表为规划目标，不代表已全部实现。
+
 ## ExtractTool — PDF / 图像提取
 
 对应原 `extract_tool.py`，挂**文档识别子 Agent**（摄入侧，见 [../ingestion/doc_recognition.md](../ingestion/doc_recognition.md)）。

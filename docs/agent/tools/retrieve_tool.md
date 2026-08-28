@@ -107,7 +107,6 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 
 | 子 Agent | 挂载工具 |
 |----------|----------|
-| 意图识别 | —（纯 LLM 分类） |
 | 搜索信息 | `AgenticLangchainKnowledgeSearchTool` + 业务查询工具（`search_questions` / `search_knowledge_notes` / `search_topics` 等） |
 | VLM 理解 | `VLMUnderstandTool`（见 [ingest_tool.md](ingest_tool.md)，理解检索到的题图） |
 | 聚合数据 | 业务查询工具（`get_error_stats` / `get_attempt_stats` / `aggregate_*` / `get_report`） |
