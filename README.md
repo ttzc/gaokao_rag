@@ -29,13 +29,13 @@
 
 | 层 | 选择 | 理由 |
 | --- | --- | --- |
-| **Agent 框架** | tRPC-Agent-Python（**TeamAgent 多 Agent 协作**） | 生产级 Agent 框架；Leader 自由委派 5 个专业子 Agent（意图/搜索/VLM/聚合/输出），比单 Agent 更清晰可扩展；内置 MCP、Session/Memory、FastAPI 服务化 |
+| **Agent 框架** | tRPC-Agent-Python（**TeamAgent 多 Agent 协作**） | 生产级 Agent 框架；Leader 编排已落地的 3 个子 Agent（搜索/结构识别/入库决策），意图识别内联 Leader 系统提示词，其余成员按 roadmap 补齐；内置 MCP、Session/Memory、FastAPI 服务化 |
 | **用户入口（IM）** | trpc-claw（OpenClaw-like） | 通过 QQ（官方 API + nanobot 原生通道 + 适配器扩展）使用，**高考生零学习成本、无需电脑** |
 | **LLM** | DeepSeek 官方 API（开发期写死 V4-Flash） | OpenAI 兼容协议接入；**模型中立**——架构上不绑定任何厂商，理论上用户可自选任何 OpenAI 兼容模型 |
 | **VLM** | Qwen（DashScope 官方 API，开发期写死 Qwen3.7-Flash / Qwen3.7-Plus） | 处理数学图形（几何图、函数图像、立体几何），Flash 轻量低成本、Plus 复杂图形推理 |
 | **PDF 解析** | PyMuPDF + MinerU2.5-Pro | 文本提取 + 复杂版面解析 |
 | **向量存储** | Chroma | 轻量本地，和 AlgoNotes 一致 |
-| **嵌入模型** | Qwen3-Embedding-4B（DashScope API） | 中文能力最强（CMTEB 68.09）、32k 长上下文整文档嵌入、与 VLM 同厂商一套 Key |
+| **嵌入模型** | qwen3.7-text-embedding（DashScope API，dimensions=1024） | 中文能力强、长上下文整文档嵌入、与 VLM 同厂商一套 Key；换模型/维度须删重建 Chroma |
 | **元数据索引** | SQLite | 题目-知识点关联、错题记录、检索过滤 |
 
 ## 核心架构
@@ -69,34 +69,46 @@ gaokao_rag/
 ├── README.md                  # 本文件
 ├── CLAUDE.md                  # 给 Claude 的开发交接文档
 ├── pyproject.toml             # 项目依赖与元数据
+├── uv.lock                    # uv 锁定依赖
 ├── config.toml                # 系统配置（模型、存储路径、VLM 参数）
-├── .env.example               # 环境变量模板
-├── .gitignore
+├── .env.example               # 环境变量模板（.env 存敏感信息，不入库）
+├── main.py                    # 入口（当前最小化，调试走 scripts/chat.py）
+├── .github/                   # CI 工作流（全量 pytest）
+├── LICENSE
 ├── docs/                      # 项目文档
 │   ├── architecture.md        # 架构设计详解
 │   ├── data_model.md          # 数据模型与知识点图谱
-│   ├── ingestion/             # 多模态摄取管线（docs/ingestion/）
-│   ├── agent/                 # Agent 编排与 TeamAgent 设计（docs/agent/）
+│   ├── store/                 # 存储层设计（db/ SQLite DDL、files/、vector/）
+│   ├── ingestion/             # 多模态摄取管线（README + 题目/试卷/错因/图像）
+│   ├── retrieval/             # 检索读门面（README + 题目/知识点/错题/报告等）
+│   ├── agent/                 # Agent 编排（README、leader、ingestion/、retrieval/、tools/、skills/）
+│   ├── scripts/               # CLI 入口说明（chat.py / cli.py）
 │   ├── vlm_strategy.md        # VLM 图形理解策略
 │   ├── mcp_interface.md       # MCP 接口设计
-│   ├── test.md                # 测试规范（pytest）
 │   ├── im_interface.md        # IM 接入（QQ 官方 API + 通道适配器）
-│   └── roadmap.md            # 开发路线图（V0.1 → V1.0）
+│   ├── test.md                # 测试规范（pytest）
+│   ├── onboarding.md          # 协作者学习路径
+│   └── roadmap.md             # 开发路线图（V0.1 → V1.0）
 ├── src/                       # 源代码（由 Claude 实现）
-│   ├── config.py              # 配置加载
-│   ├── api/                   # 模型客户端层
-│   ├── ingestion/             # 多模态摄取管线
-│   ├── store/                 # 三层存储 + 知识点图谱
-│   ├── rag/                   # RAG Agent 与检索器
-│   ├── tools/                 # 自定义工具（VLM、知识点查询等）
-│   └── mcp/                   # MCP Server
+│   ├── config.py              # 配置加载（依赖图最底层，禁 import logger）
+│   ├── api/                   # 模型客户端层（llm.py / embedding.py 工厂）
+│   ├── agent/                 # TeamAgent 编排（leader + 子 Agent）
+│   │   ├── retrieval/         #   查询侧（search 搜索信息，prompts）
+│   │   ├── ingestion/         #   摄入侧（structure_recognition / storage_decision）
+│   │   ├── tools/             #   工具层（ingest_tool / retrieve_tool）
+│   │   └── skills/            #    Agent Skill（question-organize）
+│   ├── ingestion/             # 摄入门面（无 LLM，写库）
+│   ├── retrieval/             # 检索门面（无 LLM，读库）
+│   └── store/                 # 三层存储（SQLite + 文件 + Chroma 向量）
 ├── scripts/                   # CLI 入口
-├── data/                      # 数据目录
-│   ├── raw/                   # 原始 PDF
-│   ├── processed/             # 处理后的结构化数据
+│   ├── chat.py                # Team Leader 对话调试入口（模拟 QQ）
+│   └── cli.py                 # 只读 CLI（browse / detail）
+├── data/                      # 数据目录（运行时生成，不入库）
 │   ├── chroma_db/             # 向量数据库
+│   ├── files/                 # 文件层（raw 原始 / processed/{text,vlm_desc}）
 │   └── gaokao.db              # SQLite 索引
-└── tests/                     # 测试
+├── outputs/                   # 对话实测输出（已 gitignore）
+└── tests/                     # 测试（pytest，test_<module>.py）
 ```
 
 ## MVP 范围
@@ -114,7 +126,7 @@ gaokao_rag/
 ### MVP 核心闭环
 
 1. **摄入**：从 ima 导出数学试卷 PDF → PDF 解析 → 图像提取 → VLM 理解 → 知识点标注 → 向量化入库
-2. **检索**：用户在 IM 提问 → trpc-claw 接入 → TeamAgent 编排 → 知识点过滤 + 语义检索 → 返回相关题目和解析
+2. **检索**：用户在 IM 提问 → trpc-claw 接入 → Leader 意图路由 → search Agent 语义检索（MVP 纯向量 top-10，不配过滤条件）→ 返回相关题目和解析
 3. **复习**：基于错题分布 → 生成知识点薄弱分析 → 推荐复习路径
 4. **周期报告**：指令唤起"周报/月报" → 聚合周期内错题 → 薄弱知识点分析 → 针对性练习建议（含推荐题目）
 
