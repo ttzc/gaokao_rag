@@ -146,11 +146,11 @@ async def main() -> None:
             await ask_once(runner, text)
     except KeyboardInterrupt:
         # Ctrl+C 退出（含生成中途打断）：走 finally 正常关 Runner
-        print("\n[中断] 退出。")
+        print("\n[cli] 键盘中断，退出。")
     finally:
         await runner.close()
 
-    print("再见。")
+    print("[cli] 再见。")
 
 
 if __name__ == "__main__":

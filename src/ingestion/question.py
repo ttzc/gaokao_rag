@@ -135,7 +135,7 @@ def ingest_question(
 
     doc_id = f"q_{qid}"
     title = (
-        get_files_db().get_by_id(file_id)["title"]
+        get_files_db().get_by_id(file_id)["title"] # pyright: ignore[reportOptionalSubscript]
         if file_id
         else None
     ) or question_text[:40]
