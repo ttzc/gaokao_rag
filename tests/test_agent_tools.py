@@ -88,12 +88,20 @@ class TestRetrieveToolExports:
         assert retrieve_tool.__all__ == ["knowledge_search_tool"]
 
     def test_search_config(self) -> None:
-        """MVP 基线：top-10 纯相似度，不配过滤（Agentic 版留待升级）。"""
+        """MVP 基线：top-10 纯相似度全量召回，不配过滤（Agentic 版留待升级）。
+
+        SEARCH_TYPE 用 SIMILARITY_SCORE_THRESHOLD（2026-08-29 排查）：框架
+        SIMILARITY 分支走 asearch 不带 score，SearchDocument.score 恒 0.0；
+        该分支召回集合/排序与 SIMILARITY 相同，仅 score 有值。
+        MIN_SCORE=-1.0 防 langchain l2 relevance 负分被工具层静默过滤。
+        """
         tool = retrieve_tool.knowledge_search_tool
         assert retrieve_tool.TOP_K == 10
-        assert retrieve_tool.SEARCH_TYPE is SearchType.SIMILARITY
+        assert retrieve_tool.SEARCH_TYPE is SearchType.SIMILARITY_SCORE_THRESHOLD
+        assert retrieve_tool.MIN_SCORE == -1.0
         assert tool.top_k == retrieve_tool.TOP_K
         assert tool.search_type is retrieve_tool.SEARCH_TYPE
+        assert tool.min_score == retrieve_tool.MIN_SCORE
         assert tool.knowledge_filter is None
 
 

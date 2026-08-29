@@ -23,9 +23,21 @@ from trpc_agent_sdk.server.knowledge.tools import LangchainKnowledgeSearchTool
 
 from src.retrieval.knowledge import get_knowledge
 
-# ── 检索参数（MVP 基线：top-10 纯相似度，过滤留待 Agentic 版升级） ──────────
+# ── 检索参数（MVP 基线：top-10 纯相似度全量召回，过滤留待 Agentic 版升级） ──
 TOP_K = 10
-SEARCH_TYPE = SearchType.SIMILARITY
+# 用 SIMILARITY_SCORE_THRESHOLD 而非名义等价的 SIMILARITY（2026-08-29 排查结论）：
+# 框架 LangchainKnowledge._run_vectorstore_retrieve 里只有前者的分支走
+# asimilarity_search_with_relevance_scores（返回带分元组）；SIMILARITY 走
+# asearch 只回 List[Document]，SearchDocument.score 恒为默认 0.0——召回集合与
+# 排序完全相同，但 LLM 永远看不到相关度。不配 score_threshold（框架不透传，
+# langchain 默认 None 不过滤），检索语义仍是 top-10 纯相似度。
+SEARCH_TYPE = SearchType.SIMILARITY_SCORE_THRESHOLD
+# min_score 钉成 -1.0（默认 0.0 会引入静默丢弃）：langchain_chroma 在 l2 空间的
+# relevance = 1 - d²/√2（d² 为平方欧氏距离，单位向量下界 -0.414），不相关文档
+# 为负分——默认 0.0 会让工具层 _serialize_documents 把负分文档过滤掉，破坏
+# 「top-10 全量召回」基线。-1.0 低于理论下界，保证 score 只是信息、不是闸门；
+# 真要按分过滤是 Agentic/阈值检索的后续命题。
+MIN_SCORE = -1.0
 
 _tool: LangchainKnowledgeSearchTool | None = None
 
@@ -35,7 +47,8 @@ def _build_tool() -> LangchainKnowledgeSearchTool:
     global _tool
     if _tool is None:
         _tool = LangchainKnowledgeSearchTool(
-            rag=get_knowledge(), top_k=TOP_K, search_type=SEARCH_TYPE)
+            rag=get_knowledge(), top_k=TOP_K, search_type=SEARCH_TYPE,
+            min_score=MIN_SCORE)
     return _tool
 
 

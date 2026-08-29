@@ -19,6 +19,10 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 - **描述**：`Search for relevant information in the knowledge base`
 - **LLM 可见参数**：仅 `query`（string，必填）——不暴露任何 metadata 过滤
 - **构造参数（开发者侧）**：`rag: LangchainKnowledge`、`top_k=3`、`search_type=SearchType.SIMILARITY`、`min_score=0.0`、`knowledge_filter: KnowledgeFilterExpr | None = None`
+- **本项目实际装配（2026-08-29）**：`search_type=SIMILARITY_SCORE_THRESHOLD` + `min_score=-1.0`。原因：
+  - **SIMILARITY 模式 score 恒 0.0**——框架 `_run_vectorstore_retrieve` 只有 `similarity_score_threshold` 分支走 `asimilarity_search_with_relevance_scores`（带分元组）；`SIMILARITY` 走 `asearch` 只回 `List[Document]`，`SearchDocument.score` 落默认 0.0。召回集合/排序两分支完全一致，仅 score 有无。
+  - **min_score 默认 0.0 会静默丢文档**——langchain_chroma 在 l2 空间 relevance = `1 - d²/√2`（单位向量下界 -0.414），不相关文档为负分；-1.0 低于理论下界，保证 score 只是信息不是闸门（top-10 全量召回基线不变）。
+  - score 为 0~1 的**线性映射相关度**（非原始余弦；实测 q_810 cos=0.776 → score=0.683），且 `similarity_score_threshold` 模式会按 k 截断后返回，与 SIMILARITY 同集合。
 - **执行流程**：
   1. `extra_params = self.rag.build_search_extra_params(knowledge_filter)` —— 把 `KnowledgeFilterExpr` 翻成 Chroma `where`（由 `GaokaoKnowledge` 子类重写）
   2. `SearchParams(rank_top_k=top_k, search_type=search_type, extra_params=extra_params)`

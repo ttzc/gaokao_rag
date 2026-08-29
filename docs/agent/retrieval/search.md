@@ -12,7 +12,7 @@
 
 | 能力 | 说明 |
 |------|------|
-| `knowledge_search_tool`（工具名 `knowledge_search`） | `src/agent/tools/retrieve_tool.py` 的框架 `LangchainKnowledgeSearchTool`（top-10 纯相似度，不配过滤条件）；后续带条件检索时升级 `AgenticLangchainKnowledgeSearchTool`（LLM 自动构建 `KnowledgeFilterExpr`） |
+| `knowledge_search_tool`（工具名 `knowledge_search`） | `src/agent/tools/retrieve_tool.py` 的框架 `LangchainKnowledgeSearchTool`（top-10 纯相似度，不配过滤条件；`SIMILARITY_SCORE_THRESHOLD` 装配使 score 携带真实相关度——框架 SIMILARITY 分支 score 恒 0.0，见 [../tools/retrieve_tool.md](../tools/retrieve_tool.md)）；后续带条件检索时升级 `AgenticLangchainKnowledgeSearchTool`（LLM 自动构建 `KnowledgeFilterExpr`） |
 
 > `src/retrieval` 读门面的业务查询函数（`browse_questions` / `get_question_detail` 等）已有门面但**未工具化**——待封装为 FunctionTool 后逐个挂上（工具清单见 [../tools/retrieve_tool.md](../tools/retrieve_tool.md)）。
 >
