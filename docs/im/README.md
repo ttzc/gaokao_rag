@@ -4,13 +4,28 @@
 
 Gaokao RAG 面向的用户是高三学生——**他们可能不会用 WorkBuddy 等 agent 工具，甚至没有电脑**。因此前端必须是 IM（即时通讯），而不是 MCP / CLI。
 
-tRPC-Agent-Python 原生提供 **trpc-claw**（OpenClaw-like Agent 运行时），基于 nanobot 构建，内置 Telegram / 企业微信通道；**QQ 通过扩展通道适配器接入**（nanobot 原生支持 QQ，详见下文）。一条命令启动即可 7×24 在线，不需要自己实现消息网关。
+tRPC-Agent-Python 原生提供 **trpc-claw**（OpenClaw-like Agent 运行时，**OpenClaw 命名澄清见下文「术语澄清」**），基于 nanobot 构建，内置 Telegram / 企业微信通道；**QQ 通过扩展通道适配器接入**（nanobot 原生支持 QQ，详见下文）。一条命令启动即可 7×24 在线，不需要自己实现消息网关。
 
 > **✅ 可行性已核实（2026-08-30，基于源码 + 官方 wiki）**
 > - 依赖已就位并提交（commit `56eda45`）：`trpc-agent-py[knowledge,langfuse,openclaw]>=1.1.16`（拉入 nanobot-ai 0.3.0）+ `qq-botpy>=1.2.0,<2.0.0`（装出 1.2.1）
 > - `from nanobot.channels.qq.runtime import QQChannel` 可正常导入，`trpc_agent_cmd openclaw run` 可用
 > - 官方文档确认：频道 / 群 / **消息列表单聊**三场景个人开发者均可用，MVP 走 C2C 单聊
 > - 本地源码参考：`D:\AI_study\learn\botpy`（官方 SDK）、`D:\AI_study\learn\nanobot`、`D:\AI_study\learn\trpc-agent-python`
+
+## 术语澄清：OpenClaw ≠ trpc-claw（2026-08-30 联网核实）
+
+> 本文所有 "trpc-claw / openclaw" 均指 **tRPC-Agent-Python 内置的 `openclaw`（trpc_claw）**，**不是**业界知名的独立开源项目 **OpenClaw**。两者经常被混淆，务必区分：
+
+| 维度 | **OpenClaw**（独立开源项目） | **trpc-claw**（本项目所用） |
+| ------ | ------ | ------ |
+| 是什么 | 开源个人 AI 助手 / 自托管 Agent 网关（openclaw.ai / github.com/openclaw/openclaw） | tRPC-Agent-Python 内置的 OpenClaw-like Agent 运行时（`trpc_agent_sdk/server/openclaw/`） |
+| 技术栈 | **Node.js**（`npm i -g openclaw`，Node ≥22） | **Python**（`trpc_agent_sdk` + `nanobot`，随 trpc-agent-py 发行） |
+| 作者/体量 | Peter Steinberger（steipete）创建于 2025-11，GitHub 34.6 万+ stars，MIT，OpenClaw Foundation 维护 | tRPC-Agent 团队；随包分发，非独立仓库 |
+| 通道机制 | channel plugin（WhatsApp/Telegram/Discord/Slack/Teams/Signal/Matrix/iMessage/Zalo/Google Chat/Twitch…） | `channels/` + `register_channel_repair`（内置 telegram/wecom；QQ 待自建 `_qq.py`） |
+| 与对方关系 | **概念源头**——trpc-claw 的 Gateway / channel / skills / cron 设计均致敬它 | 命名与架构致敬 OpenClaw，但代码、依赖、运行时完全独立 |
+| **QQ 通道** | ❌ 本体及官方插件**均无 QQ 通道** | ✅ 基于 nanobot `QQChannel` 可扩展（即本文方案） |
+
+**对本项目的影响**：OpenClaw 本体（Node 版）无 QQ 通道，且与 trpc-claw **不兼容**（其 `openclaw-qqbot` 插件依赖 Node 版 CLI 插件系统，见下文「兼容性澄清」）。本项目全程使用 Python 栈的 trpc-claw，QQ 接入走「nanobot 原生 QQ 通道 + trpc-claw 适配器」路线，**与 OpenClaw 本体无关**；讨论任何 `openclaw` 命令/配置时，请默认指 trpc-claw。
 
 ## 为什么选 QQ（nanobot 原生通道 + trpc-claw 扩展）
 
@@ -139,6 +154,25 @@ export QQ_APP_SECRET=xxx
 
 > 一句话分工：**qq-botpy 管"怎么连上 QQ"，nanobot 管"消息怎么变成 Agent 的输入输出"，trpc-claw 管"这套东西怎么作为产品跑起来"，TeamAgent 管"答案从哪来"。**
 
+**端到端环节细节**（`nanobot/channels/qq/runtime.py` 行号，Claude 写 `_qq.py` 前必读——**以下能力父类已全部实现，切勿重复造轮子**）：
+
+| 环节 | 细节 | 源码位置 |
+| ------ | ------ | ------ |
+| 建连/鉴权 | `start()` → `_make_bot_class` 动态子类 botpy Client → `client.start(appid, secret)` 内部用 AppID/AppSecret 换 token 建 WebSocket | runtime.py:241/118/266 |
+| 事件订阅 | `Intents(public_messages=True, direct_message=True)`：`public_messages` 覆盖群 @ + C2C 单聊；三个回调 `on_c2c_message_create`(is_group=False) / `on_group_at_message_create`(True) / `on_direct_message_create`(False) | runtime.py:121/136-143 |
+| 断线重连 | 两层：覆写 `bot_connect` 指数退避 5s→300s（:145-173）+ 外层 `_run_bot` 兜底循环（:259-278），**内置，无需处理** | runtime.py:145/259 |
+| 收消息·身份 | 群：`chat_id=group_openid`、`user_id=author.member_openid`；单聊：`chat_id=user_id=author.id/user_openid`（`chat_id` 回消息时当 `openid` 用） | runtime.py:540-550 |
+| 收消息·去重 | `_processed_ids`（deque 上限 1000），重复消息直接丢弃（QQ 可能重推） | runtime.py:554-557 |
+| 收消息·白名单 | `is_allowed(user_id)` 查 `allowFrom`；**未授权 C2C 回一条空消息**（QQ 配对码机制，必须有响应才继续），群里静默忽略 | runtime.py:563-571 |
+| 收消息·附件 | 分块流式下载（256KB chunk / 200MB 上限 / `.part` 临时文件 + 原子改名），存 `media_dir`（默认 `~/.nanobot/media/qq/`），内容拼 `Received files:` 列表带本地路径（VLM 读图数据源） | runtime.py:624-661/663-772 |
+| 收消息·ack | `ack_message`（默认 `⏳ Processing...`）先回执再进 Agent，避免用户等十几秒无反馈 | runtime.py:596-605 |
+| 收消息·发布 | `_handle_message(...)` 封装 `InboundMessage` 进 MessageBus，与 Agent 解耦 | runtime.py:607 |
+| 发回复·顺序 | **先媒体后文本**（媒体失败 fallback 发 `[Attachment send failed: ...]`） | runtime.py:299-343 |
+| 发回复·文本 | `msg_type=0`（纯文本）/`2`（markdown，由 `msg_format` 配）；`msg_seq` 自增防 QQ 重复校验；单聊 `post_c2c_message(openid=chat_id)`、群 `post_group_message(group_openid=chat_id)` | runtime.py:345-371 |
+| 发回复·媒体 | 本地路径/`file://`/http(s) 均可；base64 上传 `/v2/users/{openid}/files` 拿 `file_info` 再 `msg_type=7` 发送；**图片不传 `file_name`**（否则被渲染成文件附件而非内联图） | runtime.py:373-530 |
+
+> 综上：**建连/鉴权/重连/收发/附件/白名单/去重/ack 全部内置**。`_qq.py` 的唯一增量 = 重写 `send()` 做长答案分片（`stream_reply`），外加 `repair_qq_channel` 注册与 `channels/__init__.py` 导入。
+
 实现清单：
 
 1. 新建 `trpc_agent_sdk/server/openclaw/channels/_qq.py`（参照 `_wecom.py`）：
@@ -147,7 +181,7 @@ export QQ_APP_SECRET=xxx
    - `repair_qq_channel(name, channel_manager)`：section 缺失或未 enabled 直接返回，否则替换 `channel_manager.channels[name]`
    - 模块末尾 `register_channel_repair("qq", repair_qq_channel)`
 2. `channels/__init__.py` 里 import `_qq` 并导出 `repair_qq_channel`（与 wecom/telegram 一致）
-3. TeamAgent 接入（方式 A）：扩展 `create_agent`（`agent/_agent.py:133`）支持 team 模式
+3. TeamAgent 接入（方式 A）：`src/im/claw_app.py` 子类覆写 `ClawApplication`（`claw.py:105/166`），`self.agent = create_gaokao_leader()` 替换默认 LlmAgent，重建 `Runner`（契约验证见下文方式 A 节）
 4. 项目内侧装配层 `src/im/`（已入 architecture.md 项目文件架构）：`create_claw_app()` —— ClawApplication team 模式子类 + openclaw 配置加载；启动入口 `scripts/im_server.py`
 
 > 代码约束：**不猜测 botpy API**——所有 botpy 调用以 `D:\AI_study\learn\botpy` 源码为准；nanobot 源码在 `D:\AI_study\learn\nanobot`。
@@ -155,13 +189,17 @@ export QQ_APP_SECRET=xxx
 
 ### 验证通道
 
+> ⚠️ **启动命令说明**：`trpc_agent_cmd openclaw run` 硬编码实例化默认 `ClawApplication`（`_cli.py:57`），**不会加载我们的 `GaokaoClaw` 子类**（TeamAgent 接入无效）。必须用项目入口 `scripts/im_server.py` 启动：
+
 ```bash
-# 启动 trpc-claw 网关
-trpc_agent_cmd openclaw run -c ~/.trpc_claw/config_full.yaml
+# 启动 GaokaoClaw 网关（TeamAgent 作为主 Agent）
+uv run python scripts/im_server.py -c ~/.trpc_claw/config_full.yaml
 
 # 手机 QQ 给机器人发消息，观察是否响应
-# 若通道未启用，trpc-claw 自动回退 CLI 模式
+# 若通道未启用（.env 缺 QQ 密钥），自动回退 CLI 聊天模式
 ```
+
+`scripts/im_server.py` 复刻 `_cli.py:50-63` 的启动逻辑（`GaokaoClaw(workspace, config_path)` → `run_gateway()`），仅把默认类换成我们的子类。
 
 ### 沙箱测试（MVP 联调路径）
 
@@ -171,7 +209,7 @@ trpc_agent_cmd openclaw run -c ~/.trpc_claw/config_full.yaml
 
 1. 管理端「沙箱配置」添加沙箱单聊 QQ 号（自己 + 用户的测试号）
 2. 手机 QQ 扫管理端二维码 → 打开机器人资料卡 →「发消息」→ 授权添加 → 进入沙箱单聊对话
-3. `openclaw run` 起网关后即可端到端联调，**无需等上线审核**
+3. `python scripts/im_server.py` 起网关后即可端到端联调，**无需等上线审核**
 
 **API 域名**：获取凭证 `https://bots.qq.com/app/getAppAccessToken`；正式环境 `https://api.sgroup.qq.com/`；沙箱环境 `https://sandbox.api.sgroup.qq.com`（沙箱只收白名单配置的频道/群/QQ号事件，OpenAPI 仅能操作沙箱数据）。
 
@@ -211,18 +249,73 @@ trpc-claw 的 Runner 默认挂载一个 LlmAgent（`create_agent` 返回 LlmAgen
 
 ### 方式 A：TeamAgent 作为 agent 传入（推荐）
 
-替换 trpc-claw 的 `create_agent` 调用，把默认 LlmAgent 换成 gaokao_rag 的 TeamAgent：
+替换 trpc-claw 的主 Agent（默认 LlmAgent），换成 gaokao_rag 的 TeamAgent。
+
+**✅ 接口契约已验证（2026-08-30，读 SDK 源码）**：`Runner`（`trpc_agent_sdk/runners.py:432-601`，claw 消息驱动的唯一消费者）对 agent 只依赖 5 个点——`run_async(invocation_context)`（runners.py:475，核心异步事件流）、`name`（:437）、`find_agent(name)`（:529，子 agent 路由）、`parent_agent`（:554）、`sub_agents`（claw.py:177）。`TeamAgent` 与 `LlmAgent` **同源于 `BaseAgent`**（`agents/_base_agent.py`），上述字段/方法全部同款具备（pydantic model_fields 逐一比对确认），**零适配层，无需任何包装类**。
+
+**✅ 接入点已验证**：`ClawApplication.__init__`（`claw.py:105`）**没有 agent factory 注入参数**，`self.agent = create_agent(...)` 硬编码在 `claw.py:166`。因此**无需扩展/修改 trpc_agent_sdk 源码**（避免本地补丁），改为**子类覆写**：
 
 ```python
-# 在 trpc-claw 的 ClawApplication 初始化处替换默认 agent
-from trpc_agent_sdk.teams import TeamAgent
-from gaokao_rag import create_gaokao_team
+# src/im/claw_app.py（示意，交 Claude 实现）
+from trpc_agent_sdk.server.openclaw.claw import ClawApplication
+from trpc_agent_sdk.runners import Runner
+from src.agent.leader import create_gaokao_leader   # 现有工厂，leader.py:119
 
-gaokao_team: TeamAgent = create_gaokao_team()
-# 将 gaokao_team 作为 claw 的 agent 注册（覆盖 create_agent 的返回值）
+class GaokaoClaw(ClawApplication):
+    def __init__(self, workspace=None, config_path=None):
+        super().__init__(workspace, config_path)       # 默认装配全保留
+        # bus / channels / model / storage / session / memory 不动
+        self.agent = create_gaokao_leader()            # ← 唯一替换点
+        self.runner = Runner(                          # 重建 runner（对照 claw.py:172-176）
+            app_name=self.config.runtime.app_name,
+            agent=self.agent,
+            session_service=self.session_service,
+            memory_service=self.memory_service,
+        )
 ```
 
-> 实现提示：trpc-claw 的 `ClawApplication` 在 `__init__` 里调用 `create_agent(config, model)` 创建主 Agent。要替换为 TeamAgent，需要小幅扩展 `create_agent` 或新增配置项（如 `agent.type: team`），让它返回 TeamAgent 而非 LlmAgent。这是 V1.0 的一个开发任务。
+**注意点**：
+
+- **tools 差异是特性**：TeamAgent 不带 claw 的通用 tools（文件/Shell/Web/Skills/MessageTool/CronTool）——gaokao 场景 Leader 用自己那套 ingest/retrieve 工具，claw 通用工具本就不需要；回复走 OutboundMessage，无需 MessageTool。
+- **`sub_agents` 为空**：claw.py:177 的 worker_runner 会退化为 agent 自身，仅影响 SpawnTaskTool（后台任务分发），gaokao 不用，可接受。
+- **模型配置源分离**：TeamAgent 走 `get_llm_model()`（config.toml + `.env`），claw 的 `create_model` 走 openclaw config（`agent.model_*` / `TRPC_AGENT_*`）。两套不冲突，部署时 `.env` 的模型 key 需齐全。
+
+**决策**：MVP 用方式 A——Gaokao RAG 是一个专注备考的专用 Agent（MVP 数学，后续扩科），不需要通用 Agent 的杂项能力，TeamAgent 直接作为主 Agent 最干净。若 V1.0 时子类覆写成本过高，退回方式 B 作为过渡。
+
+**启动入口**（`scripts/im_server.py`，因 CLI 无法加载自定义子类）：
+
+`trpc_agent_cmd openclaw run` 硬编码 `from trpc_agent_sdk.server.openclaw.claw import ClawApplication`（`_cli.py:51`）并直接实例化（:57），无自定义工厂注入点——所以必须自建入口，复刻 `_cli.py:50-63` 的启动逻辑、仅替换为 `GaokaoClaw`：
+
+```python
+# scripts/im_server.py（示意，交 Claude 实现）
+import asyncio
+from pathlib import Path
+from src.im.claw_app import GaokaoClaw
+
+def main(workspace: str | None = None, config: str | None = None) -> None:
+    ws = Path(workspace).expanduser().resolve() if workspace else None
+    cfg = Path(config).expanduser().resolve() if config else None
+
+    async def _run() -> None:
+        gateway = GaokaoClaw(workspace=ws, config_path=cfg)
+        # 复刻 _cli.py:58-60：有启用通道走网关，否则 CLI 回退（.env 缺密钥时可无网调试）
+        if not gateway.channels.enabled_channels:
+            await gateway.run_cli_fallback()
+            return
+        await gateway.run_gateway()
+
+    asyncio.run(_run())
+
+if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-c", "--config", default=None)
+    ap.add_argument("-w", "--workspace", default=None)
+    args = ap.parse_args()
+    main(workspace=args.workspace, config=args.config)
+```
+
+**`run_gateway()` 是阻塞常驻的 async 主循环**（claw.py:696-703）：`await self.start()` 装配完毕后 `asyncio.gather(channels.start_all(), _wait_forever())`——通道（含 QQ WebSocket）常驻、事件循环挂起等待消息，Ctrl-C 时 `finally: await self.stop()` 收尾。启动后无需额外运维。
 
 ### 方式 B：TeamAgent 作为 Agent-as-Tool
 
@@ -234,8 +327,6 @@ from trpc_agent_sdk.tools import AgentTool
 gaokao_tool = AgentTool(gaokao_team)
 # 挂载到 trpc-claw 的 LlmAgent tools
 ```
-
-**决策**：MVP 用方式 A——Gaokao RAG 是一个专注备考的专用 Agent（MVP 数学，后续扩科），不需要通用 Agent 的杂项能力，TeamAgent 直接作为主 Agent 最干净。若 V1.0 时扩展 `create_agent` 成本过高，退回方式 B 作为过渡。
 
 ## 用户交互流程（IM 场景）
 
@@ -367,7 +458,7 @@ Bot: 完成：1 → 入库（questions）
 - [ ] `.env` 填入 `QQ_APP_ID` / `QQ_APP_SECRET`；run config 增加 `channels.qq` 段
 - [ ] 方案二落地：trpc-claw 新增 `_qq.py` 通道适配器（继承 nanobot `QQChannel` + `register_channel_repair("qq", ...)`，参照 `_wecom.py`）
 - [ ] 沙箱单聊联调：`openclaw run` → 沙箱 QQ 号发消息 → 收到回复（QQ → LlmAgent 最小对话）
-- [ ] TeamAgent 替换默认 agent（方式 A，扩展 `create_agent` 支持 team 模式）
+- [ ] TeamAgent 替换默认 agent（方式 A：`src/im/claw_app.py` 子类覆写 `ClawApplication`）
 - [ ] IM 图片收发：错题拍照 → VLM 识别 → 录入
 - [ ] 长答案分片、错误处理
 - [ ] （正式上线前）固定公网 IP 报备白名单 + 自测报告 + 提审上线
