@@ -4,7 +4,7 @@
 
 Gaokao RAG 面向的用户是高三学生——**他们可能不会用 WorkBuddy 等 agent 工具，甚至没有电脑**。因此前端必须是 IM（即时通讯），而不是 MCP / CLI。
 
-tRPC-Agent-Python 原生提供 **trpc-claw**（OpenClaw-like Agent 运行时，**OpenClaw 命名澄清见下文「术语澄清」**），基于 nanobot 构建，内置 Telegram / 企业微信通道；**QQ 通过扩展通道适配器接入**（nanobot 原生支持 QQ，详见下文）。一条命令启动即可 7×24 在线，不需要自己实现消息网关。
+tRPC-Agent-Python 原生提供 **trpc-claw**（OpenClaw-like Agent 运行时，**OpenClaw 命名澄清见下文「术语澄清」**），基于 nanobot 构建，内置 Telegram / 企业微信通道；**QQ 走 nanobot 原生 QQ 通道直配接入，免写适配器**（详见下文）。一条命令启动即可 7×24 在线，不需要自己实现消息网关。
 
 > **✅ 可行性已核实（2026-08-30，基于源码 + 官方 wiki）**
 > - 依赖已就位并提交（commit `56eda45`）：`trpc-agent-py[knowledge,langfuse,openclaw]>=1.1.16`（拉入 nanobot-ai 0.3.0）+ `qq-botpy>=1.2.0,<2.0.0`（装出 1.2.1）
@@ -39,15 +39,15 @@ tRPC-Agent-Python 原生提供 **trpc-claw**（OpenClaw-like Agent 运行时，*
 | 图片发送 | ✅ | 受限 |
 | 群聊支持 | ⚠️ 可用但消息需 @机器人 触发；沙箱群/正式开放需配置或过审 | - |
 
-**结论**：QQ 走官方 API（AppID + AppSecret），零成本、零封号风险、学生零学习成本。技术路径是 **nanobot 原生 QQ 通道 + trpc-claw 适配器扩展**（详见下文"QQ 接入方案"）。CLI/MCP/FastAPI 保留给开发者调试和外部 Agent 接入。
+**结论**：QQ 走官方 API（AppID + AppSecret），零成本、零封号风险、学生零学习成本。技术路径是 **nanobot 原生 QQ 通道直配 + TeamAgent 接入**（详见下文"QQ 接入方案"）。CLI/MCP/FastAPI 保留给开发者调试和外部 Agent 接入。
 
 > **⚠️ 兼容性澄清（2026-08 调研结论）**：社区版 OpenClaw 的 `openclaw-qqbot` 插件（`openclaw plugins install @tencent-connect/openclaw-qqbot`）是 **Node.js 社区版 OpenClaw** 的插件，依赖 `openclaw` CLI（plugins/channels/gateway 命令），**与 tRPC-Agent-Python 的 trpc-claw 不兼容**。trpc-claw 的 CLI 只有 `run/chat/ui/conf_temp/deps`，没有插件系统。
 >
-> 正确路径（✅ 2026-08-30 源码验证）：**trpc-claw 基于 nanobot**，而 **nanobot 原生支持 QQ 通道**——`HKUDS/nanobot` 源码（== PyPI `nanobot-ai` 0.3.0）中存在 `nanobot/channels/qq/`（类 `QQChannel(BaseChannel)`，`runtime.py:196`），依赖官方 SDK `qq-botpy>=1.2.0,<2.0.0`，配置字段 `appId/secret/allowFrom/msgFormat`（`manifest.py` SETUP_SPEC）。因此我们在 trpc-claw 里补一个 QQ 通道适配器（参照内置的 `_wecom.py`），即可用官方 API 接入 QQ。
+> 正确路径（✅ 2026-08-30 源码验证）：**trpc-claw 基于 nanobot**，而 **nanobot 原生支持 QQ 通道**——`HKUDS/nanobot` 源码（== PyPI `nanobot-ai` 0.3.0）中存在 `nanobot/channels/qq/`（类 `QQChannel(BaseChannel)`，`runtime.py:196`），依赖官方 SDK `qq-botpy>=1.2.0,<2.0.0`，配置字段 `appId/secret/allowFrom/msgFormat`（`manifest.py` SETUP_SPEC）。**且 registry 自动发现含 qq（`discover_plugins()` 实测）——config 配 `channels.qq` 即可启用原生通道，MVP 无需写适配器**（`_qq.py` 长答案分片增强为 V1.1+ 迭代项）。
 
 ## QQ 接入方案（nanobot QQ 通道 + trpc-claw 适配器）
 
-> 技术路线：nanobot 已原生支持 QQ 通道，trpc-claw 基于 nanobot 构建。我们通过扩展 trpc-claw 的通道适配器接入 QQ 官方 API。
+> 技术路线：nanobot 已原生支持 QQ 通道，trpc-claw 基于 nanobot 构建。**config 配 `channels.qq` 直启原生 `QQChannel`（MVP 免补丁）**，仅需将主 Agent 换成我们的 TeamAgent。
 
 ### 创建机器人（QQ 开放平台）
 
@@ -100,27 +100,15 @@ nanobot gateway
 
 **用途**：V1.0 阶段先验证"学生手机 QQ → 收到答案"的完整链路。Gaokao RAG 的 TeamAgent 通过 Agent-as-Tool 或 HTTP 回调接入 nanobot 网关。
 
-### 方案二：扩展 trpc-claw 通道适配器（正式方案，推荐）
+### 方案二：nanobot 原生 QQ 通道直配（正式方案，推荐）
 
-trpc-claw 内置通道适配器位于 `trpc_agent_sdk/server/openclaw/channels/`（目前只有 `_telegram.py` 和 `_wecom.py`）。参照 `_wecom.py` 的实现，为 QQ 增加一个适配器：
+**✅ MVP 免补丁验证（2026-08-30）**：nanobot 的 `ChannelManager`（`nanobot/channels/manager.py` `_init_channels`）通过 `discover_plugins()` **自动扫描注册表内全部通道插件**——实测发现 17 个通道（dingtalk/discord/email/feishu/matrix/mattermost/mochat/msteams/napcat/**qq**/signal/slack/telegram/websocket/wecom/weixin/whatsapp），qq 的 runtime 即 `nanobot.channels.qq.runtime:QQChannel`。**只要 config 配置 `channels.qq` 段（enabled + appId/secret），原生 `QQChannel` 即自动加载启用，无需写任何适配器**（`default_enabled=False` 只影响"未配置时是否默认启用"）。
 
-```text
-trpc_agent_sdk/server/openclaw/channels/
-├── __init__.py          # 注册新通道
-├── _command_handler.py
-├── _repair.py           # 注册通道修复逻辑
-├── _qq.py               # ← 新增：QQ 通道适配器（参照 _wecom.py）
-├── _telegram.py
-└── _wecom.py
-```
+因此 **MVP 阶段不写 `_qq.py`、不碰 `trpc_agent_sdk` 包**；`_qq.py`（长答案分片增强）是 **V1.1+ 迭代项**（见下文）。
 
-**适配器职责**（2026-08-30 修正：读配置 / 鉴权建连 / 消息双向翻译，nanobot 的 `QQChannel` 已全部实现——`_qq.py` 只做增强）：
+**MVP 落地路径**（仅 3 步，全部在项目内）：
 
-- 继承 `nanobot.channels.qq.runtime.QQChannel`，复用其 `start()`（botpy WebSocket 建连）、`_on_message()`（C2C/Group → InboundMessage）、`send()`（OutboundMessage → QQ 消息）
-- `send()` 重写：按 config 的 `stream_reply` 做长答案分片（对照 `_wecom.py` 的流式写法）
-- 白名单 ACL、`msgFormat`（plain/markdown）由父类按 `channels.qq` 配置处理
-
-**配置项**（字段名以 nanobot `channels/qq/manifest.py` 的 SETUP_SPEC 为准，camelCase）：
+1. **config 增加 `channels.qq` 段**（字段名以 nanobot `channels/qq/manifest.py` 的 SETUP_SPEC 为准，camelCase）：
 
 ```yaml
 channels:
@@ -130,8 +118,10 @@ channels:
     secret: ${QQ_APP_SECRET}
     allowFrom: []           # 空 = 允许所有人；可填 QQ 号/群号白名单
     msgFormat: plain        # plain | markdown（默认 plain）
-    stream_reply: true      # trpc-claw 增强项：长答案分片（_qq.py 读取）
 ```
+
+2. **TeamAgent 接入**（方式 A，`src/im/claw_app.py` 子类覆写 `ClawApplication`）
+3. **启动入口**（`scripts/im_server.py`，见下文方式 A 节）
 
 **环境变量**：
 
@@ -141,7 +131,11 @@ export QQ_APP_ID=xxx
 export QQ_APP_SECRET=xxx
 ```
 
-#### `_qq.py` 实现骨架（2026-08-30 定稿，交 Claude 实现）
+#### `_qq.py` 通道增强（V1.1+ 迭代项，MVP 不做）
+
+> **2026-08-30 决策**：MVP 用原生 `QQChannel` 直配（registry 自动发现，见上），`_qq.py` 移入 V1.1+ 迭代池。以下内容为**理解链路与未来增强的参考资产**，保留供实现时查阅。
+
+**增强动机**：nanobot 原生 `QQChannel.send()` 一次性整段发送，无长答案分片——LLM 长回复可能超 QQ 消息长度限制。`_qq.py` 继承原生类，仅重写 `send()` 做分片，其余复用。
 
 **三层封装中各层职责**（源码行号已核实）：
 
@@ -175,17 +169,20 @@ export QQ_APP_SECRET=xxx
 
 实现清单：
 
+**MVP 清单（3 步，全在项目内，不碰 trpc_agent_sdk 包）**：
+
+1. run config 增加 `channels.qq` 段（appId/secret/allowFrom/msgFormat，见上「MVP 落地路径」）
+2. TeamAgent 接入（方式 A）：`src/im/claw_app.py` 子类覆写 `ClawApplication`（`claw.py:105/166`），`self.agent = create_gaokao_leader()` 替换默认 LlmAgent，重建 `Runner`（契约验证见下文方式 A 节）
+3. 启动入口 `scripts/im_server.py`（复刻 `_cli.py:50-63`，实例化 `GaokaoClaw`；`trpc_agent_cmd openclaw run` 硬编码默认类无法加载子类）
+
+**V1.1+ 迭代清单（`_qq.py` 增强，待长答案截断成为真问题时再做）**：
+
 1. 新建 `trpc_agent_sdk/server/openclaw/channels/_qq.py`（参照 `_wecom.py`）：
    - `from nanobot.channels.qq.runtime import QQChannel as NanobotQqChannel`
    - `class QqChannel(NanobotQqChannel)`：重写 `send()` 实现长答案分片（读 config 的 `stream_reply`），建连/收消息/翻译复用父类
    - `repair_qq_channel(name, channel_manager)`：section 缺失或未 enabled 直接返回，否则替换 `channel_manager.channels[name]`
    - 模块末尾 `register_channel_repair("qq", repair_qq_channel)`
-2. `channels/__init__.py` 里 import `_qq` 并导出 `repair_qq_channel`（与 wecom/telegram 一致）
-3. TeamAgent 接入（方式 A）：`src/im/claw_app.py` 子类覆写 `ClawApplication`（`claw.py:105/166`），`self.agent = create_gaokao_leader()` 替换默认 LlmAgent，重建 `Runner`（契约验证见下文方式 A 节）
-4. 项目内侧装配层 `src/im/`（已入 architecture.md 项目文件架构）：`create_claw_app()` —— ClawApplication team 模式子类 + openclaw 配置加载；启动入口 `scripts/im_server.py`
-
-> 代码约束：**不猜测 botpy API**——所有 botpy 调用以 `D:\AI_study\learn\botpy` 源码为准；nanobot 源码在 `D:\AI_study\learn\nanobot`。
-> 备选：`_qq.py` 成熟后可向 tRPC-Agent-Python 上游提 PR（已有 PR #298 先例），合并后删除本地补丁。
+2. `channels/__init__.py` 里 import `_qq` 并导出 `repair_qq_channel`（与 wecom/telegram 一致）；成熟后可向 tRPC-Agent-Python 上游提 PR（已有 PR #298 先例），合并后删除本地补丁
 
 ### 验证通道
 
@@ -456,9 +453,9 @@ Bot: 完成：1 → 入库（questions）
 - [x] 依赖就位：`openclaw` extra（nanobot 0.3.0）+ `qq-botpy` 1.2.1（commit `56eda45`）；QQChannel 可导入，`openclaw run` 可用
 - [x] 路线核实：nanobot 原生 QQ 通道（HKUDS/nanobot 源码验证）；官方 wiki 确认单聊场景个人开发者可用
 - [ ] `.env` 填入 `QQ_APP_ID` / `QQ_APP_SECRET`；run config 增加 `channels.qq` 段
-- [ ] 方案二落地：trpc-claw 新增 `_qq.py` 通道适配器（继承 nanobot `QQChannel` + `register_channel_repair("qq", ...)`，参照 `_wecom.py`）
-- [ ] 沙箱单聊联调：`openclaw run` → 沙箱 QQ 号发消息 → 收到回复（QQ → LlmAgent 最小对话）
+- [ ] MVP 免补丁直配：`channels.qq` 段配置后 nanobot registry 自动加载原生 `QQChannel`（已验证 `discover_plugins()` 含 qq）
+- [ ] 沙箱单聊联调：`python scripts/im_server.py -c <config>` → 沙箱 QQ 号发消息 → 收到回复（QQ → TeamAgent 最小对话）
 - [ ] TeamAgent 替换默认 agent（方式 A：`src/im/claw_app.py` 子类覆写 `ClawApplication`）
 - [ ] IM 图片收发：错题拍照 → VLM 识别 → 录入
-- [ ] 长答案分片、错误处理
+- [ ] （V1.1+）`_qq.py` 长答案分片增强 + 错误处理
 - [ ] （正式上线前）固定公网 IP 报备白名单 + 自测报告 + 提审上线

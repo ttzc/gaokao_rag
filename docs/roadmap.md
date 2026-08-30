@@ -225,11 +225,9 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 
 - [ ] `SqlSessionService` 接入（多轮上下文持久化——IM 的前置条件，命令行单次会话掩盖了这个需求）
 - [ ] `src/im/` 包：`create_claw_app()` 装配 TeamAgent → ClawApplication（方式 A）
-- [ ] trpc-claw `_qq.py` 通道适配器（继承 nanobot `QQChannel` + `register_channel_repair`）
-- [ ] `[channels.qq]` 配置段 + `.env` 填 `QQ_APP_ID` / `QQ_APP_SECRET`
+- [ ] `[channels.qq]` 配置段 + `.env` 填 `QQ_APP_ID` / `QQ_APP_SECRET`（**MVP 免补丁**：nanobot registry 自动发现并加载原生 `QQChannel`，无需写 `_qq.py`，详见 [IM 接入](im/README.md)）
 - [ ] `scripts/im_server.py` 入口 + 沙箱单聊联调
 - [ ] IM 图片收发接 V0.6a 的图片摄入
-- [ ] 长答案分片 + 错误兜底
 
 **验收**：手机 QQ 发文字问题 → 收到带溯源的回答；发题目照片 → 识别并入库
 
@@ -288,6 +286,7 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 | 公式 LaTeX 化 | Unicode 文本在复杂公式上明显不够用时 |
 | 扩科（物化生） | 数学单科验证成立后 |
 | 群聊 / 多用户隔离 | QQ 开放群能力 + 出现第二个用户时 |
+| `_qq.py` 长答案分片增强（`stream_reply`，继承原生 `QQChannel` 重写 `send()` + `register_channel_repair`） | 长回复被 QQ 消息长度截断时（MVP 已用原生 `QQChannel` 直配） |
 
 ## 依赖关系
 
