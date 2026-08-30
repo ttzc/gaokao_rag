@@ -1,0 +1,20 @@
+runtime:
+  app_name: gaokao_rag            # 可改成自己的名字，无副作用
+  user_id: gaokao_user
+
+agent:
+  memory_window: 30
+  api_key: sk-xxx       # ← 必须能解析出非空值（防 create_model 崩）
+  api_base: api.example.com     #    建议与 gaokao 模型一致（DeepSeek 兼容端点）
+  model: deepseek      #    TeamAgent 实际不用它，但构造绕不过
+
+channels:
+  qq:                                  # ← 新增（MVP 核心）
+    enabled: true
+    appId: ${QQ_APP_ID}
+    secret: ${QQ_APP_SECRET}
+    allowFrom: []
+    msgFormat: plain
+  # wecom 段删除或 enabled: false（MVP 不用）
+
+# gateway 段删除（WebUI 网关，我们不需要；留着也要改回 127.0.0.1）

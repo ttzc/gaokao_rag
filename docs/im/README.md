@@ -108,9 +108,10 @@ nanobot gateway
 
 **MVP 落地路径**（仅 3 步，全部在项目内）：
 
-1. **config 增加 `channels.qq` 段**（字段名以 nanobot `channels/qq/manifest.py` 的 SETUP_SPEC 为准，camelCase）：
+1. **新建 `src/im/openclaw.yaml` 配置 `channels.qq` 段**（字段名以 nanobot `channels/qq/manifest.py` 的 SETUP_SPEC 为准，camelCase；`${VAR}` 由 `load_config` 的 `_expand_env_vars` 展开，密钥仍走 `.env`）：
 
 ```yaml
+# src/im/openclaw.yaml —— openclaw 网关配置（可进 git，无明文密钥）
 channels:
   qq:
     enabled: true
@@ -119,6 +120,8 @@ channels:
     allowFrom: []           # 空 = 允许所有人；可填 QQ 号/群号白名单
     msgFormat: plain        # plain | markdown（默认 plain）
 ```
+
+> **配置注入机制**（`openclaw/config/_config.py`）：`load_config(config_path)` 搜索顺序 = ①显式 `config_path` 参数 → ②`$TRPC_CLAW_CONFIG` 环境变量 → ③默认 `~/.trpc_claw/config.yaml`。读文件后 `set_config_path()` 同步给 nanobot loader（`channels.qq` 由此生效）+ `_expand_env_vars()` 递归展开 `${VAR}`（`os.path.expandvars`）。**openclaw 配置（yaml）与 gaokao 自身配置（config.toml + `.env`，TeamAgent 模型/存储）是两套，互不干扰**。
 
 2. **TeamAgent 接入**（方式 A，`src/im/claw_app.py` 子类覆写 `ClawApplication`）
 3. **启动入口**（`scripts/im_server.py`，见下文方式 A 节）
@@ -171,7 +174,7 @@ export QQ_APP_SECRET=xxx
 
 **MVP 清单（3 步，全在项目内，不碰 trpc_agent_sdk 包）**：
 
-1. run config 增加 `channels.qq` 段（appId/secret/allowFrom/msgFormat，见上「MVP 落地路径」）
+1. 新建 `src/im/openclaw.yaml`：配置 `channels.qq` 段（appId/secret/allowFrom/msgFormat，见上「MVP 落地路径」）
 2. TeamAgent 接入（方式 A）：`src/im/claw_app.py` 子类覆写 `ClawApplication`（`claw.py:105/166`），`self.agent = create_gaokao_leader()` 替换默认 LlmAgent，重建 `Runner`（契约验证见下文方式 A 节）
 3. 启动入口 `scripts/im_server.py`（复刻 `_cli.py:50-63`，实例化 `GaokaoClaw`；`trpc_agent_cmd openclaw run` 硬编码默认类无法加载子类）
 
@@ -190,7 +193,8 @@ export QQ_APP_SECRET=xxx
 
 ```bash
 # 启动 GaokaoClaw 网关（TeamAgent 作为主 Agent）
-uv run python scripts/im_server.py -c ~/.trpc_claw/config_full.yaml
+uv run python scripts/im_server.py          # 默认读 src/im/openclaw.yaml
+# 或显式指定：uv run python scripts/im_server.py -c <path>
 
 # 手机 QQ 给机器人发消息，观察是否响应
 # 若通道未启用（.env 缺 QQ 密钥），自动回退 CLI 聊天模式
@@ -306,11 +310,13 @@ def main(workspace: str | None = None, config: str | None = None) -> None:
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("-c", "--config", default=None)
+    ap.add_argument("-c", "--config", default="src/im/openclaw.yaml")
     ap.add_argument("-w", "--workspace", default=None)
     args = ap.parse_args()
     main(workspace=args.workspace, config=args.config)
 ```
+
+> **配置注入**：`-c` 默认指向 `src/im/openclaw.yaml`（项目内，可进 git）；不传时 `GaokaoClaw` 也会按 `load_config` 顺序回退到 `~/.trpc_claw/config.yaml`。openclaw 配置与 gaokao 的 `config.toml`/`.env`（TeamAgent 模型、存储）是两套独立配置源，互不干扰。
 
 **`run_gateway()` 是阻塞常驻的 async 主循环**（claw.py:696-703）：`await self.start()` 装配完毕后 `asyncio.gather(channels.start_all(), _wait_forever())`——通道（含 QQ WebSocket）常驻、事件循环挂起等待消息，Ctrl-C 时 `finally: await self.stop()` 收尾。启动后无需额外运维。
 

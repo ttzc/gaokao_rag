@@ -1,7 +1,7 @@
 [project]
 name = "gaokao-rag"
 version = "0.1.0"
-description = "Add your description here"
+description = "Gaokao RAG：高考数学智能备考助手（QQ IM + TeamAgent）"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -10,8 +10,10 @@ dependencies = [
     "openai>=2.54.0",
     "python-dotenv>=1.2.2",
     "trpc-agent-py[knowledge,langfuse,openclaw]>=1.1.16",
-    # mcp 2.0.0 移除了 mcp.shared.session，trpc_agent_sdk(<=1.1.16) 仍 import 它
-    # （trpc_agent_sdk/tools/mcp_tool/_utils.py），收紧上限避免 agent 层 import 失败
+    "nanobot-ai<0.2.1",
+    # mcp 2.0.0 移除了 mcp.shared.session（mcp/shared/session.py），trpc_agent_sdk 仍 import 它
+    # （trpc_agent_sdk/tools/mcp_tool/_utils.py:11）；上游 pyproject 已声明 mcp<2.0.0（L30），
+    # 此处显式重申，防止上游未来放宽约束
     "mcp>=1.10.1,<2.0.0",
     "qq-botpy>=1.2.0,<2.0.0",
 ]
