@@ -56,139 +56,15 @@ flowchart TD
 
 ## TeamAgent 编排设计
 
-核心是一个 **TeamAgent**：Leader 自由委派任务给查询侧 + 摄入侧两组专业子 Agent（详见 [Agent 编排设计](agent/README.md)）。
+核心是一个 **TeamAgent**：Leader 自由委派任务给查询侧 + 摄入侧两组专业子 Agent。
 
-### 系统总览（三层结构）
-
-```mermaid
-flowchart TB
-    subgraph 入口层
-        QQ[QQ Bot<br/>官方 API + 通道适配器] --> CLAW[trpc-claw 网关]
-        CLI[CLI / MCP / FastAPI] --> CLAW
-    end
-
-    subgraph Agent 层
-        CLAW --> L[Team Leader<br/>自由委派 + 综合]
-        L -->|question / browse| SEARCH[搜索信息 Agent]
-        L -->|review / report| AGG[聚合数据 Agent]
-        L -->|ingest| DOC[文档识别 Agent]
-        SEARCH -->|含图题目| VLM[VLM 理解 Agent]
-        SEARCH --> OUT[输出整理 Agent]
-        AGG --> OUT
-        DOC --> STRUCT[结构识别 Agent]
-        STRUCT --> KNOW[知识整理 Agent]
-        KNOW --> STORE[入库决策 Agent]
-        STORE --> OUT
-    end
-
-    subgraph 存储层
-        SEARCH --> CHROMA[(Chroma<br/>向量检索)]
-        SEARCH --> SQL1[(SQLite<br/>元数据 + 图谱)]
-        AGG --> SQL1
-        VLM --> CHROMA
-        KNOW --> SQL1
-        STORE --> SQL1
-        STORE --> CHROMA
-    end
-
-    OUT --> QQ
-```
-
-**三层结构说明**：
-
-- **入口层**：QQ（官方 API + nanobot 通道适配器）/ CLI / MCP / FastAPI 统一接入 trpc-claw 网关
-- **Agent 层**：Leader 按意图委派成员——**意图匹配在 Leader 系统提示词内完成**（2026-08-28 决策，非独立子 Agent）：
-  - **查询侧（读）**：question/browse 走搜索（含图触发 VLM）→ 输出；review/report 走聚合 → 输出
-  - **摄入侧（写）**：ingest 走文档识别 → 结构识别 → 知识整理 → Leader 回显确认 → 入库决策 → 输出
-  - 不同意图走不同成员组合，不是所有成员每次都被调用
-- **存储层**：搜索 Agent 查询 Chroma（语义）+ SQLite（精确过滤）；聚合 Agent 读写 SQLite（错题/作答/报告）；摄入侧写入 Chroma + SQLite（题目/知识点/错题）
-
-### 团队结构
-
-```mermaid
-flowchart TD
-    U[用户请求] --> L[Team Leader<br/>自由委派 + 综合]
-
-    subgraph 查询侧-读
-        L --> A1[搜索信息 Agent]
-        L --> A2[VLM 理解 Agent]
-        L --> A3[聚合数据 Agent]
-        L --> A4[输出整理 Agent]
-    end
-
-    subgraph 摄入侧-写
-        L --> B1[文档识别 Agent]
-        L --> B2[结构识别 Agent]
-        L --> B3[知识整理 Agent]
-        L --> B4[入库决策 Agent]
-    end
-
-    A1 --> L
-    A2 --> L
-    A3 --> L
-    A4 --> L
-    B1 --> L
-    B2 --> L
-    B3 --> L
-    B4 --> L
-```
-
-### State 设计
-
-```python
-class GaokaoState(State):
-    # 业务字段
-    subject: str                    # 学科（MVP 固定 "math"）
-    query_type: str                 # "question" | "review" | "report" | "browse" | "ingest"（Leader 匹配意图后写入）
-    period_type: str                # "weekly" | "monthly"（report 意图时由 Leader 解析）
-    retrieved_docs: list[dict]     # 检索到的题目/解析（含知识点信息）
-    vlm_descriptions: list[str]    # VLM 生成的图形描述
-    answer: str                     # 最终答案
-    review_suggestion: str         # 复习建议
-    # 摄入侧字段
-    pending_questions: list[dict]  # 待确认题目清单（回显用）
-    ingest_decisions: list[dict]   # 用户对每题的决策（入库/错题/跳过）
-    # Reducer 字段
-    execution_history: Annotated[list[dict], append_list]
-```
-
-### 子 Agent 说明
-
-**查询侧（读）**：
-
-| 子 Agent | 职责 | 挂载能力 |
-| --------- | ------ | --------- |
-| 搜索信息 Agent | 混合检索（Chroma + SQLite） | LangchainKnowledgeSearchTool |
-| VLM 理解 Agent | 图形理解（有图才调） | VLM FunctionTool |
-| 聚合数据 Agent | 错题/作答统计、周报聚合（**读写** SQLite：errors/exam_attempts 统计 + periodic_reports 落库） | SQLite 查询/写入工具 |
-| 输出整理 Agent | 格式化 + 分片发送 | 纯 LLM |
-
-**摄入侧（写）**：
-
-| 子 Agent | 职责 | 挂载能力 |
-| --------- | ------ | --------- |
-| 文档识别 Agent | 接收照片/PDF → 提取内容（图片走 VLM，PDF 走 PyMuPDF） | VLM + PyMuPDF 工具 |
-| 结构识别 Agent | 区分讲解段 vs 题目段 → 题目清单（每题一句话概括） | LLM 分类 |
-| 知识整理 Agent | 知识点提取 → tag 归位/别名归并（写 topics） | SQLite 写入工具 |
-| 入库决策 Agent | 消费题目清单 + 用户去向（入库/错题/跳过）→ 写 questions/errors（回显由 Leader 管理） | SQLite 写入工具 |
+> 完整编排设计（系统总览三层结构、团队结构、GaokaoState、子 Agent 职责、Skill 分工、Session/Memory）统一维护在 **[Agent 编排设计](agent/README.md)**，此处不重复。
 
 ## 三层存储架构
 
-继承 AlgoNotes RAG 的三层存储设计，但 schema 针对高考场景重新设计：
+继承 AlgoNotes RAG 的三层存储设计（L1 文件 / L2 SQLite / L3 Chroma），schema 针对高考场景重新设计。
 
-### Layer 1: 文件存储
-
-详见 [文件存储说明](store/files/raw.md)。
-
-### Layer 2: SQLite 索引
-
-负责结构化查询和知识点标签管理。详见 [数据模型文档](data_model.md)。
-
-> 每张表的详细设计见 [store/db/](store/db/)（8 份表文档：topics / knowledge_notes / questions / question_topics / errors / exam_attempts / review_plans / periodic_reports）
-
-### Layer 3: Chroma 向量库
-
-负责语义检索。每个 document 携带**检索快照 metadata**——只存过滤/展示需要的字段（学科/考区/年份/题型/知识点 tag/含图标记），内容以 SQLite 为权威源。**字段规范与过滤语义见 [store/vector/vector_store.md「Metadata 格式与过滤语义」](store/vector/vector_store.md)**（单一来源，此处不重复）。
+> 存储层文档统一入口：**[store/README.md](store/README.md)**（三层职责速览 + files / db / vector 文档导航；SQLite 逐表设计见 store/db/，Chroma Document / doc_id 策略见 store/vector/vector_store.md）。
 
 ## 项目文件架构
 
@@ -262,13 +138,19 @@ gaokao_rag/
 │   │       ├── aggregate.py   #    聚合数据 Agent
 │   │       └── output.py      #    输出整理 Agent
 │   │
-│   └── mcp/                   # MCP Server（对外暴露）
-│       └── server.py          #   FastMCP 工具定义（14 个工具）
+│   ├── mcp/                   # MCP Server（对外暴露）
+│   │   └── server.py          #   FastMCP 工具定义（14 个工具）
+│   │
+│   └── im/                    # IM 接入层（QQ 入口，详见 [im/README.md](im/README.md)）
+│       ├── __init__.py        #   create_claw_app()：装配 TeamAgent → ClawApplication（方式 A，QQ 主入口）
+│       └── claw_app.py        #   ClawApplication team 模式扩展 + openclaw 配置加载（channels.qq + ${VAR} 桥接 .env）
+│                              #   注：通道适配器 _qq.py 与 create_agent team 扩展属 trpc_agent_sdk 侧（上游 PR / 本地补丁）
 │
 ├── scripts/                   # CLI 入口
 │   ├── ingest.py              #   批量摄取（自动调用摄入侧 Agent 工具集，不经过 TeamLeader）
 │   ├── chat.py                #   对话 CLI（开发调试）
-│   └── mcp_server.py          #   MCP Server 入口（stdio/SSE/HTTP）
+│   ├── mcp_server.py          #   MCP Server 入口（stdio/SSE/HTTP）
+│   └── im_server.py           #   IM 网关入口（trpc-claw QQ 通道，方式 A）
 │
 ├── data/                      # 数据目录（gitignore）
 │   ├── files/                 # 文件层根目录（raw + processed）
@@ -297,21 +179,22 @@ gaokao_rag/
 | 检索门面（读，**新增**） | `src/retrieval/` | **封装全部查询与聚合逻辑**：知识检索组件（`GaokaoKnowledge.search` 语义召回 + 过滤翻译）、search_questions / get_question_detail / browse_questions、search_knowledge_notes、search_topics / list_topics、get_error_stats / get_weak_topics、aggregate_errors / aggregate_attempts / get_report / compute_trend。只读不写 |
 | Agent 编排 | `src/agent/` | TeamAgent 编排（leader.py）+ 子 Agent（ingestion/ 摄入侧、retrieval/ 查询侧，每文件一个 Agent）+ FunctionTool（tools/）+ Skills（skills/，可复用领域指令，渐进式披露）；**只调用 ingestion（写）/ retrieval（读）封装函数**，严禁 import `src.store.*` |
 | MCP 服务 | `src/mcp/` | 对外暴露工具，委托 agent（含 tools） |
-| CLI 入口 | `scripts/` | ingest / chat / mcp_server 三个命令 |
+| IM 接入（**新增**） | `src/im/` | QQ 通道网关装配（trpc-claw `ClawApplication` + TeamAgent 方式 A）；通道适配器 `_qq.py` 与 `create_agent` team 扩展属 trpc_agent_sdk 侧（上游 PR / 本地补丁），见 [im/README.md](im/README.md) |
+| CLI 入口 | `scripts/` | ingest / chat / mcp_server / im_server 四个命令 |
 | 数据 | `data/` | 原始文件 + 处理后数据 + 两个数据库 |
 
 ## 分层边界契约（强制）
 
-本次结构调整确立三条铁律：**ingestion = 写门面、retrieval = 读门面、agent/mcp = 只委托**。依赖方向构成无环 DAG：
+本次结构调整确立三条铁律：**ingestion = 写门面、retrieval = 读门面、agent/mcp/im = 只委托**。依赖方向构成无环 DAG：
 
 ```
-src/store  ←  { src/ingestion, src/retrieval }  ←  { src/agent, src/mcp }
+src/store  ←  { src/ingestion, src/retrieval }  ←  { src/agent, src/mcp, src/im }
 ```
 
 - **store（原语层）**：只提供单表 / 单文件 / 单向量的原子 CRUD。不依赖 ingestion / retrieval / agent。测试可直接 import 以断言三层状态。
 - **ingestion（写门面）**：组合 store 原语，把「文件层 + SQLite + 向量层」三态作为一个原子业务操作保持一致。拥有所有 增/删/改；不含任何 LLM 调用。
 - **retrieval（读门面）**：组合 store 原语，封装所有查询与聚合（含周报双源统计）；**包含知识检索组件 `GaokaoKnowledge`（对 Chroma 的读包装应用，语义召回 + 过滤翻译）**。只读不写。
-- **agent / mcp（业务入口）**：只允许 `import src.ingestion`（写）与 `import src.retrieval`（读）。**严禁**在任一入口模块里 `import src.store`、`import src.store.db`、`import src.store.vector`、`import src.store.file_store` —— 任何存储访问必须经由两个门面。
+- **agent / mcp / im（业务入口）**：只允许 `import src.ingestion`（写）与 `import src.retrieval`（读）。**严禁**在任一入口模块里 `import src.store`、`import src.store.db`、`import src.store.vector`、`import src.store.file_store` —— 任何存储访问必须经由两个门面。`src/im/` 进一步只委托 `src/agent`（TeamAgent 装配），不直接触碰门面。
 
 > **2026-08-28 决策**：`GaokaoKnowledge`（原 `src/store/vector/knowledge.py`）迁入 `src/retrieval/knowledge.py`——它是「对第三层存储的读包装应用」而非存储原语，归属读门面。由此框架检索工具注入 `get_knowledge()` 走 `src.retrieval`，分层铁律无需任何特例放行。
 

@@ -47,14 +47,14 @@ flowchart LR
 1. **试卷**：从 ima「高考2026」导出数学试卷（2月-6月，约 20+ 份）
 2. **专题**：导出 9 份专题 PDF（圆锥曲线、导数、立体几何等）
 3. **错题**：从 ima 笔记导出错题记录
-4. **知识点体系**：**不预定义**——由数据驱动动态生长（LLM 开放式提取 → tag 归位/别名归并，见 [数据模型](data_model.md)）。MVP 阶段为扁平 tag 表，树形结构放在正式版实现
+4. **知识点体系**：**不预定义**——由数据驱动动态生长（LLM 开放式提取 → tag 归位/别名归并，见 [topics 表](store/db/topics.md)）。MVP 阶段为扁平 tag 表，树形结构放在正式版实现
 
 ### 任务
 
 - [ ] 写脚本批量从 ima 导出 PDF（或手动导出）
 - [ ] 按 `data/files/raw/试卷/`、`data/files/raw/专题/` 分类整理
 - [ ] 抽 2-3 份试卷人工检查 PDF 质量（文本可提取性、图像完整性）
-- [ ] 知识点 tag 不做 seed——依赖 V0.3 摄取时的开放式提取 + 归位（见 [数据模型](data_model.md)）
+- [ ] 知识点 tag 不做 seed——依赖 V0.3 摄取时的开放式提取 + 归位（见 [topics 表](store/db/topics.md)）
 
 ### 验收标准
 
@@ -73,7 +73,7 @@ flowchart LR
 - [ ] 题目段 → 题目清单生成（每题一句话概括）
 - [ ] **回显确认**：向用户展示题目清单，批量决定去向（入库/错题/跳过）
 - [ ] 题目入库：题目文本 + VLM 图形描述 + 答案解析（含图题目走 VLM，见 [VLM 策略](vlm_strategy.md)）
-- [ ] 知识点标注：LLM 开放式提取 → tag 归位/别名归并（见 [数据模型](data_model.md)）
+- [ ] 知识点标注：LLM 开放式提取 → tag 归位/别名归并（见 [topics 表](store/db/topics.md)）
 - [ ] 分块向量化（qwen3.7-text-embedding + Chroma，chunk 类型 question/answer/knowledge_point）
 - [ ] SQLite 元数据入库（questions + question_topics + knowledge_notes）
 - [ ] 摄取 CLI：`python scripts/ingest.py <path>`
@@ -99,7 +99,7 @@ flowchart LR
 - [ ] 实现 `review_plans` / `periodic_reports`（周报快照，UNIQUE 幂等）表
 - [ ] 知识点查询工具：`list_topics`、`search_topic`、`create_topic`、`add_alias`
 - [ ] 错题统计工具：`get_error_stats`、`analyze_weak_points`
-- [ ] 作答/报告工具：`add_exam_attempt`、`generate_periodic_report`（见 [MCP 接口](mcp_interface.md)）
+- [ ] 作答/报告工具：`add_exam_attempt`、`generate_periodic_report`（见 [MCP 接口](mcp/README.md)）
 
 ### 验收标准
 
@@ -140,14 +140,16 @@ flowchart LR
 
 ### 任务
 
-- [ ] QQ 开放平台注册 + 创建机器人（获取 AppID/AppSecret）
-- [ ] 方案一：nanobot 网关 + `channels.qq` 配置，验证 QQ 消息链路
-- [ ] 方案二：trpc-claw 新增 `_qq.py` 通道适配器（参照 `_wecom.py`，见 [IM 接入](im_interface.md)）
-- [ ] TeamAgent 作为主 Agent 注册进 trpc-claw（扩展 `create_agent`，见 [IM 接入](im_interface.md)）
+- [x] QQ 开放平台注册 + 创建机器人（AppID/AppSecret 已就位，待填 `.env`）
+- [x] 依赖就位：`openclaw` extra（nanobot 0.3.0）+ `qq-botpy` 1.2.1（commit `56eda45`），见 [IM 接入](im/README.md)
+- [ ] `channels.qq` 配置段 + `.env` 密钥填入
+- [ ] 方案二：trpc-claw 新增 `_qq.py` 通道适配器（继承 nanobot `QQChannel`，见 [IM 接入](im/README.md)）
+- [ ] 沙箱单聊联调：`openclaw run` → 沙箱 QQ 号发消息收到回复
+- [ ] TeamAgent 作为主 Agent 注册进 trpc-claw（扩展 `create_agent`，见 [IM 接入](im/README.md)）
 - [ ] IM 图片收发：错题拍照 → VLM 识别 → 录入
 - [ ] 长答案分片、错误处理
 - [ ] CLI：`chat.py`（开发调试用）
-- [ ] MCP Server：STDIO + SSE（见 [MCP 接口](mcp_interface.md)）
+- [ ] MCP Server：STDIO + SSE（见 [MCP 接口](mcp/README.md)）
 - [ ] FastAPI HTTP + SSE 流式输出（可选）
 
 ### 验收标准

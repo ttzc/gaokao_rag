@@ -4,13 +4,13 @@
 
 ## 功能定位
 
-三层存储的**最顶层索引**——SQLite 负责"精确过滤"（知识点/年份/考区），Chroma 负责"语义相似"（按问题含义检索），两层通过 `doc_id` 桥接。**Collection / doc_id / Document 策略**见 [data_model.md](../../data_model.md)「Chroma 向量层」一节；**Metadata 格式与过滤语义见本文档下文**——本文档是向量存储写入侧的单一来源。
+三层存储的**最顶层索引**——SQLite 负责"精确过滤"（知识点/年份/考区），Chroma 负责"语义相似"（按问题含义检索），两层通过 `doc_id` 桥接。本文档是向量存储写入侧的**单一来源**：Collection / Document 策略 / doc_id 规则 / Metadata 格式与过滤语义均在此（原「Chroma 向量层」一节已并入本文档）。
 
 ## 技术选型：langchain-chroma（不直接用原生 chromadb）
 
 | 方案 | 说明 | 结论 |
 | ---- | ---- | ---- |
-| 原生 `chromadb.Client` | data_model.md 早期示例的写法 | ✗ 不满足 A 方案 |
+| 原生 `chromadb.Client` | 早期文档示例的写法 | ✗ 不满足 A 方案 |
 | **`langchain_chroma.Chroma`** | 实现 langchain `VectorStore` 接口（`asearch` / `afrom_documents` / `similarity_search_with_relevance_scores`） | ✓ **采用** |
 
 **原因**：`LangchainKnowledge.search()` 内部调用 `vectorstore.asearch()`（见 [tRPC-Agent 源码](https://github.com/trpc-group/trpc-agent-python/blob/main/trpc_agent_sdk/server/knowledge/langchain_knowledge.py)），要求 vectorstore 是 langchain `VectorStore` 接口实现。原生 chromadb API 满足不了，故统一走 langchain Chroma，**不要混用两种 API 操作同一个 `chroma_db`**（避免双写不一致）。
@@ -174,6 +174,109 @@ def __init__(self, collection_name: str, persist_dir: str, expected_dim: int) ->
 
 ⚠️ langchain 的 Filter 语法（`$eq/$ne/$in/$gt...`）**不含 `$contains`**——它是 Chroma 专有操作符。`AgenticLangchainKnowledgeSearchTool` 生成的 filter 若覆盖不到数组语义，`VectorStore.search()` 需要支持直接透传 **chromadb 原生 where**（或加 langchain Filter → Chroma where 的翻译层），否则数组字段（知识点/考区）无法过滤。实现时以实测为准，测试里覆盖"数组 $contains 过滤"用例。该翻译层由 [retrieval/knowledge.md](../../retrieval/knowledge.md) 的 `GaokaoKnowledge` 子类负责（读门面组件，2026-08-28 自本目录迁出）。
 
+## Collection 设计
+
+**单 Collection**（`gaokao`，全科共用），通过 metadata 过滤区分内容类型与学科——不按学科/内容类型分库，过滤语义统一走 Metadata（见下节）。
+
+```python
+# 通过 langchain-chroma 创建（实际代码走 src/store/vector/vector_store.py 单例）
+vectorstore = Chroma(
+    collection_name="gaokao",          # 通用名：全科共用，按 metadata.subject 过滤学科
+    embedding_function=get_embedding_model(),
+    persist_directory="data/chroma_db",
+)
+```
+
+## Document 策略
+
+**入库单位 = 一篇完整 document**（不是按 chunk 拆分）。一个业务实体 = 一个 doc_id = 一篇完整内容，整体作为一个向量存入 Chroma（当前实现不切片：`upsert` 直接 `add_documents([doc])` 嵌入整篇文本，未接 text splitter；将来若题目过长需切，须保证 doc_id 仍唯一对应实体）。
+
+| document | page_content 组成 | 来源 |
+| -------- | ---- | ---- |
+| **题目 document**（`doc_type=question`） | 题干 + 答案 + 解析 + VLM 图形描述，四段以换行连接，空段跳过 | `questions` 行 |
+| **讲解 document**（`doc_type=note`） | 知识点讲解段文本（概念/公式/方法），为一篇 | `knowledge_notes` 行 |
+
+**page_content 拼接规则**（来自 `src/ingestion/question.py` 的 `ingest_question`）：
+
+```python
+parts = [question_text, answer_text, analysis_text]
+if vlm_descriptions:
+    parts.append("\n".join(vlm_descriptions))
+embedding_text = "\n".join(p for p in parts if p)   # 仅拼接非空段
+```
+
+即「题干 → 答案 → 解析 → VLM 描述」顺序，缺答案 / 缺解析 / 无图时不留空行。题目 document 与讲解 document 在同一个 Collection 混合召回（用户问"什么是分离参数法" → 命中讲解 document；搜题 → 命中题目 document），由 LLM 综合组织。
+
+### 题目 document 实例
+
+下面是一篇题目 document 在 Chroma 中的真实形态——由 `ingest_question` 调用 `VectorStore.upsert(doc_id, embedding_text, meta)` 写入，`upsert` 内部再注入 `doc_id` 到 metadata：
+
+```python
+from langchain_core.documents import Document
+
+Document(
+    page_content=(
+        "已知椭圆 C: x²/a² + y²/b² = 1 (a>b>0) 的左右焦点为 F1, F2，\n"
+        "点 P 在 C 上，且 ∠F1PF2 = 90°，求 △F1PF2 面积的最大值。\n"
+        "设 |PF1|=m, |PF2|=n，则 m+n=2a，m²+n²=(2c)²。\n"
+        "面积 S = ½mn。由 (m+n)² = m²+n²+2mn 得 4a² = 4c²+2mn，\n"
+        "mn = 2(a²-c²) = 2b²，故 S = b²（定值）。\n"
+        "利用椭圆定义 m+n=2a 与勾股定理 m²+n²=4c²，结合展开求 mn，\n"
+        "关键：焦点三角形面积只与 b 有关。\n"
+        "图形为水平椭圆，左焦点 F1(-c,0)、右焦点 F2(c,0)，\n"
+        "点 P 在第一象限弧上，连线 PF1、PF2 构成三角形。"
+    ),
+    metadata={
+        "doc_id": "q_42",                       # upsert 自动注入
+        "doc_type": "question",
+        "subject": "数学",
+        "source_type": "exam",
+        "title": "2026 南昌一模 理科数学",         # 取自 files 表标题；无源文件则取题干前 40 字
+        "exam_year": 2026,                       # 缺省落 0，不是 None（Chroma 拒绝 None）
+        "question_type": "解答题",
+        "has_image": True,                       # 布尔快照，Chroma 侧判断含图用
+        "topic_tags": ["椭圆", "焦点三角形", "离心率"],  # 知识点名字快照；空列表则不写该字段
+        "exam_regions": ["南昌", "江西"],          # 考区层级；空则不写该字段
+    },
+)
+```
+
+**值得注意的几点（与代码一致）**：
+
+- `page_content` 是**文本拼接**，VLM 描述已并入题干文本，下游全走文本 RAG；VLM 原始内容不存 Chroma（存 `processed/vlm_desc/`，见 [../files/processed.md](../files/processed.md)）。
+- metadata **只存检索快照**，不存 `image_file_ids` / `file_id` / `question_number`（这些在 `questions` 表权威）；含图与否用 `has_image` 布尔判断，避免检索时回查 SQLite。
+- `exam_year` 缺省落 `0`（`exam_year or 0`），不是 `None`——Chroma metadata 不接受 `None`。
+- `topic_tags` / `exam_regions` 为空时**整个字段不写入**（Chroma 拒绝空列表 metadata：`ValueError: non-empty`）。
+- `doc_id` 由 `upsert` 从参数注入 metadata，调用方无需在 `meta` 里手写。
+
+**讲解 document 与题目 document 结构镜像**：`doc_type=note`，`page_content` 为讲解段文本，`metadata` 同样含 `subject` / `topic_tags`（若有）/ `title` 等检索字段，差异仅在 `doc_type` 与无 `question_type` / `exam_*` 等题目专属字段。
+
+## doc_id 生成规则
+
+`doc_id` 是 SQLite ↔ Chroma 的桥（业务表存 `doc_id` 列，Chroma 用 `doc_id` 定位 document）。**实体级两段式生成**：
+
+```
+doc_id = "{entity}_{id}"
+```
+
+| 段 | 取值 | 说明 |
+| --- | ---- | ---- |
+| `entity` | `q`（questions）/ `kn`（knowledge_notes） | 业务实体缩写 |
+| `id` | 业务表主键（questions.id / knowledge_notes.id） | 定位到行 |
+
+**示例**：
+
+| doc_id | 含义 |
+| ------ | ---- |
+| `q_42` | 题目 42 的完整 document（题干+答案+解析+VLM 描述） |
+| `kn_7` | 讲解 7 的 document |
+
+**规则**：
+1. **幂等**：同实体（entity + id）恒生成同 doc_id——Chroma `upsert` 天然去重，重复摄入不产生重复 document（更新同 id 的题目内容 = 重算向量后 upsert 同名 doc_id 覆盖）
+2. **按实体操作**：删除/更新题目 = 直接按 doc_id（`q_42`）操作，一个实体一个键
+3. **双来源共存**：`q_*`（题目）与 `kn_*`（讲解）在同一 collection，前缀区分来源；检索按 `doc_type` 过滤时天然混用两者（题目 + 讲解都答"什么是X"）
+4. **检索不依赖 doc_id**：查询走 metadata 过滤（subject/topic_tags/doc_type），doc_id 只做桥接与生命周期管理（更新/删除）
+
 ## 组件装配
 
 ```mermaid
@@ -217,7 +320,7 @@ flowchart LR
 
 ## 坑清单（实现时必看）
 
-1. **doc_id 格式**：权威格式是两段式 `q_42` / `kn_7`（data_model.md「doc_id 生成规则」+ `questions.py::_make_doc_id`）；曾有文档示例写成 `q_42_question` / `q_001_question`，已修正
+1. **doc_id 格式**：权威格式是两段式 `q_42` / `kn_7`（本文「doc_id 生成规则」+ `questions.py::_make_doc_id`）；曾有文档示例写成 `q_42_question` / `q_001_question`，已修正
 2. **`afrom_documents` 会重建实例**：`LangchainKnowledge.create_vectorstore_from_document()` 内部调 `vectorstore.afrom_documents(...)`（classmethod，返回**新实例**）——注入的 Chroma 必须带 `persist_directory` + `embedding_function`，否则新实例落到默认临时目录，**数据直接丢**
 3. **维度不写死、但 collection 建后固定**：维度由 config 规定（见上）；换维度 = 删 `data/chroma_db` 重建（AlgoNotes STORE.md 教训）
 4. **批量上限**：qwen3.7 单次 ≤20 条（`chunk_size=20` 传给 OpenAIEmbeddings 自动分批）；v3/v4 为 10；Gitee.AI ≤25（历史踩坑，当前不用）
@@ -249,7 +352,7 @@ flowchart LR
 
 ## 与其他文档的关系
 
-- 数据模型：[data_model.md](../../data_model.md)（Collection / doc_id / Document 策略；Metadata 格式见本文档）
+- 存储层总览：[../README.md](../README.md)（三层职责与文档导航；Collection / doc_id / Document 策略已并入本文档）
 - 题目表：[db/questions.md](../db/questions.md)（`doc_id` 桥接、`has_image` 过滤快照）
 - 讲解表：[db/knowledge_notes.md](../db/knowledge_notes.md)（`kn_*` document）
 - 知识树：[db/topics.md](../db/topics.md)（`topic_tags` 名字快照，MVP 直接匹配无树展开）

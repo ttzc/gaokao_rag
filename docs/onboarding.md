@@ -177,7 +177,7 @@
 - 项目 README（项目定位、技术栈）
 - `CLAUDE.md`（分工边界 + 技术栈 + 决策记录——和 Claude Code 协作前必读）
 - `docs/architecture.md`（系统架构）
-- `docs/data_model.md`（存储与知识点树）
+- `docs/store/README.md`（存储层文档入口：三层总览、db/ 逐表设计、vector/ 向量策略）
 - `docs/agent/README.md`（TeamAgent 子 Agent 编排）
 - `docs/roadmap.md`（版本路线 V0.1 → V1.0）
 

@@ -88,8 +88,7 @@ class GaokaoKnowledge(LangchainKnowledge):
 
 ## 与其他文档的关系
 
-- 存储读写侧：[vector_store.md](../store/vector/vector_store.md)（Chroma 封装、Metadata 格式与过滤语义、嵌入模型与维度决策、坑清单）
-- 数据模型：[data_model.md](../data_model.md)（Collection / doc_id / Document 策略）
+- 存储读写侧：[vector_store.md](../store/vector/vector_store.md)（Chroma 封装、Collection / doc_id / Document 策略、Metadata 格式与过滤语义、嵌入模型与维度决策、坑清单）
 - 知识树：[db/topics.md](../store/db/topics.md)（扁平 tag 注册表，MVP 无树形结构）
 - 检索架构：[architecture.md](../architecture.md)（Layer 3 语义检索总览）
 - 配置：`config.toml` `[embedding]` / `[store]` 段（见 [vector_store.md](../store/vector/vector_store.md)）

@@ -41,19 +41,19 @@ Gaokao RAG：帮助高中学生备考的 AI 助手（核心目的），MVP 聚�
 - **桥接**：config.toml 里写 `${VAR}` 占位符，运行时由 `_expand()` 从环境变量替换（沿用 AlgoNotes config.py 的设计）
 - **组合方案**：框架 configs（RunConfig/重试/限制，管"Agent 怎么跑"）+ 自研 config.py（管"系统是什么"：模型/存储/QQ）——两者互补
 - **日志**：MVP 开发期**直接用框架 logger，不自研**：`from trpc_agent_sdk.log import logger`，函数式 API（`logger.info/debug/warning/error/fatal`，支持 `extra={}` 自定义字段、`with_fields()` 绑定上下文）；V0.5 需要性能分析时再移植 AlgoNotes 双通道 logger（app.log 运营 + perf.log 性能，JSON Lines，trace_id 注入——LangSmith 换 Langfuse），通过 `set_logger()` 全局替换（实现 `BaseLogger` 接口）
-- config.toml 草案见 [数据模型](docs/data_model.md) 或实现时参照：llm/vlm/embedding/mineru（模型+base_url+`${KEY}`）/qq（AppID/Secret）/store（路径）/logging
+- config.toml 草案实现时参照：llm/vlm/embedding/mineru（模型+base_url+`${KEY}`）/qq（AppID/Secret）/store（路径）/logging；向量维度与 collection 配置见 `docs/store/vector/vector_store.md`，QQ 通道配置见 `docs/im/README.md`
 
 ## 参考文档（先读这些再动手）
 
 | 文档 | 内容 | 对应实现模块 |
 | ------ | ------ | ------------- |
 | `docs/architecture.md` | 系统架构、TeamAgent 编排、三层存储 | src/ 整体 |
-| `docs/data_model.md` | SQLite schema、知识点树、Chroma metadata | src/store/ |
+| `docs/store/README.md` | 存储层文档入口（三层总览、db/ 逐表 DDL、向量策略） | src/store/ |
 | `docs/ingestion/README.md` | PDF 摄取管线 7 阶段 | src/ingestion/ |
 | `docs/agent/README.md` | TeamAgent 子 Agent 分工、委派策略、Prompt | src/agent/ |
 | `docs/vlm_strategy.md` | VLM 选型、Prompt、描述粒度 | src/api/ + src/ingestion/ |
-| `docs/mcp_interface.md` | MCP 工具清单 | scripts/ |
-| `docs/im_interface.md` | trpc-claw QQ 接入（nanobot 通道适配器扩展） | scripts/ + 部署 |
+| `docs/mcp/README.md` | MCP 工具清单 | scripts/ |
+| `docs/im/README.md` | trpc-claw QQ 接入（nanobot 通道适配器扩展） | src/im/ + 部署 |
 | `docs/test.md` | **pytest 测试规范**（命名/fixture/mock/覆盖率——每个模块实现即测） | tests/ |
 | `docs/onboarding.md` | 协作者学习路径（含 AI 搜索关键词） | 非实现文档，新人先读 |
 

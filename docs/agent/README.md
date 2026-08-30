@@ -17,6 +17,51 @@ Gaokao RAG 的 Agent 层基于 tRPC-Agent-Python 的 **TeamAgent** 构建（多 
 
 > 注：GraphAgent 曾作为备用方案，但 trpc-agent 源码已确认 TeamAgent 设计可用（2026-08-12 实测跑通），备用方案已移除（2026-08-25）。主架构即 TeamAgent。
 
+## 系统总览（三层结构）
+
+```mermaid
+flowchart TB
+    subgraph 入口层
+        QQ[QQ Bot<br/>官方 API + 通道适配器] --> CLAW[trpc-claw 网关]
+        CLI[CLI / MCP / FastAPI] --> CLAW
+    end
+
+    subgraph Agent 层
+        CLAW --> L[Team Leader<br/>自由委派 + 综合]
+        L -->|question / browse| SEARCH[搜索信息 Agent]
+        L -->|review / report| AGG[聚合数据 Agent]
+        L -->|ingest| DOC[文档识别 Agent]
+        SEARCH -->|含图题目| VLM[VLM 理解 Agent]
+        SEARCH --> OUT[输出整理 Agent]
+        AGG --> OUT
+        DOC --> STRUCT[结构识别 Agent]
+        STRUCT --> KNOW[知识整理 Agent]
+        KNOW --> STORE[入库决策 Agent]
+        STORE --> OUT
+    end
+
+    subgraph 存储层
+        SEARCH --> CHROMA[(Chroma<br/>向量检索)]
+        SEARCH --> SQL1[(SQLite<br/>元数据 + 图谱)]
+        AGG --> SQL1
+        VLM --> CHROMA
+        KNOW --> SQL1
+        STORE --> SQL1
+        STORE --> CHROMA
+    end
+
+    OUT --> QQ
+```
+
+**三层结构说明**：
+
+- **入口层**：QQ（官方 API + nanobot 通道适配器）/ CLI / MCP / FastAPI 统一接入 trpc-claw 网关
+- **Agent 层**：Leader 按意图委派成员——**意图匹配在 Leader 系统提示词内完成**（2026-08-28 决策，非独立子 Agent）：
+  - **查询侧（读）**：question/browse 走搜索（含图触发 VLM）→ 输出；review/report 走聚合 → 输出
+  - **摄入侧（写）**：ingest 走文档识别 → 结构识别 → 知识整理 → Leader 回显确认 → 入库决策 → 输出
+  - 不同意图走不同成员组合，不是所有成员每次都被调用
+- **存储层**：搜索 Agent 查询 Chroma（语义）+ SQLite（精确过滤）；聚合 Agent 读写 SQLite（错题/作答/报告）；摄入侧写入 Chroma + SQLite（题目/知识点/错题）
+
 ## 团队结构
 
 团队分**查询侧**（读数据，产生回答）和**摄入侧**（写数据，接收学生资料），共用同一个 Leader：
@@ -74,6 +119,25 @@ flowchart TD
 - **批量摄入**（ima 导出 20 份 PDF）走 CLI 脚本 `scripts/ingest.py`（开发者初始化用），不占 Agent 团队
 - **即时摄入**（学生 QQ 发作业/错题照片）走摄入侧 Agent——这是学生侧唯一的资料录入入口
 - 分层边界：`src/agent/ingestion/`（摄入侧子 Agent，含 LLM）与 `src/ingestion/`（写门面，无 LLM）是两层不同概念；子 Agent 只做意图判断与编排，具体存储读写一律委托给两个门面（详见 [architecture.md](../architecture.md)）
+
+## State 设计（GaokaoState）
+
+```python
+class GaokaoState(State):
+    # 业务字段
+    subject: str                    # 学科（MVP 固定 "math"）
+    query_type: str                 # "question" | "review" | "report" | "browse" | "ingest"（Leader 匹配意图后写入）
+    period_type: str                # "weekly" | "monthly"（report 意图时由 Leader 解析）
+    retrieved_docs: list[dict]     # 检索到的题目/解析（含知识点信息）
+    vlm_descriptions: list[str]    # VLM 生成的图形描述
+    answer: str                     # 最终答案
+    review_suggestion: str         # 复习建议
+    # 摄入侧字段
+    pending_questions: list[dict]  # 待确认题目清单（回显用）
+    ingest_decisions: list[dict]   # 用户对每题的决策（入库/错题/跳过）
+    # Reducer 字段
+    execution_history: Annotated[list[dict], append_list]
+```
 
 ## 摄入侧数据流与 State 契约
 
