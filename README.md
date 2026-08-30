@@ -87,7 +87,7 @@ gaokao_rag/
 │   ├── im/                    # IM 接入（QQ 官方 API + 通道适配器，README）
 │   ├── test.md                # 测试规范（pytest）
 │   ├── onboarding.md          # 协作者学习路径
-│   └── roadmap.md             # 开发路线图（V0.1 → V1.0）
+│   └── roadmap.md             # 开发路线图（实际时间线 + 待完成 V0.6 → V1.0）
 ├── src/                       # 源代码（由 Claude 实现）
 │   ├── config.py              # 配置加载（依赖图最底层，禁 import logger）
 │   ├── api/                   # 模型客户端层（llm.py / embedding.py 工厂）
@@ -149,7 +149,7 @@ gaokao_rag/
 | [IM 接入](docs/im/README.md) | trpc-claw QQ 接入（nanobot 通道适配器）、单用户 MVP |
 | [学习指南](docs/onboarding.md) | 协作者从零上手的学习路径（含 AI 搜索关键词） |
 | [测试规范](docs/test.md) | pytest 单元测试约定、目录结构、fixture 规范 |
-| [开发路线图](docs/roadmap.md) | 版本规划（V0.1 → V1.0 MVP）、任务拆解 |
+| [开发路线图](docs/roadmap.md) | 实际开发时间线 + 待完成顺序（V0.6 → V1.0 MVP）、风险与坑 |
 
 ## 开源许可
 

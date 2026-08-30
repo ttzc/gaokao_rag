@@ -179,7 +179,7 @@
 - `docs/architecture.md`（系统架构）
 - `docs/store/README.md`（存储层文档入口：三层总览、db/ 逐表设计、vector/ 向量策略）
 - `docs/agent/README.md`（TeamAgent 子 Agent 编排）
-- `docs/roadmap.md`（版本路线 V0.1 → V1.0）
+- `docs/roadmap.md`（开发路线：已完成时间线 + 待完成顺序 V0.6 → V1.0）
 
 **独立可用的学习资源（现在就有的）**：
 
