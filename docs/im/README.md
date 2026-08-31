@@ -86,7 +86,7 @@ nanobot 原生支持 QQ 通道，不需要写任何代码即可跑通消息链�
       "enabled": true,
       "appId": "你的AppID",
       "secret": "你的AppSecret",
-      "allowFrom": []
+      "allowFrom": ["*"]   // MVP 通配放行（0.2.0 空列表=deny，勿留空）
     }
   }
 }
@@ -117,7 +117,8 @@ channels:
     enabled: true
     appId: ${QQ_APP_ID}
     secret: ${QQ_APP_SECRET}
-    allowFrom: []           # 空 = 允许所有人；可填 QQ 号/群号白名单
+    allowFrom: ["*"]        # MVP 通配放行；0.2.0 空列表=deny（静默丢弃），非"允许所有人"；
+                            # 精确匹配须填 openid（C2C 的 user_id 是 openid，不是 QQ 号）
     msgFormat: plain        # plain | markdown（默认 plain）
 ```
 
@@ -160,7 +161,7 @@ export QQ_APP_SECRET=xxx
 | 断线重连 | 两层：覆写 `bot_connect` 指数退避 5s→300s（:145-173）+ 外层 `_run_bot` 兜底循环（:259-278），**内置，无需处理** | runtime.py:145/259 |
 | 收消息·身份 | 群：`chat_id=group_openid`、`user_id=author.member_openid`；单聊：`chat_id=user_id=author.id/user_openid`（`chat_id` 回消息时当 `openid` 用） | runtime.py:540-550 |
 | 收消息·去重 | `_processed_ids`（deque 上限 1000），重复消息直接丢弃（QQ 可能重推） | runtime.py:554-557 |
-| 收消息·白名单 | `is_allowed(user_id)` 查 `allowFrom`；**未授权 C2C 回一条空消息**（QQ 配对码机制，必须有响应才继续），群里静默忽略 | runtime.py:563-571 |
+| 收消息·白名单 | `is_allowed(user_id)` 查 `allowFrom`（语义 `*` 通配 > 列表精确匹配 > deny）；**0.2.0 未授权直接静默丢弃**（`_on_message` 内 `if not is_allowed: return`，连 ack 都不发——联调无响应的头号原因）；列表精确匹配的是 **openid 不是 QQ 号**（C2C 的 `user_id=author.id/user_openid`） | qq.py:493（0.2.0 单文件版） |
 | 收消息·附件 | 分块流式下载（256KB chunk / 200MB 上限 / `.part` 临时文件 + 原子改名），存 `media_dir`（默认 `~/.nanobot/media/qq/`），内容拼 `Received files:` 列表带本地路径（VLM 读图数据源） | runtime.py:624-661/663-772 |
 | 收消息·ack | `ack_message`（默认 `⏳ Processing...`）先回执再进 Agent，避免用户等十几秒无反馈 | runtime.py:596-605 |
 | 收消息·发布 | `_handle_message(...)` 封装 `InboundMessage` 进 MessageBus，与 Agent 解耦 | runtime.py:607 |

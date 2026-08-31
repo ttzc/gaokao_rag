@@ -9,11 +9,13 @@ agent:
   model: deepseek      #    TeamAgent 实际不用它，但构造绕不过
 
 channels:
+  send_progress: false       # ← 关闭流式增量转发（默认 true = 逐字刷屏）
+  send_tool_hints: false     # 工具调用提示也不发（默认已 false，显式写出）
   qq:                                  # ← 新增（MVP 核心）
     enabled: true
     appId: ${QQ_APP_ID}
     secret: ${QQ_APP_SECRET}
-    allowFrom: []
+    allowFrom: ["*"]
     msgFormat: plain
   # wecom 段删除或 enabled: false（MVP 不用）
 
