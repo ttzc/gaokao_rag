@@ -22,7 +22,7 @@
 | 摄入门面 | `ingestion/question.py`（原子化单题） | `image` `exam_paper` `topic` `knowledge_note` `error` `exam_attempt` |
 | 检索门面 | `retrieval/knowledge.py`、`retrieval/question.py` | `knowledge_note` `topic` `error` `exam_attempt` `report` |
 | Agent | Leader + 3 成员（结构识别 / 入库决策 / 搜索信息） | 文档识别、知识整理、VLM 理解、聚合数据、输出整理 |
-| Tools | `ingest_question_tool`、`knowledge_search_tool` | Extract / VLM / Knowledge / 业务查询工具 |
+| Tools | `ingest_question_tool`、`knowledge_search_tool`、`get_question_detail_tool` | Extract / VLM / Knowledge / 其余业务查询工具 |
 | 入口 | `scripts/chat.py`（对话调试）、`scripts/cli.py`（只读浏览） | QQ、MCP、HTTP |
 | 工程 | pytest + integration 分组 + GitHub Actions CI | Langfuse、Session 持久化 |
 

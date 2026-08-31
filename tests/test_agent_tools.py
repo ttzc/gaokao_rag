@@ -2,8 +2,10 @@
 """agent 工具层（src/agent/tools/）测试：导出面 + FunctionTool 元数据 + 调用转发 + 分层铁律。
 
 被测主体是模块级工具实例（子 Agent 挂载的交付物）：写侧 ``ingest_question_tool``
-（FunctionTool）+ 读侧 ``knowledge_search_tool``（框架 LangchainKnowledgeSearchTool），
-非测试内自行包装的副本。全部 mock 写门面（src.ingestion），不触真实存储 / 网络 / 计费 API。
+（FunctionTool）+ 读侧 ``knowledge_search_tool``（框架 LangchainKnowledgeSearchTool）
++ 读侧 ``get_question_detail_tool``（业务查询 FunctionTool），
+非测试内自行包装的副本。全部 mock 门面（src.ingestion / src.retrieval），
+不触真实存储 / 网络 / 计费 API。
 
 工具函数经 `from src.ingestion.question import ingest_question as _ingest_question`
 绑定到工具模块，monkeypatch 必须打在 ``src.agent.tools.ingest_tool._ingest_question``
@@ -29,6 +31,7 @@ from trpc_agent_sdk.tools.utils import get_mandatory_args
 
 from src.agent.tools import ingest_tool, retrieve_tool
 from src.agent.tools.ingest_tool import ingest_question_tool
+from src.retrieval.question import QuestionDetail
 
 
 def _fake_tool_context() -> MagicMock:
@@ -85,7 +88,28 @@ class TestRetrieveToolExports:
 
     def test_public_names(self) -> None:
         """只导出 tool 实例；get_knowledge 绑定与内部机制不进公共接口面。"""
-        assert retrieve_tool.__all__ == ["knowledge_search_tool"]
+        assert retrieve_tool.__all__ == [
+            "knowledge_search_tool", "get_question_detail_tool",
+        ]
+
+    def test_question_detail_instance(self) -> None:
+        """get_question_detail_tool 是模块级 FunctionTool（构造零副作用，非惰性导出），
+        LLM 可见工具名取函数 __name__。"""
+        tool = retrieve_tool.get_question_detail_tool
+        assert isinstance(tool, FunctionTool)
+        assert tool.name == "get_question_detail"
+        assert tool.func is retrieve_tool.get_question_detail
+
+    def test_question_detail_declaration(self) -> None:
+        """schema 只暴露 question_id（INTEGER、必填）；description 取包装函数 docstring。"""
+        tool = retrieve_tool.get_question_detail_tool
+        decl = tool._get_declaration()
+        props = decl.parameters.properties
+        assert set(props.keys()) == {"question_id"}
+        assert props["question_id"].type.value == "INTEGER"
+        assert get_mandatory_args(tool.func) == ["question_id"]
+        assert "完整详情" in tool.description
+        assert "doc_id" in tool.description  # question_id 来源说明（q_42 → 42）对 LLM 可见
 
     def test_search_config(self) -> None:
         """MVP 基线：top-10 纯相似度全量召回，不配过滤（Agentic 版留待升级）。
@@ -259,6 +283,78 @@ class TestCallForwarding:
             await tool._run_async_impl(
                 tool_context=_fake_tool_context(),
                 args={"question_text": "题干"},
+            )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# get_question_detail 调用转发（mock 读门面）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _fake_detail(question_id: int = 7) -> QuestionDetail:
+    """构造一个完整的 QuestionDetail 替身（不触库）。"""
+    return QuestionDetail(
+        question_id=question_id,
+        doc_id=f"q_{question_id}",
+        subject="数学",
+        source_type="exam",
+        question_type="解答题",
+        content_text="已知函数 f(x) = x² - 2x，求最小值。",
+        file_id=1,
+        question_number="第15题",
+        exam_regions=["南昌", "江西"],
+        exam_year=2026,
+        exam_month=3,
+        answer_text="-1",
+        analysis_text="配方 f(x) = (x-1)² - 1。",
+        topic_names=["二次函数"],
+        image_file_ids=[3],
+    )
+
+
+class TestQuestionDetailCall:
+    """工具执行时 question_id 透传门面、QuestionDetail 经 asdict 转 dict、异常不吞。"""
+
+    @pytest.mark.asyncio
+    async def test_forwards_id_and_returns_dict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[int] = []
+
+        def fake_facade(question_id: int) -> QuestionDetail:
+            seen.append(question_id)
+            return _fake_detail(question_id)
+
+        monkeypatch.setattr(retrieve_tool, "_get_question_detail", fake_facade)
+        tool = retrieve_tool.get_question_detail_tool
+
+        result = await tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"question_id": 7},
+        )
+
+        assert seen == [7]
+        assert isinstance(result, dict)  # dataclass 不直接给 LLM，asdict 转平铺 dict
+        assert result["question_id"] == 7
+        assert result["doc_id"] == "q_7"
+        assert result["answer_text"] == "-1"
+        assert result["topic_names"] == ["二次函数"]
+        assert result["image_file_ids"] == [3]
+
+    @pytest.mark.asyncio
+    async def test_facade_exception_not_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """question_id 不存在时门面 ValueError 原样抛出，由框架转成 error 告知 Agent。"""
+
+        def boom(question_id: int) -> None:
+            raise ValueError(f"question_id={question_id} 不存在，无法取详情")
+
+        monkeypatch.setattr(retrieve_tool, "_get_question_detail", boom)
+        tool = retrieve_tool.get_question_detail_tool
+
+        with pytest.raises(ValueError, match="不存在"):
+            await tool._run_async_impl(
+                tool_context=_fake_tool_context(), args={"question_id": 999},
             )
 
 

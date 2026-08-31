@@ -28,7 +28,7 @@ Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给�
 
 - **members** = `search`（搜索信息，见 [retrieval/search.md](retrieval/search.md)）+ `structure_recognition`（结构识别）+ `storage_decision`（入库决策），其余 5 个成员（查询侧 3 + 摄入侧 2）后续按 roadmap 补齐
 - **意图分流**（2026-08-28 决策的内联实现）：Leader 自行判断——**问**（求解法/求讲解/求题）→ 查询闭环；**给**（发来题目内容要求存/处理）→ 摄入闭环；判不准先追问一句。不单独开意图子 Agent
-- **查询闭环**：提炼检索意图打包委派 search → 依据 `search_results` 综合作答（引用来源，讲解配例题互相印证）；`no_result` 如实告知不编造；`has_image=true` 注明图形暂不可读
+- **查询闭环**：提炼检索意图打包委派 search → 依据 `search_results` 综合作答（引用来源，讲解配例题互相印证）；`no_result` 如实告知不编造；`has_image=true` 注明图形暂不可读。成员清单向 Leader 声明 search 可按召回 doc_id **自行补全**单题（题目条目）完整题干/答案/解析/溯源（题号/来源试卷/考区年月）、随该次委派一并交付——Leader 无需为缺溯源重复委派（2026-08-31 补挂 `get_question_detail` 后新增，与「最多委派一次」铁律同向）
 - **摄入闭环**（输入泛化，2026-08-28 用户修正）：入口不假定题目来源——口述题意、OCR 识别的多题原文、粘贴/抄写文本都是**待清洗信息**，来源形式无本质区别；Leader 只转不洗，清洗切分归结构识别。流程：收原文 → 委派结构识别 → 回显题目清单问去向（入库/跳过）→ 打包 `pending_questions` + `ingest_decisions` 委派入库决策 → 汇总 `ingest_results` 返回用户
 - **MVP 降级**：错题意图降级为「错因记录暂不支持」提示；`topic_names` 本轮不传；`lecture_segments` 忽略；检索无 metadata 过滤（不完全匹配时不追加委派重查）；错题统计/薄弱点分析类请求告知暂未支持（聚合数据成员未接入）
 - `share_member_interactions=False` 显式写出（框架默认即 False），把「函数式隔离」钉进构造

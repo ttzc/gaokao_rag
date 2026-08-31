@@ -83,8 +83,8 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 |------|------|----------|--------------|------|
 | `LangchainKnowledgeSearchTool` | 框架内置 | `GaokaoKnowledge`（向量） | 搜索信息（MVP） | ✅ 框架提供 |
 | `search_questions` | 业务查询 | `src.retrieval.question` | 搜索信息 | ⏳ 门面未落地 |
-| `get_question_detail` | 业务查询 | `src.retrieval.question` | 搜索信息 / 输出整理 | ⏳ 门面未落地 |
-| `browse_questions` | 业务查询 | `src.retrieval.question` | 浏览 | ⏳ 门面未落地 |
+| `get_question_detail` | 业务查询 | `src.retrieval.question` | 搜索信息 / 输出整理 | ✅ 已工具化（2026-08-31 挂搜索信息） |
+| `browse_questions` | 业务查询 | `src.retrieval.question` | 浏览 | ⏳ 门面已落地，待工具化 |
 | `search_knowledge_notes` | 业务查询 | `src.retrieval.knowledge_note` | 搜索信息 | ⏳ 门面未落地 |
 | `search_topics` / `list_topics` / `get_topic` | 业务查询 | `src.retrieval.topic` | 搜索信息 / 知识整理 | ⏳ 门面未落地 |
 | `get_error_stats` / `get_error_details` / `get_weak_topics` | 业务查询 | `src.retrieval.error` | 聚合数据 | ⏳ 门面未落地 |
@@ -104,14 +104,15 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 
 - 薄封装 + async 经 `asyncio.to_thread` 下沉同步 DB 调用
 - 可空参数写 `typing.Optional[...]`（非 PEP 604 `X | None`，否则 FunctionTool schema 生成抛 `ValueError`）
-- **模块级实例用 PEP 562 惰性导出**（`__getattr__` 首次访问才构造，import 模块本身零副作用——CI 无 `.env` 也能 collect）；`knowledge_search_tool` 首次访问时实体化 `GaokaoKnowledge` 懒单例——离线构造 `OpenAIEmbeddings` + Chroma `PersistentClient`（文件句柄），**需 `.env` 有 `DASHSCOPE_API_KEY`**（缺失则访问时 `RuntimeError`）；不发网络请求、不计费
+- **有实体化副作用的模块级实例用 PEP 562 惰性导出**（`__getattr__` 首次访问才构造，import 模块本身零副作用——CI 无 `.env` 也能 collect）；`knowledge_search_tool` 首次访问时实体化 `GaokaoKnowledge` 懒单例——离线构造 `OpenAIEmbeddings` + Chroma `PersistentClient`（文件句柄），**需 `.env` 有 `DASHSCOPE_API_KEY`**（缺失则访问时 `RuntimeError`）；不发网络请求、不计费
+- **业务查询工具（如 `get_question_detail_tool`）模块级直接实例化即可**：`FunctionTool.__init__` 零副作用（与 `ingest_question_tool` 同理），门面 import 不碰网络，无需惰性导出
 - 严禁 `import src.store.*`
 
 ## 挂载矩阵（读侧）
 
 | 子 Agent | 挂载工具 |
 |----------|----------|
-| 搜索信息 | **MVP（2026-08-29 已注册进 Leader）只挂 `knowledge_search_tool`（`LangchainKnowledgeSearchTool`）一个**；业务查询工具（`search_questions` / `search_knowledge_notes` / `search_topics` 等）待封装后逐个补挂 |
+| 搜索信息 | **MVP（2026-08-29 已注册进 Leader）挂 `knowledge_search_tool`（`LangchainKnowledgeSearchTool`）+ `get_question_detail_tool` 两个**（后者 2026-08-31 补挂，召回后按需查单题完整详情）；其余业务查询工具（`search_questions` / `search_knowledge_notes` / `search_topics` 等）待封装后逐个补挂 |
 | VLM 理解 | `VLMUnderstandTool`（见 [ingest_tool.md](ingest_tool.md)，理解检索到的题图） |
 | 聚合数据 | 业务查询工具（`get_error_stats` / `get_attempt_stats` / `aggregate_*` / `get_report`） |
 | 输出整理 | —（纯 LLM 格式化，可选 `get_question_detail`） |

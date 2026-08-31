@@ -1,7 +1,8 @@
 # src/agent/retrieval/search.py
-# 查询侧「搜索信息」子 Agent：查询链路的第一棒，唯一挂载 knowledge_search
-# 语义检索工具（src/agent/tools/retrieve_tool.py 的框架工具），把 Leader 打包的
-# 检索任务变成结构化召回清单（search_results / no_result）。
+# 查询侧「搜索信息」子 Agent：查询链路的第一棒，挂载 knowledge_search 语义检索
+# 工具（src/agent/tools/retrieve_tool.py 的框架工具）+ get_question_detail 详情
+# 查询工具（业务查询工具首个，2026-08-31），把 Leader 打包的检索任务变成结构化
+# 召回清单（search_results / no_result）。
 #
 # 职责边界（见 docs/agent/retrieval/search.md）：
 #   - 只做混合检索召回（题目 + 讲解同 Collection 一起召回，不分子意图），
@@ -17,7 +18,8 @@
 #   - 故本模块顶层只 import retrieve_tool 模块对象（零副作用），工厂运行时才
 #     访问 retrieve_tool.knowledge_search_tool 完成实体化——延迟点与子 Agent
 #     工厂「import 不建实例」的约定一致。
-#   - 后续挂业务查询工具（search_questions / browse_questions 等）时同样处理，
+#   - 业务查询工具（get_question_detail_tool）是普通 FunctionTool 模块级实例
+#     （构造零副作用，同 ingest 侧 ingest_question_tool），直接属性访问即可。
 #     见 docs/agent/tools/retrieve_tool.md「工具清单」。
 
 from __future__ import annotations
@@ -36,7 +38,8 @@ AGENT_NAME = "search"
 
 AGENT_DESCRIPTION = (
     "查询侧搜索信息：按检索任务调用语义检索工具混合召回题目与知识点讲解"
-    "（不分子意图），产出结构化召回清单 search_results（doc_id / doc_type / "
+    "（不分子意图），必要时按 doc_id 查题目完整详情补全四要素与溯源，"
+    "产出结构化召回清单 search_results（doc_id / doc_type / "
     "score / has_image / 摘要）；无召回时输出 no_result"
 )
 
@@ -55,11 +58,16 @@ def create_search_agent() -> LlmAgent:
     由调用方（TeamAgent leader 构造）在运行时按需创建。
 
     模型走 src/api/llm.py 的唯一工厂（与摄入侧子 Agent 同一单例，不重复造模型）。
+    工具面：knowledge_search（语义召回，惰性导出在工厂内首次访问实体化）+
+    get_question_detail（召回后按需补全单题完整详情，模块级实例）。
     """
     return LlmAgent(
         name=AGENT_NAME,
         description=AGENT_DESCRIPTION,
         model=get_llm_model(),
         instruction=SEARCH_INSTRUCTION,
-        tools=[retrieve_tool.knowledge_search_tool],
+        tools=[
+            retrieve_tool.knowledge_search_tool,
+            retrieve_tool.get_question_detail_tool,
+        ],
     )

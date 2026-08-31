@@ -103,13 +103,16 @@ class TestCreateGaokaoLeader:
 
         不比对对象身份（工厂每次构造新实例），改比对工厂装配的确定性产物：
         搜索信息挂 knowledge_search_tool（retrieve_tool 惰性导出的同一实例，
-        经 _make_leader 顶包）、结构识别挂 SkillToolSet（question-organize 归一）、
+        经 _make_leader 顶包）+ get_question_detail_tool（模块级业务查询实例）、
+        结构识别挂 SkillToolSet（question-organize 归一）、
         入库决策挂 ingest_question_tool（纯写库）——绕开工厂自造的成员过不了这关。
         """
         team, _, fake_search_tool = _make_leader()
         search_agent, struct_agent, store_agent = team.members
         assert search_agent.instruction == SEARCH_INSTRUCTION
-        assert list(search_agent.tools) == [fake_search_tool]
+        assert list(search_agent.tools) == [
+            fake_search_tool, retrieve_tool.get_question_detail_tool,
+        ]
         assert struct_agent.instruction == STRUCTURE_RECOGNITION_INSTRUCTION
         assert any(isinstance(t, SkillToolSet) for t in struct_agent.tools)
         assert store_agent.instruction == STORAGE_DECISION_INSTRUCTION
@@ -239,6 +242,12 @@ class TestLeaderInstruction:
         assert "成员不回看对话" in ld.LEADER_INSTRUCTION
         assert "写进 task" in ld.LEADER_INSTRUCTION
         assert "只有你与用户对话" in ld.LEADER_INSTRUCTION
+
+    def test_search_detail_capability_stated(self) -> None:
+        """成员清单声明 search 可按召回 doc_id 自行补全单题详情与溯源信息，
+        随该次委派一并交付——防 Leader 因缺溯源重复委派（违反「最多委派一次」）。"""
+        for marker in ("补全单题", "溯源信息", "无需你重复委派"):
+            assert marker in ld.LEADER_INSTRUCTION
 
     def test_three_iron_rules(self) -> None:
         """3 条铁律逐条在场：完成标准 / 调用上限 / 不自相矛盾。"""

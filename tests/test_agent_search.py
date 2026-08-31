@@ -3,13 +3,15 @@
 
 覆盖：
 - create_search_agent() 工厂结构（name/description/instruction/tools/model）
-- 工具挂载唯一且是 retrieve_tool 的惰性导出（patch retrieve_tool._tool 顶掉实体化，
-  测试不建真实 GaokaoKnowledge、不碰 chroma——同 tests/test_agent_storage_decision
-  _make_agent 思路，×2 处 patch）
+- 工具挂载为 knowledge_search + get_question_detail 两个：前者是 retrieve_tool
+  的惰性导出（patch retrieve_tool._tool 顶掉实体化，测试不建真实 GaokaoKnowledge、
+  不碰 chroma——同 tests/test_agent_storage_decision _make_agent 思路），
+  后者是模块级 FunctionTool 实例（构造零副作用，直接断言同一对象）
 - 惰性实体化纪律：import search 模块不触发 knowledge_search_tool 实体化
   （PEP 562 惰性导出 + 工厂内属性访问的 CI 教训回归）
-- instruction 关键约束：只读检索执行者定位 + knowledge_search/search_results/
-  no_result/has_image 契约标记 + 红线（不编造/不回答用户/改写上限 3 次），
+- instruction 关键约束：只读检索执行者定位 + knowledge_search/get_question_detail/
+  search_results/no_result/has_image 契约标记 + 详情补全约束（doc_id 来源、≤5 次）
+  + 红线（不编造/不回答用户/改写上限 3 次），
   且不含 Leader 侧回显/收集去向表述（防职责回潮）
 - 无 Skill 挂载：tools 不含 SkillToolSet、skill_repository / before_agent_callback
   均为 None
@@ -83,11 +85,13 @@ class TestCreateSearchAgent:
         agent, _ = self._make_agent()
         assert agent.instruction == SEARCH_INSTRUCTION
 
-    def test_tools_is_unique_knowledge_search(self) -> None:
-        """唯一工具是惰性导出的 knowledge_search_tool（MVP 只挂这一个）。"""
+    def test_tools_mounted(self) -> None:
+        """挂两个工具：惰性导出的 knowledge_search_tool（顶包后的 mock）+
+        模块级业务查询实例 get_question_detail_tool（与 tools 层同一对象）。"""
         agent, fake_tool = self._make_agent()
-        assert len(agent.tools) == 1
-        assert agent.tools[0] is fake_tool
+        assert list(agent.tools) == [
+            fake_tool, retrieve_tool.get_question_detail_tool,
+        ]
 
     def test_model_from_llm_factory(self) -> None:
         """模型走 src/api/llm.py 工厂，不重复造模型。"""
@@ -136,9 +140,17 @@ class TestSearchInstruction:
     def test_tool_and_contract_markers(self) -> None:
         """工具名与输入/输出契约字段对模型可见（委派按此对齐）。"""
         for marker in (
-            "knowledge_search", "search_results", "no_result",
+            "knowledge_search", "get_question_detail",
+            "search_results", "no_result",
             "has_image", "doc_type", "doc_id", "score",
         ):
+            assert marker in SEARCH_INSTRUCTION
+
+    def test_detail_tool_constraints(self) -> None:
+        """详情补全约束写进指令：仅 question 条目（note 走 kn_* 不适用）、
+        question_id 来源（doc_id 数字部分）、只查真实召回、单轮 ≤5 次上限。"""
+        for marker in ("仅对 `doc_type=\"question\"`", "kn_*", "不适用本工具",
+                       "数字部分", "真实", "不超过 5 次"):
             assert marker in SEARCH_INSTRUCTION
 
     def test_hybrid_recall_semantics(self) -> None:
