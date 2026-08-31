@@ -2,7 +2,7 @@
 
 > 帮助高中学生备考 —— 基于 tRPC-Agent-Python 的多模态 RAG 系统（MVP 聚焦数学）
 
-[![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/)
 [![Framework](https://img.shields.io/badge/Framework-tRPC--Agent--Python-green.svg)](https://github.com/trpc-group/trpc-agent-python)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 
@@ -38,6 +38,115 @@
 | **嵌入模型** | qwen3.7-text-embedding（DashScope API，dimensions=1024） | 中文能力强、长上下文整文档嵌入、与 VLM 同厂商一套 Key；换模型/维度须删重建 Chroma |
 | **元数据索引** | SQLite | 题目-知识点关联、错题记录、检索过滤 |
 
+## 安装与运行
+
+全程 5 步，约 5 分钟。MVP 是**单用户自用**形态，装完跑一个常驻进程即可 7×24 在 QQ 上问答。
+
+> **前置**：需要准备两组凭证——[DeepSeek API Key](https://platform.deepseek.com/)（LLM）、[DashScope API Key](https://dashscope.console.aliyun.com/)（VLM + Embedding），以及在 [QQ 开放平台](https://bot.q.qq.com/) 创建机器人拿到的 **AppID + AppSecret**。全部走云端 API，本地不需要 GPU。
+
+### 第 1 步：安装 uv
+
+项目用 [uv](https://docs.astral.sh/uv/) 管理 Python 与依赖（锁文件 `uv.lock` 已入库，装出来的版本与开发环境一致）。
+
+**Windows（PowerShell）**：
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**macOS / Linux**：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+装完**重开一个终端**，验证：
+
+```bash
+uv --version
+```
+
+### 第 2 步：克隆仓库
+
+```bash
+git clone https://github.com/ttzc/gaokao_rag.git
+cd gaokao_rag
+```
+
+### 第 3 步：安装依赖
+
+```bash
+uv sync
+```
+
+这一条命令会：创建 `.venv` 虚拟环境 → 自动下载满足 `requires-python = ">=3.13"` 的 Python → 按 `uv.lock` 装齐全部依赖（含 QQ 官方通道 `qq-botpy`、IM 运行时 `nanobot-ai`、测试用的 pytest）。
+
+### 第 4 步：配置环境变量
+
+复制模板并填入真实凭证：
+
+```bash
+cp .env.example .env
+```
+
+```dotenv
+DEEPSEEK_API_KEY=sk-xxx      # DeepSeek 官方 API（LLM）
+DASHSCOPE_API_KEY=sk-xxx     # DashScope（Qwen VLM + Embedding 共用一套 Key）
+MINERU_API_KEY=sk-xxx        # MinerU PDF 解析，仅批量导入试卷时需要
+QQ_APP_ID=xxx                # QQ 开放平台机器人 AppID
+QQ_APP_SECRET=xxx            # QQ 开放平台机器人 AppSecret
+```
+
+> `.env` 已在 `.gitignore` 中，不会被提交。项目启动时 `src/config.py` 会自动加载它，**不需要手动 `export`**——`src/im/openclaw.yaml` 里用 `${QQ_APP_ID}` 这类占位符桥接，框架读配置时自动从 `.env` 展开（变量缺失会直接报 `Environment variable 'XXX' referenced in config is not set`，属于快速失败，补上即可）。
+
+### 第 5 步：启动 QQ 机器人
+
+```bash
+uv run python scripts/im_server.py
+```
+
+看到 bot 连接就绪后，用手机 QQ 给机器人发消息就能问答了（例：「帮我检索解三角形问题」）。
+
+> **知识库初始是空的**（`data/` 不入库）。第一次使用先把题目喂进去：直接把题面（口述 / OCR / 粘贴均可）发给机器人，走摄入闭环——它会切分归一、回显题目清单让你逐题确认入库 / 跳过。攒够题目后，检索才有东西可召回。
+
+**建议先用沙箱联调**，不用等上线审核：
+
+1. QQ 开放平台管理端 →「沙箱配置」→ 添加沙箱单聊 QQ 号（自己和测试用户的号）
+2. 手机 QQ 扫管理端的二维码 → 打开机器人资料卡 →「发消息」→ 授权添加
+3. 启动上面的命令，直接端到端联调
+
+> ⚠️ **正式上线**时需注意：QQ 机器人默认开启 **IP 白名单**，正式环境只有白名单内的公网 IP 能连 WebSocket / 调 OpenAPI（沙箱环境不受限制）。个人自用建议准备固定公网 IP，或继续用沙箱。
+
+### 没有 QQ 凭证？先本地调试
+
+把 `src/im/openclaw.yaml` 里 `channels.qq.enabled` 改成 `false`，再启动同一条命令即回退为**本地 CLI 对话**，Agent 能力与 QQ 端完全一致：
+
+```bash
+uv run python scripts/im_server.py   # 无启用通道 → 自动 CLI 回退
+uv run python scripts/chat.py        # 或直接走对话调试入口（不读 openclaw.yaml）
+```
+
+> 注意：回退的触发条件是**配置里没有启用任何通道**，不是 `.env` 缺凭证——`openclaw.yaml` 里的 `${QQ_APP_ID}` 占位符在 `.env` 缺该变量时会直接报错退出（快速失败），不会静默回退。
+
+其他入口：
+
+```bash
+uv run python scripts/cli.py browse --topic 椭圆 --limit 5   # 只读浏览知识库
+uv run python scripts/cli.py detail 42                        # 按 ID 看单题完整详情
+uv run pytest                        # 跑测试（默认排除 integration，不产生 API 计费）
+uv run pytest -m integration         # 跑真实 API 用例（会计费）
+```
+
+### 常见问题
+
+| 现象 | 原因与处理 |
+| --- | --- |
+| 发消息机器人**完全无回应**（连"收到"都没有） | 白名单拦截。0.2.x 版本未授权消息是**静默丢弃**的，`allowFrom: []` 空列表 = 拒绝所有人；项目默认 `["*"]` 通配放行。若改成精确匹配，填的是 **openid 不是 QQ 号** |
+| 机器人**逐字刷屏**回复 | 流式增量被逐条转发。项目已默认 `send_progress: false`，如被改回 `true` 会出现 |
+| 启动时报 `Environment variable 'XXX' ... is not set` | `.env` 里缺对应变量，补上即可 |
+| 问什么都回 `no_result` | 知识库是空的。先发几道题走摄入闭环入库，再检索；换过 Embedding 模型或维度后须删掉 `data/chroma_db/` 重建 |
+| 正式环境连不上 WebSocket | IP 白名单未配置（见上文）。沙箱环境不受影响 |
+
 ## 核心架构
 
 Gaokao RAG 基于 tRPC-Agent-Python 的 TeamAgent 多 Agent 协作模式构建（入口 → Agent → 存储三层结构，见 [架构设计](docs/architecture.md) 的架构图）。
@@ -72,7 +181,7 @@ gaokao_rag/
 ├── uv.lock                    # uv 锁定依赖
 ├── config.toml                # 系统配置（模型、存储路径、VLM 参数）
 ├── .env.example               # 环境变量模板（.env 存敏感信息，不入库）
-├── main.py                    # 入口（当前最小化，调试走 scripts/chat.py）
+├── main.py                    # 占位入口（当前最小化，实际入口走 scripts/）
 ├── .github/                   # CI 工作流（全量 pytest）
 ├── LICENSE
 ├── docs/                      # 项目文档
@@ -98,8 +207,10 @@ gaokao_rag/
 │   │   └── skills/            #    Agent Skill（question-organize）
 │   ├── ingestion/             # 摄入门面（无 LLM，写库）
 │   ├── retrieval/             # 检索门面（无 LLM，读库）
+│   ├── im/                    # IM 接入（GaokaoClaw 子类 + openclaw.yaml）
 │   └── store/                 # 三层存储（SQLite + 文件 + Chroma 向量）
 ├── scripts/                   # CLI 入口
+│   ├── im_server.py           # IM 网关启动入口（QQ 通道，主力入口）
 │   ├── chat.py                # Team Leader 对话调试入口（模拟 QQ）
 │   └── cli.py                 # 只读 CLI（browse / detail）
 ├── data/                      # 数据目录（运行时生成，不入库）
