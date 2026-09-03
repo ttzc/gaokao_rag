@@ -33,6 +33,8 @@
 
 负责结构化查询和知识点标签管理。每张表的功能定位 / Schema / 关键设计点见 [db/](db/)（逐表文档，DDL 与设计要点单一来源）。
 
+全部表类继承 `db/__init__.py` 的 **`SQLiteTableDB` 基类**：共享连接、幂等 schema 初始化、`close()` 占位三件套由基类统一提供，各表模块只声明 `table_name` / `ddl` 两个类属性 + 业务 CRUD；schema 追踪记录集中在基类，测试隔离经 `reset_schema_tracking()` 一处重置。新表接入 = 一个模块文件 + 一次 conftest 单例重置。
+
 ### Layer 3: Chroma 向量库
 
 负责语义检索。每个 document 携带检索快照 metadata——只存过滤/展示需要的字段，**字段规范与过滤语义见 [vector/vector_store.md「Metadata 格式与过滤语义」](vector/vector_store.md)**（单一来源，此处不重复）。

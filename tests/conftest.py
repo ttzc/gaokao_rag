@@ -28,7 +28,7 @@ import src.store.file_store as _file_store_mod
 import src.retrieval.knowledge as _knowledge_mod
 import src.store.vector.vector_store as _vector_store_mod
 from src.config import config
-from src.store.db import get_shared_conn
+from src.store.db import get_shared_conn, reset_schema_tracking
 from src.store.file_store import FileStore
 from src.store.vector.vector_store import VectorStore
 
@@ -167,15 +167,13 @@ def _reset_state(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
     _close_tracked_chroma_clients()
     _wipe_chroma_dir()
 
-    # 3. 重置全部单例 + schema 初始化标志（保证下次构造基于干净状态）
+    # 3. 重置全部单例 + 基类 schema 初始化记录（保证下次构造基于干净状态；
+    #    schema 追踪已集中到 SQLiteTableDB._initialized，一处 reset 顶原来逐模块 clear）
     _files_mod._files_db = None
-    _files_mod._schema_initialized.clear()
     _questions_mod._questions_db = None
-    _questions_mod._schema_initialized.clear()
     _topics_mod._topics_db = None
-    _topics_mod._schema_initialized.clear()
     _qt_mod._question_topics_db = None
-    _qt_mod._schema_initialized.clear()
+    reset_schema_tracking()
     _vector_store_mod._instance = None
     _knowledge_mod._instance = None
     _file_store_mod._file_store = None
@@ -183,8 +181,8 @@ def _reset_state(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
     # 3b. 确保 SQLite schema 存在：clean env（CI 无残留 data/gaokao.db）下标从未
     #     被创建，而第 1 步的 DELETE 对缺失表静默跳过、无法兜底建表。questions /
     #     question_topics 的 FK 又引用 files/questions，插入前依赖表必须先存在。
-    #     注意 get_*_db() 只返回空壳单例（__init__ 为 pass，不建表），必须真实触碰
-    #     _connect() 才会触发 _init_schema 的 CREATE TABLE IF NOT EXISTS。
+    #     注意 get_*_db() 只返回空壳单例（构造不建表），必须真实触碰 _connect()
+    #     才会触发基类 SQLiteTableDB._init_schema 的 CREATE TABLE IF NOT EXISTS。
     #     顺序 = FK 依赖序：files → questions → topics → question_topics。
     _files_mod.get_files_db()._connect()
     _questions_mod.get_questions_db()._connect()

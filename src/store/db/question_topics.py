@@ -14,12 +14,11 @@
 
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
 
 from trpc_agent_sdk.log import logger
 
-from src.store.db import get_shared_conn
+from src.store.db import SQLiteTableDB, row_to_dict
 
 
 # ── Schema ──────────────────────────────────────────────────────────
@@ -36,20 +35,10 @@ CREATE TABLE IF NOT EXISTS question_topics (
 _CREATE_INDEX_QUESTION = "CREATE INDEX IF NOT EXISTS idx_qt_question ON question_topics(question_id);"
 _CREATE_INDEX_TOPIC = "CREATE INDEX IF NOT EXISTS idx_qt_topic ON question_topics(topic_name);"
 
-# 已初始化 schema 的连接 id 集合，避免重复执行 DDL（幂等但浪费）
-_schema_initialized: set[int] = set()
-
-
-# ── 行映射 ──────────────────────────────────────────────────────────
-
-def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
-    """将 sqlite3.Row 转为普通字典。"""
-    return dict(row)
-
 
 # ── 数据访问类 ──────────────────────────────────────────────────────
 
-class QuestionTopicsDB:
+class QuestionTopicsDB(SQLiteTableDB):
     """题目-知识点关联表 SQLite 数据访问层。
 
     封装 ``question_topics`` 表的所有 CRUD 操作。一道题可关联多个知识点
@@ -62,52 +51,12 @@ class QuestionTopicsDB:
     3. ``get_by_topic(topic_name)`` → 查询某知识点关联的所有题目
     4. ``count_by_topic(topic_name)`` → 周报聚合薄弱知识点
 
-    连接走全局共享 SQLite 连接（由 ``src.store.db.get_shared_conn()`` 管理），
-    保证跨表外键约束统一生效。
+    继承 ``SQLiteTableDB``（``src.store.db``）：共享连接 + 幂等 schema 初始化
+    （``_connect`` / ``_init_schema`` / ``close`` 三件套由基类提供）。
     """
 
-    def __init__(self) -> None:
-        pass
-
-    # ── 连接管理 ────────────────────────────────────────────────────
-
-    def _connect(self) -> sqlite3.Connection:
-        """返回共享 SQLite 连接 + 初始化本表 schema。
-
-        ``CREATE TABLE IF NOT EXISTS`` 幂等，每次调用无副作用，
-        确保任意表类率先连接时所有表 schema 都被初始化。
-        """
-        conn = get_shared_conn()
-        self._init_schema(conn)
-        return conn
-
-    def _init_schema(self, conn: sqlite3.Connection) -> None:
-        """创建表和索引（IF NOT EXISTS）。
-
-        使用连接 id 去重，同一连接只执行一次 DDL。
-
-        Args:
-            conn: 共享 SQLite 连接（由 ``_connect`` 传入）。
-        """
-        conn_id = id(conn)
-        if conn_id in _schema_initialized:
-            return
-        conn.execute(_CREATE_TABLE)
-        conn.execute(_CREATE_INDEX_QUESTION)
-        conn.execute(_CREATE_INDEX_TOPIC)
-        _schema_initialized.add(conn_id)
-        logger.debug("question_topics table schema initialized (shared conn)")
-
-    def close(self) -> None:
-        """关闭数据库连接。
-
-        共享连接由 ``src.store.db.close_shared_conn()`` 统一管理，
-        本方法保留以兼容 context manager 协议，但不实际关闭连接。
-        """
-        logger.debug(
-            "QuestionTopicsDB.close() skipped "
-            "(shared connection managed by db/__init__.py)"
-        )
+    table_name = "question_topics"
+    ddl = (_CREATE_TABLE, _CREATE_INDEX_QUESTION, _CREATE_INDEX_TOPIC)
 
     # ── 写入 ────────────────────────────────────────────────────────
 
@@ -194,7 +143,7 @@ class QuestionTopicsDB:
                ORDER BY created_at""",
             (question_id,),
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def get_by_topic(self, topic_name: str) -> list[dict[str, Any]]:
         """查询某知识点关联的所有题目，按 created_at 升序。
@@ -211,7 +160,7 @@ class QuestionTopicsDB:
                ORDER BY created_at""",
             (topic_name,),
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def count_by_topic(self, topic_name: str) -> int:
         """统计某知识点关联的题目数（周报聚合用）。

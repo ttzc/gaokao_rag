@@ -141,8 +141,8 @@ def _reset_state(monkeypatch: pytest.MonkeyPatch) -> None:
     _close_tracked_chroma_clients()
     _wipe_chroma_dir()
 
-    # 3. 重置全部单例 + schema 初始化标志（files/questions/topics/question_topics/
-    #    vector_store/knowledge/file_store 的 _instance 与 _schema_initialized）
+    # 3. 重置全部单例 + 基类 schema 追踪（files/questions/topics/question_topics/
+    #    vector_store/knowledge/file_store 的 _instance + reset_schema_tracking()）
     # 4. 清空 FileStore 5 个子目录下的文件（保留目录本身）
     # 5. patch 假嵌入：无参 get_vector_store() 构造都用 FakeEmbeddings，不真调 API
     monkeypatch.setattr(

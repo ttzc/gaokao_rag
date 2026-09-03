@@ -15,14 +15,13 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from typing import Any
 
 from trpc_agent_sdk.log import logger
 
 from src.config import config
-from src.store.db import get_shared_conn
+from src.store.db import SQLiteTableDB, row_to_dict
 
 
 # ── Schema ──────────────────────────────────────────────────────────
@@ -51,16 +50,6 @@ _CREATE_INDEX_SUBJECT = "CREATE INDEX IF NOT EXISTS idx_questions_subject ON que
 _CREATE_INDEX_EXAM = "CREATE INDEX IF NOT EXISTS idx_questions_exam ON questions(exam_year);"
 _CREATE_INDEX_TYPE = "CREATE INDEX IF NOT EXISTS idx_questions_type ON questions(question_type);"
 
-# 已初始化 schema 的连接 id 集合，避免重复执行 DDL（幂等但浪费）
-_schema_initialized: set[int] = set()
-
-
-# ── 行映射 ──────────────────────────────────────────────────────────
-
-def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
-    """将 sqlite3.Row 转为普通字典。"""
-    return dict(row)
-
 
 def _make_doc_id(question_id: int) -> str:
     """生成题目 doc_id。
@@ -79,7 +68,7 @@ def _make_doc_id(question_id: int) -> str:
 
 # ── 数据访问类 ──────────────────────────────────────────────────────
 
-class QuestionsDB:
+class QuestionsDB(SQLiteTableDB):
     """题目表 SQLite 数据访问层。
 
     封装 ``questions`` 表的所有 CRUD 操作。摄入管线写入本表 + Chroma document，
@@ -91,51 +80,18 @@ class QuestionsDB:
     3. 更新题目内容 → 先更新 SQLite 记录，再 upsert Chroma document（同 doc_id 覆盖）
     4. 删除题目 → 级联删 ``question_topics`` / ``errors`` / ``exam_attempts`` + Chroma document
 
-    连接走全局共享 SQLite 连接（由 ``src.store.db.get_shared_conn()`` 管理），
-    保证跨表外键约束统一生效。
+    继承 ``SQLiteTableDB``（``src.store.db``）：共享连接 + 幂等 schema 初始化
+    （``_connect`` / ``_init_schema`` / ``close`` 三件套由基类提供）。
     """
 
-    def __init__(self) -> None:
-        pass
-
-    # ── 连接管理 ────────────────────────────────────────────────────
-
-    def _connect(self) -> sqlite3.Connection:
-        """返回共享 SQLite 连接 + 初始化本表 schema。
-
-        ``CREATE TABLE IF NOT EXISTS`` 幂等，每次调用无副作用，
-        确保任意表类率先连接时所有表 schema 都被初始化。
-        """
-        conn = get_shared_conn()
-        self._init_schema(conn)
-        return conn
-
-    def _init_schema(self, conn: sqlite3.Connection) -> None:
-        """创建表和索引（IF NOT EXISTS）。
-
-        使用连接 id 去重，同一连接只执行一次 DDL。
-
-        Args:
-            conn: 共享 SQLite 连接（由 ``_connect`` 传入）。
-        """
-        conn_id = id(conn)
-        if conn_id in _schema_initialized:
-            return
-        conn.execute(_CREATE_TABLE)
-        conn.execute(_CREATE_INDEX_SOURCE)
-        conn.execute(_CREATE_INDEX_SUBJECT)
-        conn.execute(_CREATE_INDEX_EXAM)
-        conn.execute(_CREATE_INDEX_TYPE)
-        _schema_initialized.add(conn_id)
-        logger.debug("questions table schema initialized (shared conn)")
-
-    def close(self) -> None:
-        """关闭数据库连接。
-
-        共享连接由 ``src.store.db.close_shared_conn()`` 统一管理，
-        本方法保留以兼容 context manager 协议，但不实际关闭连接。
-        """
-        logger.debug("QuestionsDB.close() skipped (shared connection managed by db/__init__.py)")
+    table_name = "questions"
+    ddl = (
+        _CREATE_TABLE,
+        _CREATE_INDEX_SOURCE,
+        _CREATE_INDEX_SUBJECT,
+        _CREATE_INDEX_EXAM,
+        _CREATE_INDEX_TYPE,
+    )
 
     # ── 插入 ────────────────────────────────────────────────────────
 
@@ -225,7 +181,7 @@ class QuestionsDB:
         row = self._connect().execute(
             "SELECT * FROM questions WHERE id = ?", (question_id,)
         ).fetchone()
-        return _row_to_dict(row) if row else None
+        return row_to_dict(row) if row else None
 
     def get_by_doc_id(self, doc_id: str) -> dict[str, Any] | None:
         """按 ``doc_id`` 查询题目记录（Chrom ↔ SQLite 桥接）。
@@ -239,7 +195,7 @@ class QuestionsDB:
         row = self._connect().execute(
             "SELECT * FROM questions WHERE doc_id = ?", (doc_id,)
         ).fetchone()
-        return _row_to_dict(row) if row else None
+        return row_to_dict(row) if row else None
 
     def get_by_file_id(self, file_id: int) -> list[dict[str, Any]]:
         """列出某试卷/作业下的所有题目。
@@ -253,7 +209,7 @@ class QuestionsDB:
         rows = self._connect().execute(
             "SELECT * FROM questions WHERE file_id = ? ORDER BY id", (file_id,)
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     # ── 列表查询 ────────────────────────────────────────────────────
 
@@ -296,7 +252,7 @@ class QuestionsDB:
         rows = conn.execute(
             f"SELECT * FROM questions {where} ORDER BY id", params
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def count(
         self,

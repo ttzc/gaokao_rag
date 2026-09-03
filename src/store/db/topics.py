@@ -19,7 +19,7 @@ from typing import Any
 
 from trpc_agent_sdk.log import logger
 
-from src.store.db import get_shared_conn
+from src.store.db import SQLiteTableDB, row_to_dict
 
 
 # ── Schema ──────────────────────────────────────────────────────────
@@ -34,20 +34,10 @@ CREATE TABLE IF NOT EXISTS topics (
 
 _CREATE_INDEX_NAME = "CREATE INDEX IF NOT EXISTS idx_topics_name ON topics(name);"
 
-# 已初始化 schema 的连接 id 集合，避免重复执行 DDL（幂等但浪费）
-_schema_initialized: set[int] = set()
-
-
-# ── 行映射 ──────────────────────────────────────────────────────────
-
-def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
-    """将 sqlite3.Row 转为普通字典。"""
-    return dict(row)
-
 
 # ── 数据访问类 ──────────────────────────────────────────────────────
 
-class TopicsDB:
+class TopicsDB(SQLiteTableDB):
     """知识点标签注册表 SQLite 数据访问层。
 
     封装 ``topics`` 表的所有 CRUD 操作。摄取管线调用本类注册/查询知识点，
@@ -60,48 +50,12 @@ class TopicsDB:
     3. 摄取时后续需要追加同义表述 → ``add_alias(topic_id, alias)``
     4. 题目标注 → 使用 ``topic_name`` 写入 ``question_topics`` 表
 
-    连接走全局共享 SQLite 连接（由 ``src.store.db.get_shared_conn()`` 管理），
-    保证跨表外键约束统一生效。
+    继承 ``SQLiteTableDB``（``src.store.db``）：共享连接 + 幂等 schema 初始化
+    （``_connect`` / ``_init_schema`` / ``close`` 三件套由基类提供）。
     """
 
-    def __init__(self) -> None:
-        pass
-
-    # ── 连接管理 ────────────────────────────────────────────────────
-
-    def _connect(self) -> sqlite3.Connection:
-        """返回共享 SQLite 连接 + 初始化本表 schema。
-
-        ``CREATE TABLE IF NOT EXISTS`` 幂等，每次调用无副作用，
-        确保任意表类率先连接时所有表 schema 都被初始化。
-        """
-        conn = get_shared_conn()
-        self._init_schema(conn)
-        return conn
-
-    def _init_schema(self, conn: sqlite3.Connection) -> None:
-        """创建表和索引（IF NOT EXISTS）。
-
-        使用连接 id 去重，同一连接只执行一次 DDL。
-
-        Args:
-            conn: 共享 SQLite 连接（由 ``_connect`` 传入）。
-        """
-        conn_id = id(conn)
-        if conn_id in _schema_initialized:
-            return
-        conn.execute(_CREATE_TABLE)
-        conn.execute(_CREATE_INDEX_NAME)
-        _schema_initialized.add(conn_id)
-        logger.debug("topics table schema initialized (shared conn)")
-
-    def close(self) -> None:
-        """关闭数据库连接。
-
-        共享连接由 ``src.store.db.close_shared_conn()`` 统一管理，
-        本方法保留以兼容 context manager 协议，但不实际关闭连接。
-        """
-        logger.debug("TopicsDB.close() skipped (shared connection managed by db/__init__.py)")
+    table_name = "topics"
+    ddl = (_CREATE_TABLE, _CREATE_INDEX_NAME)
 
     # ── 查询 ────────────────────────────────────────────────────────
 
@@ -125,7 +79,7 @@ class TopicsDB:
                ORDER BY id""",
             (keyword, f"%{keyword}%"),
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def get_by_name(self, name: str) -> dict[str, Any] | None:
         """精确按 name 查询。
@@ -140,7 +94,7 @@ class TopicsDB:
         row = self._connect().execute(
             "SELECT * FROM topics WHERE name = ?", (name,)
         ).fetchone()
-        return _row_to_dict(row) if row else None
+        return row_to_dict(row) if row else None
 
     def list_all(self) -> list[dict[str, Any]]:
         """列出所有 topics，按 id 升序。
@@ -151,7 +105,7 @@ class TopicsDB:
         rows = self._connect().execute(
             "SELECT * FROM topics ORDER BY id"
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     # ── 写入 ────────────────────────────────────────────────────────
 

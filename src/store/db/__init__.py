@@ -1,5 +1,5 @@
 # src/store/db/__init__.py
-# SQLite 数据访问层包：按表拆分的模块 + 共享连接管理。
+# SQLite 数据访问层包：按表拆分的模块 + 共享连接管理 + 表 DB 基类（SQLiteTableDB）。
 #
 # 连接策略：
 #   所有表类默认共用同一个 SQLite 连接（通过 ``get_shared_conn()`` 获取），
@@ -89,3 +89,82 @@ def close_shared_conn() -> None:
     if _shared is not None:
         _shared.close()
         _shared = None
+
+
+# ── 行映射 ──────────────────────────────────────────────────────────
+
+def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    """将 sqlite3.Row 转为普通字典（各表模块共用）。
+
+    Args:
+        row: sqlite3.Row 查询结果行。
+
+    Returns:
+        普通字典。
+    """
+    return dict(row)
+
+
+# ── 表 DB 基类 ──────────────────────────────────────────────────────
+
+class SQLiteTableDB:
+    """表级 SQLite 数据访问层基类：共享连接 + 幂等 schema 初始化。
+
+    各表模块（files / questions / topics / question_topics ...）的公共样板，
+    子类只需声明两个类属性即获得 ``_connect`` / ``_init_schema`` / ``close``
+    三件套：
+
+        table_name: 表名（日志用）。
+        ddl:        DDL 语句元组（CREATE TABLE + 全部索引，均 IF NOT EXISTS）。
+
+    schema 初始化按「类 × 连接 id」去重（DDL 幂等，但避免每次连接重复执行）；
+    测试隔离由 ``reset_schema_tracking()`` 统一重置记录。
+    """
+
+    table_name: str = ""
+    ddl: tuple[str, ...] = ()
+
+    # {子类: 已执行过本类 DDL 的连接 id 集合}，集中替代原各模块的
+    # _schema_initialized 私有全局（conftest 无需逐模块清理）
+    _initialized: dict[type, set[int]] = {}
+
+    def _connect(self) -> sqlite3.Connection:
+        """返回共享 SQLite 连接 + 初始化本表 schema。
+
+        ``CREATE TABLE IF NOT EXISTS`` 幂等，每次调用无副作用，
+        确保任意表类率先连接时所有表 schema 都被初始化。
+        """
+        conn = get_shared_conn()
+        self._init_schema(conn)
+        return conn
+
+    def _init_schema(self, conn: sqlite3.Connection) -> None:
+        """按 ``ddl`` 元组创建表和索引（IF NOT EXISTS），按「类 × 连接 id」去重。
+
+        Args:
+            conn: 共享 SQLite 连接（由 ``_connect`` 传入）。
+        """
+        initialized = SQLiteTableDB._initialized.setdefault(type(self), set())
+        conn_id = id(conn)
+        if conn_id in initialized:
+            return
+        for stmt in self.ddl:
+            conn.execute(stmt)
+        initialized.add(conn_id)
+        logger.debug("%s table schema initialized (shared conn)", self.table_name)
+
+    def close(self) -> None:
+        """关闭数据库连接。
+
+        共享连接由 ``close_shared_conn()`` 统一管理，本方法保留以兼容
+        context manager 协议，但不实际关闭连接。
+        """
+        logger.debug(
+            "%s.close() skipped (shared connection managed by db/__init__.py)",
+            type(self).__name__,
+        )
+
+
+def reset_schema_tracking() -> None:
+    """清空所有表类的 schema 初始化记录（测试隔离用，conftest 每测试前调用）。"""
+    SQLiteTableDB._initialized.clear()

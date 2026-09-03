@@ -9,13 +9,12 @@
 
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
 
 from trpc_agent_sdk.log import logger
 
 from src.config import config
-from src.store.db import get_shared_conn
+from src.store.db import SQLiteTableDB, row_to_dict
 
 
 # ── Schema ──────────────────────────────────────────────────────────
@@ -35,20 +34,10 @@ CREATE TABLE IF NOT EXISTS files (
 _CREATE_INDEX_KIND = "CREATE INDEX IF NOT EXISTS idx_files_kind ON files(kind);"
 _CREATE_INDEX_SHA = "CREATE UNIQUE INDEX IF NOT EXISTS idx_files_sha ON files(sha256);"
 
-# 已初始化 schema 的连接 id 集合，避免重复执行 DDL（幂等但浪费）
-_schema_initialized: set[int] = set()
-
-
-# ── 行映射 ──────────────────────────────────────────────────────────
-
-def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
-    """将 sqlite3.Row 转为普通字典。"""
-    return dict(row)
-
 
 # ── 数据访问类 ──────────────────────────────────────────────────────
 
-class FilesDB:
+class FilesDB(SQLiteTableDB):
     """文件注册表 SQLite 数据访问层。
 
     封装 ``files`` 表的所有 CRUD 操作。与 ``FileStore``（物理文件层）配合使用：
@@ -61,49 +50,12 @@ class FilesDB:
     2. ``FilesDB.register(file_path=..., sha256=..., ...)`` → 入库 + 返回 file_id
     3. 业务表（questions / knowledge_notes）通过 ``file_id`` 引用
 
-    连接走全局共享 SQLite 连接（由 ``src.store.db.get_shared_conn()`` 管理），
-    保证跨表外键约束统一生效。
+    继承 ``SQLiteTableDB``（``src.store.db``）：共享连接 + 幂等 schema 初始化
+    （``_connect`` / ``_init_schema`` / ``close`` 三件套由基类提供）。
     """
 
-    def __init__(self) -> None:
-        pass
-
-    # ── 连接管理 ────────────────────────────────────────────────────
-
-    def _connect(self) -> sqlite3.Connection:
-        """返回共享 SQLite 连接 + 初始化本表 schema。
-
-        ``CREATE TABLE IF NOT EXISTS`` 幂等，每次调用无副作用，
-        确保任意表类率先连接时所有表 schema 都被初始化。
-        """
-        conn = get_shared_conn()
-        self._init_schema(conn)
-        return conn
-
-    def _init_schema(self, conn: sqlite3.Connection) -> None:
-        """创建表和索引（IF NOT EXISTS）。
-
-        使用连接 id 去重，同一连接只执行一次 DDL。
-
-        Args:
-            conn: 共享 SQLite 连接（由 ``_connect`` 传入）。
-        """
-        conn_id = id(conn)
-        if conn_id in _schema_initialized:
-            return
-        conn.execute(_CREATE_TABLE)
-        conn.execute(_CREATE_INDEX_KIND)
-        conn.execute(_CREATE_INDEX_SHA)
-        _schema_initialized.add(conn_id)
-        logger.debug("files table schema initialized (shared conn)")
-
-    def close(self) -> None:
-        """关闭数据库连接。
-
-        共享连接由 ``src.store.db.close_shared_conn()`` 统一管理，
-        本方法保留以兼容 context manager 协议，但不实际关闭连接。
-        """
-        logger.debug("FilesDB.close() skipped (shared connection managed by db/__init__.py)")
+    table_name = "files"
+    ddl = (_CREATE_TABLE, _CREATE_INDEX_KIND, _CREATE_INDEX_SHA)
 
     # ── 注册（INSERT + 去重） ────────────────────────────────────────
 
@@ -175,7 +127,7 @@ class FilesDB:
         row = self._connect().execute(
             "SELECT * FROM files WHERE id = ?", (file_id,)
         ).fetchone()
-        return _row_to_dict(row) if row else None
+        return row_to_dict(row) if row else None
 
     def get_by_path(self, file_path: str) -> dict[str, Any] | None:
         """按 ``file_path`` 查询文件记录。
@@ -189,7 +141,7 @@ class FilesDB:
         row = self._connect().execute(
             "SELECT * FROM files WHERE file_path = ?", (file_path,)
         ).fetchone()
-        return _row_to_dict(row) if row else None
+        return row_to_dict(row) if row else None
 
     def get_by_sha(self, sha256: str) -> dict[str, Any] | None:
         """按 ``sha256`` 查询文件记录。
@@ -203,7 +155,7 @@ class FilesDB:
         row = self._connect().execute(
             "SELECT * FROM files WHERE sha256 = ?", (sha256,)
         ).fetchone()
-        return _row_to_dict(row) if row else None
+        return row_to_dict(row) if row else None
 
     def get_by_title(self, title: str) -> dict[str, Any] | None:
         """按 ``title`` 查询文件记录。
@@ -220,7 +172,7 @@ class FilesDB:
         row = self._connect().execute(
             "SELECT * FROM files WHERE title = ?", (title,)
         ).fetchone()
-        return _row_to_dict(row) if row else None
+        return row_to_dict(row) if row else None
 
     # ── 列表查询 ────────────────────────────────────────────────────
 
@@ -241,7 +193,7 @@ class FilesDB:
             ).fetchall()
         else:
             rows = conn.execute("SELECT * FROM files ORDER BY id").fetchall()
-        return [_row_to_dict(r) for r in rows]
+        return [row_to_dict(r) for r in rows]
 
     def count(self, kind: str | None = None) -> int:
         """统计文件记录数。
