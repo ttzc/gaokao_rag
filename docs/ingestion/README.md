@@ -8,7 +8,7 @@
 
 `src/ingestion/` 是**唯一允许修改三层存储**的代码层——文件层（FileStore）+ SQLite（逐表）+ 向量层（Chroma）的三态一致性，由本包内的原子函数统一保证。**任何写入（新增 / 更新 / 删除题目、图片、试卷、错题、讲解、知识点、作答、复习计划、周报）都必须经由本包暴露的函数，Agent 的 tool 不得直接调用 `src.store.*`。**
 
-知识整理 Agent 的「归位」原语（`resolve_or_create_topics` / `create_topic` / `add_topic_alias` / `delete_topic`）也收敛到 `src/ingestion/topic.py`，供 `ingest_question` 与知识整理 tool 复用。
+题目维护 Agent 的「归位」原语（`resolve_or_create_topics` / `create_topic` / `add_topic_alias` / `delete_topic`）也收敛到 `src/ingestion/topic.py`，供 `ingest_question` 与题目维护 tool 复用。
 
 ---
 
@@ -26,7 +26,7 @@ flowchart TD
         B --> B1[文档识别 Agent<br/>提取内容]
         B1 --> B2[结构识别 Agent<br/>划分讲解/题目]
         B2 -->|讲解段| B2a[知识点讲解<br/>自动入库]
-        B2 -->|题目段| B3[知识整理 Agent<br/>标注知识点]
+        B2 -->|题目段| B3[题目维护 Agent<br/>标注知识点]
         B3 --> L2[Leader<br/>回显清单收集决策]
         L2 -->|ingest_decisions| B4[入库决策 Agent<br/>分流写库]
     end
@@ -54,7 +54,7 @@ flowchart TD
 |--|--|--|
 | **输入** | 一份试卷 PDF / 作业照片 / 专题讲义 | 一道题的原始内容（题干 + 可选图像 + 可选答案/解析） |
 | **核心任务** | 切分 + 调度：把文档变成 N 道题目 + M 段讲解 | 处理 + 入库：把一道题变成结构化数据 |
-| **Agent 协作** | 文档识别 → 结构识别 →（讲解自动入库）/（题目进清单）→ Leader 回显确认 → 入库决策写库 | 知识整理 → 入库决策 → 写入 |
+| **Agent 协作** | 文档识别 → 结构识别 →（讲解自动入库）/（题目进清单）→ Leader 回显确认 → 入库决策写库 | 题目维护 Agent（知识点归位）→ 入库决策 → 写入 |
 | **终止条件** | Leader 回显题目清单，等待用户确认后分流写库 | 按用户决策分流完成 |
 | **跳过条件** | 作业拍照（单题/少量题）直接进入单题摄入 | — |
 
@@ -67,8 +67,8 @@ flowchart TD
 **职责**：接收用户上传的任意格式（PDF / 照片 / 文本），提取结构化内容。
 
 **挂载工具**：
-- `PDFExtractTool`：PyMuPDF 提取文本块 + 嵌入图像列表；复杂版面降级 MinerU2.5-Pro
-- `VLMImageTool`：Qwen3.7-Flash/Plus，理解照片中的题目内容 + 图形描述
+- `ExtractTool`：PDF / 图像两路提取（PDF 走 PyMuPDF 文本块 + 嵌入图像列表、复杂版面降级 MinerU2.5-Pro；照片走 Qwen3.7-Flash/Plus 理解题目内容 + 图形描述），只提取不切结构
+- `VLMUnderstandTool`：图形结构化描述（描述入库、查询不重复调用）
 
 **决策原则**：
 - PDF 优先走 PyMuPDF，版面复杂才降级 MinerU
@@ -101,14 +101,18 @@ flowchart TD
 
 ---
 
-### 知识整理 Agent
+### 题目维护 Agent（兼知识点归位）
 
-**职责**：对题目进行知识点标注，与 `topics` 表交互实现 tag 归位。
+**职责一（摄入链路）**：对题目进行知识点标注，与 `topics` 表交互实现 tag 归位。
 
-**挂载工具**（见 [agent/knowledge_organize.md](../agent/ingestion/knowledge_organize.md)「知识整理 Agent 详解」）：
+**职责二（数据维护，2026-09-03 扩）**：承接 `manage` 意图的**改题 / 删题**——知识点树治理后置后，本 Agent 与「对已入库题目的写操作」天然同域。Leader 只负责定位 `question_id` + 打包委派 + 删前回显确认，**不自己调写工具**（`create_gaokao_leader()` 不传 `tools=`，保持纯编排者）。详见 [agent/ingestion/question_maintain.md](../agent/ingestion/question_maintain.md)。
+
+**挂载工具**（见 [agent/ingestion/question_maintain.md](../agent/ingestion/question_maintain.md)）：
 - `search_topic(keyword)`：按名字/别名模糊查节点
 - `create_topic(name, aliases=[])`：新增 tag
 - `add_alias(topic_id, alias)`：同义表述归并
+- `update_question(...)`：改题目（⏳ 随门面落地）
+- `delete_question(question_id)`：删题目（⏳ 随门面落地）
 
 **决策原则**：
 - 开放式提取：LLM 读取题目文本，提取知识点名（不预定义候选集）
@@ -227,10 +231,12 @@ python scripts/ingest.py --source ima --kb "高考2026" --folder "数学/试卷"
 
 详细设计见各模块文档：
 
-- [question.md](question.md) — 存储一道题（文件 + DB + 向量 + knowledge 四层）
+- [question.md](question.md) — 存储一道题（文件 + DB + 向量 + knowledge 四层）+ **修改 / 删除题目**（`update_question` / `delete_question`，设计已定、代码未落地）
 - [image.md](image.md) — 存储一张图（文件 + DB）
 - [exam_paper.md](exam_paper.md) — 存储一份试卷（文件 + DB）
 - [error.md](error.md) — 存储错题（DB + 关联题目）
+
+> **改 / 删的归属（2026-09-03）**：改题 / 删题**不属于摄入流水线**，执行者为**题目维护 Agent**——其原本就管「已入库题目的知识点改动」，树治理后置后并入改 / 删。**Leader 不自己调工具**（`create_gaokao_leader()` 不传 `tools=`，构造见 `src/agent/leader.py:132`），只做定位 `question_id` + 打包委派 + 删前回显确认。详见 [question.md](question.md)「Agent 侧入口（改 / 删）」。
 
 ### 设计原则
 
@@ -239,6 +245,7 @@ python scripts/ingest.py --source ima --kb "高考2026" --folder "数学/试卷"
 3. **ingestion 层无 LLM 决策**：所有输入必须是结构化数据，不做内容理解、不做格式判断
 4. **每个工具可独立测试**：mock 结构化数据即可测试，不依赖 LLM
 5. **知识点归位复用 store 层**：`src/store/db/topics.py`（`TopicsDB`）已提供 topics 查询/创建/别名管理（`search` / `create` / `add_alias`），ingestion 层直接调用，不重复实现。注意：不是 `src/retrieval/knowledge.py`——那是读门面的知识检索组件（`GaokaoKnowledge` 语义检索），不管 topic 注册。
+6. **跨存储删除先向量后 DB**：Chroma 与 SQLite 之间无分布式事务，中断必然留下不一致。先删向量 → 「数据还在、只是检索不到，可重建」；先删 DB → 「孤儿向量，检索命中但回查不到内容」是用户可见的脏数据。取舍见 [question.md](question.md)「delete_question」。
 
 ### 与 Agent 的协作方式
 

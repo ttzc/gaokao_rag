@@ -6,7 +6,7 @@
 
 Gaokao RAG 的 Agent 层基于 tRPC-Agent-Python 的 **TeamAgent** 构建（多 Agent 协作模式）。这是与 AlgoNotes RAG（单 RAG Agent）拉开差距的核心差异点。
 
-**核心架构**：一个 **Team Leader**（LLM）接收用户请求，**自由委派**任务给 4 个查询侧子 Agent（搜索信息/VLM 理解/聚合数据/输出整理）+ 4 个摄入侧子 Agent（文档识别/结构识别/知识整理/入库决策），再汇总成员结果生成最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。**意图识别不是独立子 Agent，而是 Leader 系统提示词内的一项路由能力**（系统提示词列出已实现子 Agent 清单，Leader 自行匹配意图后委派，2026-08-28 决策，详见 [leader.md](leader.md)）。
+**核心架构**：一个 **Team Leader**（LLM）接收用户请求，**自由委派**任务给 4 个查询侧子 Agent（搜索信息/VLM 理解/聚合数据/输出整理）+ 4 个摄入侧子 Agent（文档识别/结构识别/题目维护/入库决策），再汇总成员结果生成最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。**意图识别不是独立子 Agent，而是 Leader 系统提示词内的一项路由能力**（系统提示词列出已实现子 Agent 清单，Leader 自行匹配意图后委派，2026-08-28 决策，详见 [leader.md](leader.md)）。
 
 **为什么用 TeamAgent 而非 GraphAgent**：
 
@@ -35,7 +35,7 @@ flowchart TB
         SEARCH --> OUT[输出整理 Agent]
         AGG --> OUT
         DOC --> STRUCT[结构识别 Agent]
-        STRUCT --> KNOW[知识整理 Agent]
+        STRUCT --> KNOW[题目维护 Agent]
         KNOW --> STORE[入库决策 Agent]
         STORE --> OUT
     end
@@ -58,7 +58,8 @@ flowchart TB
 - **入口层**：QQ（官方 API + nanobot 通道适配器）/ CLI / MCP / FastAPI 统一接入 trpc-claw 网关
 - **Agent 层**：Leader 按意图委派成员——**意图匹配在 Leader 系统提示词内完成**（2026-08-28 决策，非独立子 Agent）：
   - **查询侧（读）**：question/browse 走搜索（含图触发 VLM）→ 输出；review/report 走聚合 → 输出
-  - **摄入侧（写）**：ingest 走文档识别 → 结构识别 → 知识整理 → Leader 回显确认 → 入库决策 → 输出
+  - **摄入侧（写）**：ingest 走文档识别 → 结构识别 → 题目维护 → Leader 回显确认 → 入库决策 → 输出
+  - **数据维护（写）**：`manage` 走**题目维护 Agent**执行——Leader 定位 `question_id` + 打包委派 + 删前回显确认，**自己不调写工具**（`create_gaokao_leader()` 不传 `tools=`，保持纯编排者；改题的字段结构化 / 来源拆解 / 补解析是 LLM 编排活，归子 Agent）。改题可逆→委派执行后汇报；删题不可逆→确认后才委派（2026-09-03 决策）
   - 不同意图走不同成员组合，不是所有成员每次都被调用
 - **存储层**：搜索 Agent 查询 Chroma（语义）+ SQLite（精确过滤）；聚合 Agent 读写 SQLite（错题/作答/报告）；摄入侧写入 Chroma + SQLite（题目/知识点/错题）
 
@@ -80,7 +81,7 @@ flowchart TD
     subgraph "摄入侧（写）"
         L --> B1[文档识别 Agent]
         L --> B2[结构识别 Agent]
-        L --> B3[知识整理 Agent]
+        L --> B3[题目维护 Agent]
         L --> B4[入库决策 Agent]
     end
 
@@ -109,7 +110,7 @@ flowchart TD
 | --------- | ------ | --------- |
 | **文档识别 Agent** | 接收照片/PDF → 提取内容（图片走 VLM，PDF 走 PyMuPDF） | VLM + PyMuPDF 工具 |
 | **结构识别 Agent** | 区分讲解段 vs 题目段 → **语义划分每题「题目/答案/解析」**（不依赖关键词）→ 生成题目清单（每题一句话概括） | LLM 分类 |
-| **知识整理 Agent** | 知识点提取 → tag 归位/别名归并（写 topics） | tag CRUD 工具（topics FunctionTool） |
+| **题目维护 Agent** | ① 知识点提取 → tag 归位 / 别名归并（写 topics）；② 改 / 删题（`manage` 意图，Leader 委派）：字段结构化 / 来源拆解 / 补解析 / 知识点重标 | `KnowledgeTool` + `UpdateQuestionTool` + `DeleteQuestionTool`（⏳ 后两个随门面落地） |
 | **入库决策 Agent** | 消费题目清单 + 用户去向（入库/错题/跳过）→ 写 questions/errors（**回显由 Leader 管理**） | SQLite 写入工具 |
 
 **设计要点**：
@@ -126,15 +127,16 @@ flowchart TD
 class GaokaoState(State):
     # 业务字段
     subject: str                    # 学科（MVP 固定 "math"）
-    query_type: str                 # "question" | "review" | "report" | "browse" | "ingest"（Leader 匹配意图后写入）
+    query_type: str                 # "question" | "review" | "report" | "browse" | "ingest" | "manage"（Leader 匹配意图后写入）
     period_type: str                # "weekly" | "monthly"（report 意图时由 Leader 解析）
     retrieved_docs: list[dict]     # 检索到的题目/解析（含知识点信息）
     vlm_descriptions: list[str]    # VLM 生成的图形描述
     answer: str                     # 最终答案
     review_suggestion: str         # 复习建议
-    # 摄入侧字段
+    # 摄入侧字段（此处列典型字段，全量契约见下节表）
     pending_questions: list[dict]  # 待确认题目清单（回显用）
     ingest_decisions: list[dict]   # 用户对每题的决策（入库/错题/跳过）
+    manage_result: dict | None     # 改 / 删结果（manage 意图，题目维护 Agent 产出）
     # Reducer 字段
     execution_history: Annotated[list[dict], append_list]
 ```
@@ -149,7 +151,7 @@ flowchart TD
     L --> R[文档识别 Agent]
     R -->|raw_blocks| S[结构识别 Agent]
     S -->|lecture_segments| KN[讲解段自动入库<br/>knowledge_notes]
-    S -->|pending_questions| K[知识整理 Agent]
+    S -->|pending_questions| K[题目维护 Agent]
     K -->|topic_draft| L[Leader<br/>回显题目清单]
     L -->|ingest_decisions<br/>用户选择入库/错题/跳过| D[入库决策 Agent<br/>分流写库]
     D -->|ingest_results| OUT[写入 questions / errors<br/>汇总结果]
@@ -160,17 +162,18 @@ flowchart TD
 | 字段 | 产出者 | 内容 | 消费方 |
 |------|--------|------|--------|
 | `raw_blocks` | 文档识别 | 结构化文本块 + 图像列表 + 坐标信息 | 结构识别 |
-| `pending_questions` | 结构识别 | 题目清单（每题：一句话概括 + 题目 / 答案 / 解析三段 + 关联图像 / 来源（source_hint）；不留原文块） | 知识整理、Leader（回显）、入库决策 |
+| `pending_questions` | 结构识别 | 题目清单（每题：一句话概括 + 题目 / 答案 / 解析三段 + 关联图像 / 来源（source_hint）；不留原文块） | 题目维护 Agent、Leader（回显）、入库决策 |
 | `lecture_segments` | 结构识别 | 讲解段文本列表 | 自动入库（knowledge_notes） |
-| `topic_draft` | 知识整理 | 每题知识点草案（topic_name 列表，待归位） | 入库决策 |
+| `topic_draft` | 题目维护 Agent | 每题知识点草案（topic_name 列表，待归位） | 入库决策 |
 | `ingest_decisions` | 用户（Leader 收集） | 每题去向（入库 / 错题 / 跳过） | 入库决策 |
 | `ingest_results` | 入库决策 | 写入结果（question_id / doc_id） | 输出整理 |
+| `manage_result` | 题目维护 Agent | 改 / 删结果（`{"action", "question_id", "updated_fields"}` 或 `{"action":"delete", "cascade":{...}}`）——`manage` 意图，非摄入流水线产物 | Leader（汇报 / 删前回显） |
 
 **4 个澄清要点**：
 
 1. **文档识别只提取不写库**：`raw_blocks` 是内存态，由结构识别消费，不落任何表
 2. **讲解段自动入库、题目才回显**：`lecture_segments` 直接写 knowledge_notes（无需用户确认）；只有题目进回显清单
-3. **知识整理双路由**：题目段标注 → `question_topics` 关联；讲解段标注 → `knowledge_notes.topic_tags`。两者都走 tag 归位原语（见 [ingestion/knowledge_organize.md](ingestion/knowledge_organize.md)）
+3. **题目维护 Agent 的知识点双路由**：题目段标注 → `question_topics` 关联；讲解段标注 → `knowledge_notes.topic_tags`。两者都走 tag 归位原语（见 [ingestion/question_maintain.md](ingestion/question_maintain.md)）
 4. **错题先题后错**：标记「错题」的题**先** `ingest_question` 入库、**再**由错题本体系调 `ingest_error(question_id, user_reflection)` 写错因，杜绝循环依赖（见 [ingestion/storage_decision.md](ingestion/storage_decision.md)）
 
 ## 目录导航（与 src/agent/ 一一对应）
@@ -184,7 +187,7 @@ flowchart TD
 | [tools/retrieve_tool.md](tools/retrieve_tool.md) | `tools/retrieve_tool.py` | 检索工具（读门面适配层 + 框架检索工具介绍） |
 | [ingestion/doc_recognition.md](ingestion/doc_recognition.md) | `ingestion/doc_recognition.py` | 文档识别 Agent |
 | [ingestion/structure_recognition.md](ingestion/structure_recognition.md) | `ingestion/structure_recognition.py` | 结构识别 Agent |
-| [ingestion/knowledge_organize.md](ingestion/knowledge_organize.md) | `ingestion/knowledge_organize.py` | 知识整理 Agent |
+| [ingestion/question_maintain.md](ingestion/question_maintain.md) | `ingestion/question_maintain.py` | 题目维护 Agent（**兼知识点归位**：改 / 删题，2026-09-03 扩职责） |
 | [ingestion/storage_decision.md](ingestion/storage_decision.md) | `ingestion/storage_decision.py` | 入库决策 Agent |
 | [retrieval/search.md](retrieval/search.md) | `retrieval/search.py` | 搜索信息 Agent |
 | [retrieval/vlm.md](retrieval/vlm.md) | `retrieval/vlm.py` | VLM 理解 Agent（查询侧） |
@@ -207,7 +210,7 @@ flowchart TD
 
 **Skill 挂载约束（2026-08-28 新增）**：使用 Skill 的子 Agent 通过共享构造 `create_skill_tool_set(ALLOWED_SKILLS)`（`src/agent/skills/__init__.py`）挂载——`ALLOWED_SKILLS` 白名单烘焙进仓库（名单外不可见、不可加载，框架层硬约束），`before_agent_callback` 收紧 `tool_profile`（knowledge_only / full）。详见 [skills/README.md](skills/README.md)。
 
-**边界**：保留 sub-agent 的 Leader 委派与 `GaokaoState` 回填结构；知识整理（挂 ingest_tool 的 KnowledgeTool）、聚合数据（经门面读写 SQLite）等挂载工具的子 Agent 不涉及 prompt 萃取。
+**边界**：保留 sub-agent 的 Leader 委派与 `GaokaoState` 回填结构；题目维护 Agent（挂 ingest_tool 的 KnowledgeTool）、聚合数据（经门面读写 SQLite）等挂载工具的子 Agent 不涉及 prompt 萃取。
 
 ## Session 与 Memory
 

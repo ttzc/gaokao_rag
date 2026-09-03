@@ -14,8 +14,8 @@
 
 ## 挂载工具
 
-- `PDFExtractTool`：PyMuPDF 提取文本块 + 嵌入图像列表；复杂版面降级 MinerU2.5-Pro（见 [../tools/ingest_tool.md](../tools/ingest_tool.md)）
-- `VLMImageTool`：Qwen3.7-Flash/Plus，理解照片中的题目内容 + 图形描述（见 [../tools/ingest_tool.md](../tools/ingest_tool.md)）
+- `ExtractTool`：PDF / 图像两路提取（PDF 走 PyMuPDF 文本块 + 嵌入图像列表、复杂版面降级 MinerU2.5-Pro；照片走 Qwen3.7-Flash/Plus 理解题目内容 + 图形描述），只提取不切结构（见 [../tools/ingest_tool.md](../tools/ingest_tool.md)）
+- `VLMUnderstandTool`：图形结构化描述（描述入库、查询不重复调用）（见 [../tools/ingest_tool.md](../tools/ingest_tool.md)）
 
 ## 决策原则
 

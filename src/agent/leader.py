@@ -15,7 +15,7 @@
 # MVP 范围（2026-08-29 更新）：
 #   - 挂 search（检索）+ structure_recognition + storage_decision 三个成员；
 #     意图路由由 Leader 提示词内联完成（不单独开子 Agent，2026-08-28 决策）。
-#     其余成员（文档识别/知识整理/聚合数据/输出整理等）后续按 roadmap 逐棒补齐。
+#     其余成员（文档识别/题目维护/聚合数据/输出整理等）后续按 roadmap 逐棒补齐。
 #   - LEADER_INSTRUCTION 直接定义在本文件：leader 层只有这一个 Agent，
 #     不抽独立 prompts 模块（structure_recognition / ingestion 的 prompts.py
 #     是"多 Agent 共享 prompt 文件"的场景，本层不适用）。

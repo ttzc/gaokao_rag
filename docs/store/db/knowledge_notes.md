@@ -44,4 +44,4 @@ CREATE INDEX idx_notes_file ON knowledge_notes(file_id);
 | `examples` 字段 | JSON 数组引用 `questions.id`（讲解配套的例题） |
 | Chroma | `doc_id` ↔ 讲解 document |
 
-> 摄入链路：结构识别 Agent 分出"讲解段" → 知识整理 Agent 标知识点（挂 topics）→ 入库（本表 + Chroma）。
+> 摄入链路：结构识别 Agent 分出"讲解段" → 题目维护 Agent 标知识点（挂 topics）→ 入库（本表 + Chroma）。

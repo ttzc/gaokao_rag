@@ -60,7 +60,7 @@ flowchart LR
     T -->|topic_tags 名字| CHROMA[Chroma metadata]
 ```
 
-- **摄入侧**：`store/db/topics.py` 封装 tag CRUD → 供摄取 Agent / 知识整理 Agent 调用
+- **摄入侧**：`store/db/topics.py` 封装 tag CRUD → 供摄取 Agent / 题目维护 Agent 调用
 - **检索侧**：`topic_tags` 直接 `$contains` 过滤（无树展开），见 [vector_store.md「Metadata 格式与过滤语义」](../vector/vector_store.md)
 
 ## 正式版升级路径
@@ -72,6 +72,6 @@ MVP 验证"标签化检索"可行后，正式版可升级为树形结构：
 3. 增加 `level` / `confidence` / `source_count` 字段
 4. 实现 `expand_tag_names()` 树展开（父节点 → 全部子孙的 name+aliases 并集）
 5. 实现 `move_topic` / `merge_topic` / `create_topic` 树操作
-6. 知识整理 Agent 增加"归位/合并/挂载"流程
+6. 题目维护 Agent 增加"归位/合并/挂载"流程
 
 升级时 `name` / `aliases` / `question_topics` 关联不变，平滑过渡。

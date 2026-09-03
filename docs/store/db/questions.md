@@ -10,7 +10,7 @@
 CREATE TABLE questions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     doc_id          TEXT UNIQUE NOT NULL,          -- 与 Chroma document 的 doc_id 对应
-    source_type     TEXT NOT NULL,                  -- "exam" / "special_topic" / "homework" / "error_book"
+    source_type     TEXT NOT NULL,                  -- "exam"(试卷) / "homework"(作业) / "special_topic"(专题) / "reference"(资料讲义) / "error_book"(错题本，预留)
     subject         TEXT NOT NULL,                  -- 学科: "数学" / "物理" / ...（查询热维度，冗余列——扩科后 questions 混合多学科，直接过滤免 join；摄入时从源文件学科判定，MVP 固定"数学"）
     file_id         INTEGER REFERENCES files(id),  -- 所属试卷/作业（files 表；标题经 join 获取，不冗余）
     exam_regions    TEXT,                            -- 考区层级 JSON 数组，从小到大: ["深圳","广东","全国一卷"]；单级可 ["南昌"]；可空=未知
@@ -45,7 +45,7 @@ CREATE INDEX idx_questions_type ON questions(question_type);
 - 插入：本表 + `question_topics` 关联 + Chroma document（**同一事务**，见摄入管线）
 - 按知识点查：`question_topics` join 本表（`WHERE topic_name IN (?)` 直接匹配）
 - 按考试查：`WHERE exam_regions LIKE '%"南昌"%' AND exam_year = ?`（JSON 数组包含匹配；题目量小全表扫可接受）
-- 删除：级联删 `question_topics` / `errors` 引用 + Chroma document
+- 删除：级联删 `question_topics` / `errors` / `exam_attempts` 引用 + Chroma document——**本表 `delete()` 只删自身行，级联责任在调用方**（写门面 `delete_question`，见 [ingestion/question.md](../../ingestion/question.md)）
 
 ## 与其他表的关系
 

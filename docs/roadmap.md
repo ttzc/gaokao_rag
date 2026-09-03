@@ -21,12 +21,12 @@
 | 向量层（L3） | `vector_store.py` + `GaokaoKnowledge`（已归位 `src/retrieval/`） | — |
 | 摄入门面 | `ingestion/question.py`（原子化单题） | `image` `exam_paper` `topic` `knowledge_note` `error` `exam_attempt` |
 | 检索门面 | `retrieval/knowledge.py`、`retrieval/question.py` | `knowledge_note` `topic` `error` `exam_attempt` `report` |
-| Agent | Leader + 3 成员（结构识别 / 入库决策 / 搜索信息） | 文档识别、知识整理、VLM 理解、聚合数据、输出整理 |
+| Agent | Leader + 3 成员（结构识别 / 入库决策 / 搜索信息） | 文档识别、题目维护、VLM 理解、聚合数据、输出整理 |
 | Tools | `ingest_question_tool`、`knowledge_search_tool`、`get_question_detail_tool` | Extract / VLM / Knowledge / 其余业务查询工具 |
 | 入口 | `scripts/chat.py`（对话调试）、`scripts/cli.py`（只读浏览） | QQ、MCP、HTTP |
 | 工程 | pytest + integration 分组 + GitHub Actions CI | Langfuse、Session 持久化 |
 
-**数据现状（这是当前最大的问题）**：`questions` 4 条（全部口述入库）、`files` 0 条、`topics` / `question_topics` **0 条**（知识整理 Agent 未落地，Leader 暂不传 `topic_names`）、`data/files/` 空。
+**数据现状（这是当前最大的问题）**：`questions` 4 条（全部口述入库）、`files` 0 条、`topics` / `question_topics` **0 条**（题目维护 Agent 未落地，Leader 暂不传 `topic_names`）、`data/files/` 空。
 08-29 chat.py 实测结论：检索体验差的根因是**数据量**，不是代码。
 
 ---
@@ -196,9 +196,9 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 ### c. 知识点关联补链（`topics` 表现在是空的）
 
 - [ ] `src/ingestion/topic.py`：归位原语 `resolve_or_create_topics` / `create_topic` / `add_topic_alias`
-- [ ] `src/agent/ingestion/knowledge_organize.py` 知识整理 Agent（题目 + 讲解段双路提取）
+- [ ] `src/agent/ingestion/question_maintain.py` 题目维护 Agent（知识点双路提取；**兼 `manage` 改 / 删题**，见 f）
 - [ ] `src/retrieval/topic.py`：`search_topics` / `list_topics` / `get_topic`
-- [ ] Leader 摄入链补「知识整理」步骤，取消当前 `topic_names` 不传的降级
+- [ ] Leader 摄入链补「题目维护 Agent（知识点归位）」步骤，取消当前 `topic_names` 不传的降级
 
 **验收**：入库题目带知识点 tag，`topics` / `question_topics` 有数据；问"椭圆"能返回相关 tag
 
@@ -218,6 +218,25 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 **验收**：`questions` ≥ 200，检索有得可召
 
 > 顺序上 e 可以随时插队——它是纯手工活，不依赖任何代码。哪天不想写代码了就去导 PDF。
+
+### f. 题目维护改 / 删（设计已定，2026-09-03；优先级低于 a–e）
+
+设计已写进 [ingestion/question.md](ingestion/question.md)（`update_question` / `delete_question`），代码未落地。排在 a–e 之后的理由：库里才 4 题时，改 / 删的需求几乎不会出现，先灌数据。
+
+- [ ] store 层补 `QuestionTopicsDB.remove_by_question(question_id)`（现有只有单条 `remove`）
+- [ ] `src/ingestion/question.py` 加 `update_question`（部分更新 + 知识点全量替换 + VLM 描述回读重嵌）
+- [ ] 加 `delete_question`（先 Chroma 后 DB 的级联顺序；**阶段 1 只级联三处**：`question_topics` + Chroma + 主行）
+- [ ] `UpdateQuestionTool` / `DeleteQuestionTool` 并入写侧 `ingest_tool.py`，挂**题目维护 Agent**
+- [ ] 题目维护 Agent 扩 `manage` 分支（改题：字段结构化 / 来源拆解 / 补解析；删题：薄调用 + 回传 cascade）
+- [ ] Leader 加 `manage` 意图：定位 `question_id` + 打包委派 + 删前回显确认（Leader 不挂写工具）
+- [ ] **随错题本落地**：`delete_question` 级联扩展到 `errors` + 删除预检（查引用 → 回显连带影响 → 用户确认一起删）
+- [ ] **随作答功能落地**：同上扩展 `exam_attempts`
+
+> **归属决策（2026-09-03）**：改 / 删**不挂 Leader**——`create_gaokao_leader()` 不传 `tools=`，Leader 是纯编排者，挂写工具破坏「只委派」。执行者为**题目维护 Agent**：其原本就管「已入库题目的知识点改动」，树治理后置后并入改 / 删，属同一类写操作。代码未落地，扩职责零成本。
+>
+> **级联分阶段（2026-09-03 用户拍板）**：现在门面只删三处，不为删题倒推建 errors / exam_attempts 模块；**错题本功能落地时同步修改删除代码**——检查该题是否在错题本中，命中则在回显阶段提示用户，确认后一起删除；作答同理。检查进回显而非当闸门，不做「删除时拒绝」。删题预检（首轮）与执行（用户确认后的新一轮）分属两轮、每轮只委派一次，与「每成员每任务最多委派一次」铁律天然不冲突，无需例外。
+
+**验收**：改一道题的答案 + 知识点 → SQLite 与 Chroma 同步、检索能召回新内容；删一道题 → 关联 `question_topics` 与向量一并清掉，raw 文件保留（`errors` / `exam_attempts` 级联在阶段 2 随各自功能验收）
 
 ## V0.7 会话持久化 + QQ 上线
 

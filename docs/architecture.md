@@ -119,7 +119,7 @@ gaokao_rag/
 │   ├── agent/                 # Agent 编排层（TeamAgent + 子 Agent + 工具 + Skills）
 │   │   ├── leader.py          #   Team Leader 编排（TeamAgent + 自由委派）
 │   │   ├── tools/             #   FunctionTool（按写/读拆两个文件：ingest_tool / retrieve_tool，挂到各子 Agent）
-│   │   │   ├── ingest_tool.py  #    写侧工具（合并自原 extract/vlm/knowledge/ingest 4 个 tool 文件；挂到文档识别/知识整理/入库决策/VLM 理解子 Agent）
+│   │   │   ├── ingest_tool.py  #    写侧工具（合并自原 extract/vlm/knowledge/ingest 4 个 tool 文件；挂到文档识别/题目维护/入库决策/VLM 理解子 Agent）
 │   │   │   └── retrieve_tool.py #   读侧工具（合并自原 knowledge_tool 查询侧 / error_tool；框架检索工具 + 业务查询，挂到搜索/聚合子 Agent）
 │   │   │
 │   │   ├── skills/            #   Agent Skills：__init__.py 承载共享构造（SKILLS_ROOT / create_skill_tool_set / 白名单仓库），子目录各含一个 SKILL.md
@@ -128,7 +128,7 @@ gaokao_rag/
 │   │   ├── ingestion/         #   摄入侧子 Agent（每文件一个 Agent，只调 src/ingestion 写门面）
 │   │   │   ├── doc_recognition.py       #  文档识别 Agent
 │   │   │   ├── structure_recognition.py #  结构识别 Agent
-│   │   │   ├── knowledge_organize.py    #  知识整理 Agent
+│   │   │   ├── question_maintain.py    #  题目维护 Agent（知识点归位 + 改 / 删题）
 │   │   │   ├── storage_decision.py      #  入库决策 Agent
 │   │   │   └── prompts.py               #  摄入侧各 Agent 的 instruction 常量（长 prompt 独立成模块）
 │   │

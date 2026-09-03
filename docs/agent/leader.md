@@ -4,7 +4,7 @@
 
 ## 定位
 
-Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给查询侧 5 个 / 摄入侧 4 个子 Agent，再综合成员结果输出最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。
+Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给查询侧 4 个 / 摄入侧 4 个子 Agent，再综合成员结果输出最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。
 
 ## 上下文隔离策略（函数式委派，2026-08-28 决策）
 
@@ -30,7 +30,8 @@ Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给�
 - **意图分流**（2026-08-28 决策的内联实现）：Leader 自行判断——**问**（求解法/求讲解/求题）→ 查询闭环；**给**（发来题目内容要求存/处理）→ 摄入闭环；判不准先追问一句。不单独开意图子 Agent
 - **查询闭环**：提炼检索意图打包委派 search → 依据 `search_results` 综合作答（引用来源，讲解配例题互相印证）；`no_result` 如实告知不编造；`has_image=true` 注明图形暂不可读。成员清单向 Leader 声明 search 可按召回 doc_id **自行补全**单题（题目条目）完整题干/答案/解析/溯源（题号/来源试卷/考区年月）、随该次委派一并交付——Leader 无需为缺溯源重复委派（2026-08-31 补挂 `get_question_detail` 后新增，与「最多委派一次」铁律同向）
 - **摄入闭环**（输入泛化，2026-08-28 用户修正）：入口不假定题目来源——口述题意、OCR 识别的多题原文、粘贴/抄写文本都是**待清洗信息**，来源形式无本质区别；Leader 只转不洗，清洗切分归结构识别。流程：收原文 → 委派结构识别 → 回显题目清单问去向（入库/跳过）→ 打包 `pending_questions` + `ingest_decisions` 委派入库决策 → 汇总 `ingest_results` 返回用户
-- **MVP 降级**：错题意图降级为「错因记录暂不支持」提示；`topic_names` 本轮不传；`lecture_segments` 忽略；检索无 metadata 过滤（不完全匹配时不追加委派重查）；错题统计/薄弱点分析类请求告知暂未支持（聚合数据成员未接入）
+- **数据维护闭环**（2026-09-03 新增，⏳门面未落地）：改 / 删题走 `manage` 意图，**Leader 只定位 `question_id` + 打包委派给题目维护 Agent**，不自己调工具（Leader 构造不传 `tools=`，保持纯编排者）。改题：委派执行后 Leader 汇报改动字段；删题：**Leader 先回显确认**（含连带影响：该题还有 N 条错题记录 / M 条作答记录会一并删除），确认后才委派执行
+- **MVP 降级**：错题意图降级为「错因记录暂不支持」提示；`topic_names` 本轮不传；`lecture_segments` 忽略；检索无 metadata 过滤（不完全匹配时不追加委派重查）；错题统计/薄弱点分析类请求告知暂未支持（聚合数据成员未接入）；**改 / 删题在门面落地前降级为「暂不支持修改/删除题目」提示**（2026-09-03）
 - `share_member_interactions=False` 显式写出（框架默认即 False），把「函数式隔离」钉进构造
 - `LEADER_INSTRUCTION` 直接定义在 `leader.py` 内——leader 层只有这一个 Agent，不抽独立 prompts 模块
 - 3 条铁律（完成标准 / 每成员每任务最多委派一次 / 不自相矛盾）写死在 instruction 里
@@ -51,7 +52,24 @@ Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给�
 | `review` | "我的错题主要集中在哪些知识点" | 聚合数据 →（找推荐题）搜索信息 → 输出整理 |
 | `report` | "帮我生成这周的周报" | 聚合数据 → 输出整理 |
 | `browse` | "列出2026年南昌一模的所有题目" | 搜索信息 → 输出整理 |
-| `ingest` | "帮我存这道题/这道题我不会" | 文档识别 → 结构识别 → 知识整理 → 入库决策 |
+| `ingest` | "帮我存这道题/这道题我不会" | 文档识别 → 结构识别 → 题目维护 → 入库决策 |
+| `manage` | "第3题答案改一下" / "把那道题删了" | **题目维护**——Leader 定位 id + 打包委派，不自己调工具 |
+
+> **`manage` 意图（2026-09-03 新增）**：改 / 删是**数据维护**而非摄入流水线的一环——摄入侧流水线是「非结构化输入 → 结构化数据」，入库决策 Agent 消费 `pending_questions + ingest_decisions`，改 / 删没有 pending 形态。执行者扩为**题目维护 Agent**，Leader 只做三件事：**定位 `question_id`、打包委派、删前回显确认**。
+>
+> **为什么不让 Leader 自己调工具**：`create_gaokao_leader()`（`src/agent/leader.py:132`）构造时**不传 `tools=`**——Leader 是纯编排者。挂写工具等于把「只委派」改成「既委派又执行」，破坏现有架构一致性；且改题有实打实的 LLM 编排活（口述 → 字段结构化、来源行拆解、补解析生成），全塞 `LEADER_INSTRUCTION` 必然臃肿。
+>
+> **Leader 保留什么**：
+> - **定位 `question_id`**——子 Agent 上下文隔离（`share_member_interactions=False`）看不到上轮检索结果，只有 Leader 持全量对话
+> - **删前回显确认**——回显归 Leader（2026-08-28 决策），删除不可逆
+>
+> **两个动作处理不对称**：
+> - **改题**：可逆 → 委派执行，Leader 汇报改动字段
+> - **删题**：不可逆 → Leader 先回显确认（含连带影响），确认后才委派执行
+>
+> **删题两段式（2026-09-03 定）**：阶段 1（现在）回显只列删除范围（题目 + 知识点关联 + 向量），单次确认委派；**阶段 2**（errors / exam_attempts 模块落地后）改两段式——首次委派为**预检**（Agent 查该题在错题本 / 作答记录中的引用，返回回显素材、不删），Leader 回显连带影响（「该题还有 N 条错题记录，会一并删除」）后结束本轮等用户；用户确认是**新一轮消息**，Leader 再**二次委派执行**。两段式跨会话轮次，**每轮只委派一次**——与「每成员每任务最多委派一次」铁律天然不冲突，无需例外（铁律按轮次计，防的是同一轮内重复委派同一能力刷结果）。
+>
+> MVP 只识别改题 / 删题两个动作；改知识点、删错题等其余维护需求后续扩。定位 id 的三条路径中，MVP 只支持「对话上下文」与「用户给题号 / 文档名」，「口述特征 → 检索反查」暂缓（见 [tools/ingest_tool.md](tools/ingest_tool.md)「题目维护工具」、[ingestion/question_maintain.md](ingestion/question_maintain.md)「题目维护：改 / 删」）。
 
 3. **匹配原则**：
 - `query_type="report"` 时，同时把请求解析为 `"weekly"` / `"monthly"` 写入 `GaokaoState.period_type`（2026-08-20 决策，供 REPORT_GEN 使用；原由意图识别子 Agent 解析，现由 Leader 直接解析）
@@ -62,14 +80,14 @@ Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给�
 
 | 字段 | 内容 |
 |------|------|
-| `query_type` | question / review / report / browse / ingest |
+| `query_type` | question / review / report / browse / ingest / manage |
 | `period_type` | （仅 report）weekly / monthly |
 
 ## 委派策略（Leader 自由决定）
 
 Leader 根据用户请求内容，自主决定：
 
-- **调谁**：题目查询 → 搜索+(VLM)+输出；周报 → 聚合+输出；复习 → 聚合+搜索+输出；**发题入库 → 文档识别+结构识别+(知识整理)+入库决策**（意图匹配由 Leader 系统提示词完成，见上节）
+- **调谁**：题目查询 → 搜索+(VLM)+输出；周报 → 聚合+输出；复习 → 聚合+搜索+输出；**发题入库 → 文档识别+结构识别+(题目维护)+入库决策**（意图匹配由 Leader 系统提示词完成，见上节）
 - **调几个**：简单问题可只走 1-2 个成员；复杂问题多成员协作
 - **什么顺序**：无固定模板，Leader 动态编排
 
@@ -93,17 +111,18 @@ aggregate_agent = LlmAgent(name="aggregate", model=model, tools=[ErrorStatsTool(
 format_agent = LlmAgent(name="format", model=model, instruction=FORMAT_PROMPT)
 
 # 摄入侧：4 个专业子 Agent
-doc_agent = LlmAgent(name="doc_ingest", model=model, tools=[PDFExtractTool(), VLMImageTool()], ...)
-struct_agent = LlmAgent(name="struct", model=model, instruction=STRUCT_PROMPT)
-knowledge_agent = LlmAgent(name="knowledge_mgr", model=model, tools=[TopicWriteTool()], ...)
-store_agent = LlmAgent(name="store", model=model, tools=[QuestionWriteTool(), ErrorWriteTool()], ...)
+doc_agent = LlmAgent(name="doc_recognition", model=model, tools=[ExtractTool(), VLMUnderstandTool()], ...)
+struct_agent = LlmAgent(name="structure_recognition", model=model, instruction=STRUCT_PROMPT)
+maintain_agent = LlmAgent(name="question_maintain", model=model,
+                          tools=[KnowledgeTool(), UpdateQuestionTool(), DeleteQuestionTool()], ...)  # 题目维护 Agent（知识点归位 + 改/删，后两工具 ⏳ 随门面落地）
+store_agent = LlmAgent(name="storage_decision", model=model, tools=[IngestQuestionTool()], ...)
 
 # Team Leader 自由委派（查询 + 摄入共用）
 gaokao_team = TeamAgent(
     name="gaokao_team",
     leader=LlmAgent(model=model, instruction=LEADER_PROMPT),
     members=[search_agent, vlm_agent, aggregate_agent, format_agent,
-             doc_agent, struct_agent, knowledge_agent, store_agent],
+             doc_agent, struct_agent, maintain_agent, store_agent],
 )
 ```
 
@@ -111,7 +130,7 @@ gaokao_team = TeamAgent(
 
 1. **Leader 委派机制依赖 tRPC-Agent 的 TeamAgent 原生能力**：`trpc_agent_sdk.teams.TeamAgent` 的 leader 自动具备自由委派能力，不需要手写路由逻辑
 2. **子 Agent 间通过 TeamAgent 内部消息传递共享结果**：每个子 Agent 的返回值自动汇入 Leader 的上下文，Leader 综合后决定下一步委派
-3. **State 设计沿用 `GaokaoState`**：字段不变（subject / query_type / retrieved_docs / vlm_descriptions / answer / review_suggestion + 摄入侧契约字段 raw_blocks / pending_questions / lecture_segments / topic_draft / ingest_results / ingest_decisions），reducer 字段 `execution_history` 记录子 Agent 委派链
+3. **State 设计沿用 `GaokaoState`**：字段随意图演进——业务字段（subject / query_type / period_type / retrieved_docs / vlm_descriptions / answer / review_suggestion）+ 摄入侧契约字段（raw_blocks / pending_questions / lecture_segments / topic_draft / ingest_results / ingest_decisions / manage_result），reducer 字段 `execution_history` 记录子 Agent 委派链
 4. **TeamAgent 可用性已确认，无备用方案**：trpc-agent 源码确认 `trpc_agent_sdk.teams` 的 Leader 委派 API 可用，且 2026-08-12 官方 `examples/team` 实测跑通（见下）；GraphAgent 备用方案已移除（2026-08-25）
 5. **子 Agent 的 tools 是 FunctionTool**：VLM、知识点查询、错题统计等业务工具以 FunctionTool 形式挂到对应子 Agent，不走 MCP（MCP 仅对外暴露接口）
 6. **分层边界**：子 Agent 只调 `src/ingestion`（写）/ `src/retrieval`（读）门面暴露的函数，严禁 `import src.store.*`（见 [architecture.md](../architecture.md)）

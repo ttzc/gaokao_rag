@@ -28,7 +28,7 @@
 | 输出整理 | 查询 | —（纯 LLM 格式化） |
 | 文档识别 | 摄入 | `ingest_tool`（`ExtractTool` + `VLMUnderstandTool`） |
 | 结构识别 | 摄入 | —（纯 LLM 语义划分） |
-| 知识整理 | 摄入 | `ingest_tool`（`KnowledgeTool`） |
+| 题目维护 | 摄入 + 数据维护 | `ingest_tool`（`KnowledgeTool` + `UpdateQuestionTool` + `DeleteQuestionTool`） |
 | 入库决策 | 摄入 | `ingest_tool`（`IngestQuestionTool`） |
 
 ## 与门面的边界

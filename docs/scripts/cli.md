@@ -33,7 +33,7 @@ uv run python scripts/cli.py <browse|detail> [选项]
 | 选项 | 对应 filter 键 | 说明 |
 |------|--------------|------|
 | `--subject` | `subject` | 学科，如 `数学` |
-| `--source-type` | `source_type` | `exam` / `homework` / `special_topic` / `error_book` |
+| `--source-type` | `source_type` | `exam` / `homework` / `special_topic` / `reference` / `error_book`（error_book 预留） |
 | `--year` | `exam_year` | 年份，如 `2026` |
 | `--month` | `exam_month` | 月份 1-12 |
 | `--type` | `question_type` | 题型，如 `解答题` |

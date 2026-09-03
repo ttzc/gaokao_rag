@@ -26,7 +26,7 @@
 
 > 输出为**固定分节标签的结构化文本**（如 Markdown 分节：`题目：… / 答案：… / 解析：…`），**不强制 JSON**——下游消费方是入库决策 Agent（LLM）解析字段，不是代码解析；标签固定即可保证 LLM 可靠抽取。一次输出一道题。
 
-> 与 `knowledge_notes`（讲解纯文本）区分：本 Skill 产出的是**题目**，不是知识点讲解；知识点关联由 `knowledge_organize` 后续处理。
+> 与 `knowledge_notes`（讲解纯文本）区分：本 Skill 产出的是**题目**，不是知识点讲解；知识点关联由 `question_maintain` 后续处理。
 
 ## 关键原则
 
@@ -34,14 +34,14 @@
 - **保留原意**：题干改写以「可作答、无歧义」为目标，不擅自改变数学含义。
 - **图描必留痕**：凡输入含图片，把 VLM 描述原样纳入 `image_desc`，避免图文脱节。
 - **不做切分**：多题混排的整篇文本属于 `structure_recognition` 职责；本 Skill 一次处理**一个**题目单元。
-- **与知识点解耦**：不在此处标注知识点 tag，归入 `knowledge_organize` 环节。
+- **与知识点解耦**：不在此处标注知识点 tag，归入 `question_maintain` 环节。
 
 ## 边界
 
 - **挂载 / 执行**：由结构识别 Agent `structure_recognition.py` 对每道题目单元逐题 `skill_load` 执行（或其下游归一化步骤），**不挂在入库决策 Agent**。结构识别 Agent 经 `ALLOWED_SKILLS=("question-organize",)` 白名单挂载本 Skill（白名单外不可见、不可加载，见 [README.md](README.md)）。
 - **消费**：入库决策 Agent（`storage_decision.py`）只接收本 Skill 的输出 + 用户对每题的「入库 / 错题 / 跳过」意图，执行写库——不执行归一化。
 - 上游：文档识别（`raw_blocks`）/ 学生即时输入（口述 + 图）
-- 平行：知识整理（`knowledge_organize`）负责知识点标注，不在本 Skill 内
+- 平行：题目维护 Agent（`question_maintain`）负责知识点标注，不在本 Skill 内
 
 ## 落地
 
