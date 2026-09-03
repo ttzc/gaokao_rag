@@ -256,6 +256,34 @@ class QuestionTopicsDB:
             return True
         return False
 
+    def remove_by_question(self, question_id: int) -> int:
+        """删除某题的全部知识点关联（按题清空）。
+
+        改题的全量替换（先清空再 add_many）与删题的级联（删主行前清空关联）
+        都依赖本方法。与单条 remove() 返回 bool 不同：按题清空没有「目标行
+        是否存在」的概念，删除 0 条是合法状态（该题本就无关联），因此返回
+        删除条数而非 bool。
+
+        Args:
+            question_id: 题目 ID（questions.id）。
+
+        Returns:
+            删除的关联条数（0 = 该题本无关联，非错误）。
+        """
+        conn = self._connect()
+        cursor = conn.execute(
+            """DELETE FROM question_topics
+               WHERE question_id = ?""",
+            (question_id,),
+        )
+        conn.commit()
+        if cursor.rowcount > 0:
+            logger.debug(
+                "question_topics removed all: question_id=%d count=%d",
+                question_id, cursor.rowcount,
+            )
+        return cursor.rowcount
+
     def __repr__(self) -> str:
         return "QuestionTopicsDB()"
 

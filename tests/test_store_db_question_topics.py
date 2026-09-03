@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import pytest
+from trpc_agent_sdk.log import LogLevel, get_logger
 
 from src.store.db.questions import get_questions_db
 from src.store.db.question_topics import QuestionTopicsDB, get_question_topics_db
@@ -376,6 +377,67 @@ class TestRemove:
         db.remove(sample_question, "椭圆")
         assert db.count_by_topic("椭圆") == 1
         assert db.get_by_topic("椭圆")[0]["question_id"] == sample_question2
+
+
+# ── remove_by_question ──────────────────────────────────────────────
+
+class TestRemoveByQuestion:
+
+    def test_removes_all_associations(self, db: QuestionTopicsDB, sample_question: int,
+                                      topic_ellipse: int, topic_eccentricity: int, topic_derivative: int):
+        """按题清空：三条关联全删，count_by_topic 各归 0。"""
+        db.add_many(sample_question, ["椭圆", "离心率", "导数"])
+        db.remove_by_question(sample_question)
+        assert db.get_by_question(sample_question) == []
+        assert db.count_by_topic("椭圆") == 0
+        assert db.count_by_topic("离心率") == 0
+        assert db.count_by_topic("导数") == 0
+
+    def test_returns_deleted_count(self, db: QuestionTopicsDB, sample_question: int,
+                                   topic_ellipse: int, topic_eccentricity: int, topic_derivative: int):
+        db.add_many(sample_question, ["椭圆", "离心率", "导数"])
+        assert db.remove_by_question(sample_question) == 3
+
+    def test_empty_question_returns_zero(self, db: QuestionTopicsDB, sample_question: int):
+        """该题本无关联：返回 0 且不抛异常（合法状态，非错误）。"""
+        assert db.remove_by_question(sample_question) == 0
+
+    def test_only_affects_target_question(self, db: QuestionTopicsDB, sample_question: int,
+                                          sample_question2: int, topic_ellipse: int):
+        """A/B 两题都挂「椭圆」：清 A 后 B 的关联仍在。"""
+        db.add(sample_question, "椭圆")
+        db.add(sample_question2, "椭圆")
+        db.remove_by_question(sample_question)
+        assert db.get_by_question(sample_question) == []
+        assert len(db.get_by_question(sample_question2)) == 1
+        assert db.count_by_topic("椭圆") == 1
+
+    def test_removes_primary_and_non_primary(self, db: QuestionTopicsDB, sample_question: int,
+                                             topic_ellipse: int, topic_eccentricity: int):
+        """is_primary=1 与 is_primary=0 的记录一并清除。"""
+        db.add(sample_question, "椭圆", is_primary=True)
+        db.add(sample_question, "离心率", is_primary=False)
+        assert db.remove_by_question(sample_question) == 2
+        assert db.get_by_question(sample_question) == []
+
+    def test_logs_count(self, db: QuestionTopicsDB, sample_question: int, caplog,
+                        topic_ellipse: int, topic_eccentricity: int, topic_derivative: int):
+        """remove_by_question 记录日志（含 count 和 question_id）。
+
+        日志为 debug 级：框架 logger 默认 min_level=INFO 会吞掉 debug，
+        测试期间临时升到 DEBUG（finally 还原），再配合 caplog 断言。
+        """
+        import logging
+        db.add_many(sample_question, ["椭圆", "离心率", "导数"])
+        framework_logger = get_logger()
+        framework_logger.set_level(LogLevel.DEBUG)
+        try:
+            with caplog.at_level(logging.DEBUG):
+                db.remove_by_question(sample_question)
+        finally:
+            framework_logger.set_level(LogLevel.INFO)
+        assert "count=3" in caplog.text
+        assert f"question_id={sample_question}" in caplog.text
 
 
 # ── 跨表联动 ────────────────────────────────────────────────────────

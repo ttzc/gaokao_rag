@@ -141,7 +141,6 @@ def delete_question(*, question_id: int) -> dict:
 
 | 缺口 | 现状 | 影响 |
 |------|------|------|
-| `QuestionTopicsDB.remove_by_question(question_id)` | 只有 `remove(question_id, topic_name)` 单条删 | 改题的全量替换、删题的级联都要「按题清空」 |
 | `errors` / `exam_attempts` 的 DB 模块 | `src/store/db/` 当前只有 `files` / `questions` / `question_topics` / `topics` 四个模块 | 级联删无原语可调，门面不能自己写 SQL |
 | 全库无 `ON DELETE CASCADE` | 共享连接开了 `PRAGMA foreign_keys=ON`，但 DDL 未定义级联动作 | 级联一律由门面手工完成，指望不上数据库 |
 

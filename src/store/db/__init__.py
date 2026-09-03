@@ -7,8 +7,10 @@
 #   单测 / 特殊场景可通过构造参数传入独立连接。
 #
 # 当前模块：
-#   files.py         → files 表（文件注册表）
-#   questions.py     → questions 表（题目内容 + 答案解析 + 元数据）
+#   files.py            → files 表（文件注册表）
+#   questions.py        → questions 表（题目内容 + 答案解析 + 元数据）
+#   question_topics.py  → question_topics 表（题目-知识点关联）
+#   topics.py           → topics 表（知识点树，Materialized Path）
 
 from __future__ import annotations
 

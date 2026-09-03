@@ -223,7 +223,7 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 
 设计已写进 [ingestion/question.md](ingestion/question.md)（`update_question` / `delete_question`），代码未落地。排在 a–e 之后的理由：库里才 4 题时，改 / 删的需求几乎不会出现，先灌数据。
 
-- [ ] store 层补 `QuestionTopicsDB.remove_by_question(question_id)`（现有只有单条 `remove`）
+- [x] store 层补 `QuestionTopicsDB.remove_by_question(question_id)`（现有只有单条 `remove`）
 - [ ] `src/ingestion/question.py` 加 `update_question`（部分更新 + 知识点全量替换 + VLM 描述回读重嵌）
 - [ ] 加 `delete_question`（先 Chroma 后 DB 的级联顺序；**阶段 1 只级联三处**：`question_topics` + Chroma + 主行）
 - [ ] `UpdateQuestionTool` / `DeleteQuestionTool` 并入写侧 `ingest_tool.py`，挂**题目维护 Agent**

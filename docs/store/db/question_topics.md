@@ -34,6 +34,7 @@ CREATE INDEX idx_qt_topic ON question_topics(topic_name);
 - 按题查知识点：`WHERE question_id = ?`
 - 按知识点查题：`WHERE topic_name = ?` 或 `WHERE topic_name IN (?)`（MVP 直接匹配，无树展开）
 - 聚合：`GROUP BY topic_name` 统计题目数/错题数（周报数据源）
+- 删除：单条 `remove(question_id, topic_name)` 返回 bool；按题清空 `remove_by_question(question_id)` 返回删除条数（0 = 该题本无关联，非错误）——改题的全量替换（先清空再 `add_many`）与删题的级联都依赖后者；只清关联行，不动 `topics` 表节点
 
 ## 与其他表的关系
 
