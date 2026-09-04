@@ -117,8 +117,8 @@ class QuestionsDB(SQLiteTableDB):
         使用返回值 ``question_id`` 通过 ``_make_doc_id()`` 生成同 doc_id。
 
         Args:
-            source_type: 题目来源类型，``"exam"`` / ``"special_topic"`` /
-                         ``"homework"`` / ``"error_book"``。
+            source_type: 题目来源类型，``"exam"`` / ``"homework"`` / ``"special_topic"`` /
+                         ``"reference"`` / ``"error_book"``（错题本来源，预留）。
             subject: 学科，如 ``"数学"`` / ``"物理"``。
             content_text: 题目文本（VLM 处理后含图形描述），必填。
             question_type: 题型，``"单选题"`` / ``"多选题"`` / ``"填空题"`` / ``"解答题"``。

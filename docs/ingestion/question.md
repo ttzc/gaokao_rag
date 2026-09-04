@@ -89,6 +89,7 @@ def update_question(
 
 - **VLM 描述不在 questions 表里**，改题重嵌必须回读：`image_file_ids` → `files.sha256` → `data/files/processed/vlm_desc/{sha256}.json`（见 [store/db/questions.md](../store/db/questions.md)「关键设计点」）。**门面内部自动回读，不向调用方暴露 `vlm_descriptions` 参数**——否则调用方漏传就静默丢掉图形描述、向量质量退化。回读失败仅 warning 跳过、不阻断（与 `ingest_question` 中 `save_processed` 的降级策略对称）
 - **改内容必须重嵌，只改元数据则不必**：`content_text` / `answer_text` / `analysis_text` 任一变更 → embedding_text 重建；只改题号 / 年份 / 考区 → 文本不用重嵌，**但 Chroma metadata 要同步**（`exam_year` / `question_type` / `topic_tags` 都是过滤维度）
+  - **实现偏差注记（2026-09-04 落地确认）**：`VectorStore.upsert()` 是先删后加 + `add_documents`，每次强制重算 embedding，框架未暴露 metadata-only 通道（chromadb 底层 `collection.update()` 存在，但伸手 `vectorstore._collection` 属 hack 框架内部）。故当前实现**对一切变更统一走重嵌 upsert**，接受元数据改动多付一次 embedding 调用，换取实现一致、不破坏分层——设计意图保留，待框架暴露 metadata-only 通道或引入自维护 metadata 层后再优化
 - **`has_image` 快照跟着 `image_file_ids` 变**：Chroma metadata 存布尔快照用于标量过滤，SQLite 侧不存该字段（以 `image_file_ids` 非空为准），两边别维护反了
 - **`title` 规则复用 `ingest_question`**：`files.title` 优先，无 `file_id` 时取 `content_text[:40]`——两处逻辑必须一致，否则改完题标题会跳变
 - **文件层不动**：update 不重写 `processed/` 文本（中间产物可重建，重写无收益），只改 SQLite + Chroma

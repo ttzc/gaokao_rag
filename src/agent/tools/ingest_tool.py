@@ -51,7 +51,7 @@ async def ingest_question(
         topic_names: 知识点名字列表，系统自动归位（已存在则复用，不存在则新建）；无知识点时传 None。
         raw_file_path: 题目来源文件在 files 表中的路径（如整卷 PDF 注册后的路径）；学生拍照单题、无源文件时传 None。
         question_type: 题型，如 "单选题" / "填空题" / "解答题"；不确定时传空字符串 ""。
-        source_type: 来源类型，取值 "exam"（真题试卷）/ "homework"（作业）/ "special_topic"（专题讲义）/ "reference"（参考资料），默认 "exam"。
+        source_type: 来源类型，取值 "exam"（真题试卷）/ "homework"（作业）/ "special_topic"（专题讲义）/ "reference"（参考资料）/ "error_book"（错题本来源，预留），默认 "exam"。
         subject: 学科，默认 "数学"。
         exam_year: 考试年份，如 2026；未知时传 None。
         exam_month: 考试月份 1-12；未知时传 None。
