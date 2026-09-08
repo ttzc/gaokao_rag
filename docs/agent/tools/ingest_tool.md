@@ -20,9 +20,9 @@
 | `UpdateQuestionTool` | — | 修改题目信息（内容 / 答案 / 解析 / 元数据 / 知识点） | `src.ingestion.question` | **题目维护**（2026-09-03） |
 | `DeleteQuestionTool` | — | 删除题目（级联 question_topics / errors / exam_attempts + Chroma） | `src.ingestion.question` | **题目维护**（2026-09-03） |
 
-> **实现现状（2026-08-28）**：代码侧当前仅落地 `IngestQuestionTool`（`src/agent/tools/ingest_tool.py`，导出 `ingest_question_tool`）；`ExtractTool` / `VLMUnderstandTool` / `KnowledgeTool` 及读侧工具**逐个按链路需要实现中，不急于归并**——写齐后再对齐本文件与 `retrieve_tool.md` 的两文件结构。本表为规划目标，不代表已全部实现。
+> **实现现状（2026-09-08 更新）**：代码侧已落地 `IngestQuestionTool`（`src/agent/tools/ingest_tool.py`，导出 `ingest_question_tool`，2026-08-28）与改 / 删两件（导出 `update_question_tool` / `delete_question_tool`，2026-09-08）；`ExtractTool` / `VLMUnderstandTool` / `KnowledgeTool` 及读侧工具**逐个按链路需要实现中，不急于归并**——写齐后再对齐本文件与 `retrieve_tool.md` 的两文件结构。本表为规划目标，不代表已全部实现。
 >
-> **改 / 删为新增规划（2026-09-03）**：`UpdateQuestionTool` / `DeleteQuestionTool` 的设计见 [ingestion/question.md](../../ingestion/question.md)，门面函数 `update_question` / `delete_question` 尚未落地，工具随门面后补。
+> **改 / 删已落地（规划 2026-09-03，门面 2026-09-04 `29ae6ee`，工具 2026-09-08）**：设计见 [ingestion/question.md](../../ingestion/question.md)，工具挂题目维护 Agent（`manage` 分支）。
 
 ## ExtractTool — PDF / 图像提取
 
@@ -97,7 +97,7 @@ if decision == "error_book":        # 先题后错：错因单独写
 
 ## 题目维护工具（改 / 删）
 
-> ⏳ **门面未落地，本节为设计**（2026-09-03）。门面设计与实现前置缺口见 [ingestion/question.md](../../ingestion/question.md)。
+> ✅ **已落地**（门面 2026-09-04 `29ae6ee`；工具 + 题目维护 Agent + Leader `manage` 意图 2026-09-08）。门面设计与阶段 2 缺口见 [ingestion/question.md](../../ingestion/question.md)。
 
 **为什么挂题目维护 Agent，而不是 Leader 直挂**（2026-09-03 定）：
 
@@ -119,8 +119,8 @@ if decision == "error_book":        # 先题后错：错因单独写
 
 | Tool | 状态 | 签名 | 用途 |
 |------|------|------|------|
-| `update_question` | ⏳门面未落地 | (question_id, content_text=None, answer_text=None, analysis_text=None, topic_names=None, question_number=None, question_type=None, exam_year=None, exam_month=None, exam_regions=None, image_file_ids=None) → {question_id, doc_id, updated_fields} | 改题目：**可逆**，直接执行 + 事后报告改动字段 |
-| `delete_question` | ⏳门面未落地 | (question_id) → {question_id, doc_id, deleted, cascade:{...}} | 删题目：**不可逆**，Leader 先回显确认再调 |
+| `update_question` | ✅已实现 | (question_id, content_text=None, answer_text=None, analysis_text=None, topic_names=None, question_number=None, question_type=None, exam_year=None, exam_month=None, exam_regions=None) → {question_id, doc_id, updated_fields} | 改题目：**可逆**，直接执行 + 事后报告改动字段。工具面不暴露 `image_file_ids`（图片摄入管线未落地，图形改动本版不支持），门面该参数走默认值 |
+| `delete_question` | ✅已实现 | (question_id) → {question_id, doc_id, deleted, cascade:{...}} | 删题目：**不可逆**，Leader 先回显确认再调 |
 
 **交互约定**：
 

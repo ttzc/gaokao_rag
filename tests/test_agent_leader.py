@@ -2,16 +2,17 @@
 """Team Leader（MVP 临时版）的配置/约束测试（mock LLM，不计费）。
 
 覆盖：
-- create_gaokao_leader() 工厂结构：TeamAgent、name、members 恰为三个子 Agent
-  工厂产物（搜索信息在前 + 结构识别 + 入库决策，以 instruction/tools 同源断言
-  "确为工厂产物"）、share_member_interactions=False、无 tools、模型走 llm 工厂
+- create_gaokao_leader() 工厂结构：TeamAgent、name、members 恰为四个子 Agent
+  工厂产物（搜索信息在前 + 结构识别 + 入库决策 + 题目维护，以 instruction/tools
+  同源断言"确为工厂产物"）、share_member_interactions=False、无 tools、模型走 llm 工厂
 - 工厂各调用一次：leader 不绕开工厂自造成员
-- LEADER_INSTRUCTION 关键约束：双闭环流程词（回显/打包/检索作答）、上下文隔离表述
-  （成员不回看对话）、3 条铁律标记、MVP 降级（错因暂不支持 / topic_names 不传）；
+- LEADER_INSTRUCTION 关键约束：三闭环流程词（回显/打包/检索作答/删前确认）、
+  上下文隔离表述（成员不回看对话）、3 条铁律标记、MVP 降级（错因暂不支持 /
+  topic_names 不传 / 图形改动暂不支持）；
   且不含完整版编排表述（9 成员/意图识别/未实现成员名等，防范围回潮）
 - 分层铁律：AST 解析 src/agent/ 全部 .py，无 src.store import
   （同 tests/test_agent_storage_decision.py TestLayeringRule 思路）
-- 全部用例 mock 掉四处 get_llm_model 绑定 + 顶掉 knowledge_search_tool 惰性实体化，
+- 全部用例 mock 掉五处 get_llm_model 绑定 + 顶掉 knowledge_search_tool 惰性实体化，
   不读真实 config/.env、不建真实 GaokaoKnowledge、无网络/计费
 """
 
@@ -29,16 +30,22 @@ from trpc_agent_sdk.skills import SkillToolSet
 from trpc_agent_sdk.teams import TeamAgent
 
 from src.agent import leader as ld
+from src.agent.ingestion import question_maintain as qm
 from src.agent.ingestion import storage_decision as sd
 from src.agent.ingestion import structure_recognition as sr
 from src.agent.ingestion.prompts import (
+    QUESTION_MAINTAIN_INSTRUCTION,
     STORAGE_DECISION_INSTRUCTION,
     STRUCTURE_RECOGNITION_INSTRUCTION,
 )
 from src.agent.retrieval import search as se
 from src.agent.retrieval.prompts import SEARCH_INSTRUCTION
 from src.agent.tools import retrieve_tool
-from src.agent.tools.ingest_tool import ingest_question_tool
+from src.agent.tools.ingest_tool import (
+    delete_question_tool,
+    ingest_question_tool,
+    update_question_tool,
+)
 
 
 def _fake_search_tool() -> MagicMock:
@@ -49,17 +56,17 @@ def _fake_search_tool() -> MagicMock:
 
 
 def _make_leader() -> tuple[TeamAgent, MagicMock, MagicMock]:
-    """构造被测 leader，mock 四处 ``get_llm_model`` 绑定 + 顶掉检索工具实体化。
+    """构造被测 leader，mock 五处 ``get_llm_model`` 绑定 + 顶掉检索工具实体化。
 
     from-import 在导入时把函数对象绑进各消费模块全局，须逐模块替换
-    （同 tests/test_agent_storage_decision._make_agent 思路，×4 个模块）；
+    （同 tests/test_agent_storage_decision._make_agent 思路，×5 个模块）；
     ``retrieve_tool._tool`` 塞 MagicMock——search 工厂在构造期访问惰性导出属性会
     实体化 GaokaoKnowledge（chroma 句柄），patch 后拿到 mock 工具，测试零存储副作用。
     """
     fake_model = MagicMock()
     fake_search_tool = _fake_search_tool()
     with contextlib.ExitStack() as stack:
-        for mod in (ld, sr, sd, se):
+        for mod in (ld, sr, sd, se, qm):
             stack.enter_context(
                 patch.object(mod, "get_llm_model", return_value=fake_model)
             )
@@ -87,28 +94,30 @@ class TestCreateGaokaoLeader:
         assert team.name == "gaokao_leader"
         assert ld.AGENT_NAME == "gaokao_leader"
 
-    def test_members_exactly_three_factories(self) -> None:
-        """members 恰为搜索信息 + 结构识别 + 入库决策三个成员（MVP 范围）。"""
+    def test_members_exactly_four_factories(self) -> None:
+        """members 恰为搜索信息 + 结构识别 + 入库决策 + 题目维护四个成员（MVP 范围）。"""
         team, _, _ = _make_leader()
-        assert len(team.members) == 3
+        assert len(team.members) == 4
         assert all(isinstance(m, LlmAgent) for m in team.members)
         assert [m.name for m in team.members] == [
             se.AGENT_NAME,
             sr.AGENT_NAME,
             sd.AGENT_NAME,
+            qm.AGENT_NAME,
         ]
 
     def test_members_are_factory_products(self) -> None:
-        """确为三个工厂的产物：instruction 与工厂常量同源、工具面与工厂装配一致。
+        """确为四个工厂的产物：instruction 与工厂常量同源、工具面与工厂装配一致。
 
         不比对对象身份（工厂每次构造新实例），改比对工厂装配的确定性产物：
         搜索信息挂 knowledge_search_tool（retrieve_tool 惰性导出的同一实例，
         经 _make_leader 顶包）+ get_question_detail_tool（模块级业务查询实例）、
         结构识别挂 SkillToolSet（question-organize 归一）、
-        入库决策挂 ingest_question_tool（纯写库）——绕开工厂自造的成员过不了这关。
+        入库决策挂 ingest_question_tool（纯写库）、
+        题目维护挂 update/delete 两件写工具——绕开工厂自造的成员过不了这关。
         """
         team, _, fake_search_tool = _make_leader()
-        search_agent, struct_agent, store_agent = team.members
+        search_agent, struct_agent, store_agent, maintain_agent = team.members
         assert search_agent.instruction == SEARCH_INSTRUCTION
         assert list(search_agent.tools) == [
             fake_search_tool, retrieve_tool.get_question_detail_tool,
@@ -117,12 +126,14 @@ class TestCreateGaokaoLeader:
         assert any(isinstance(t, SkillToolSet) for t in struct_agent.tools)
         assert store_agent.instruction == STORAGE_DECISION_INSTRUCTION
         assert store_agent.tools == [ingest_question_tool]
+        assert maintain_agent.instruction == QUESTION_MAINTAIN_INSTRUCTION
+        assert maintain_agent.tools == [update_question_tool, delete_question_tool]
 
     def test_factories_called_once_each(self) -> None:
-        """三个成员工厂各被调用一次，不重复构造。"""
+        """四个成员工厂各被调用一次，不重复构造。"""
         fake_model = MagicMock()
         with contextlib.ExitStack() as stack:
-            for mod in (ld, sr, sd, se):
+            for mod in (ld, sr, sd, se, qm):
                 stack.enter_context(
                     patch.object(mod, "get_llm_model", return_value=fake_model)
                 )
@@ -150,14 +161,23 @@ class TestCreateGaokaoLeader:
                     side_effect=sd.create_storage_decision_agent,
                 )
             )
+            m_qm = stack.enter_context(
+                patch.object(
+                    ld,
+                    "create_question_maintain_agent",
+                    side_effect=qm.create_question_maintain_agent,
+                )
+            )
             team = ld.create_gaokao_leader()
         m_se.assert_called_once_with()
         m_sr.assert_called_once_with()
         m_sd.assert_called_once_with()
+        m_qm.assert_called_once_with()
         assert [m.name for m in team.members] == [
             se.AGENT_NAME,
             sr.AGENT_NAME,
             sd.AGENT_NAME,
+            qm.AGENT_NAME,
         ]
 
     def test_share_member_interactions_false(self) -> None:
@@ -182,7 +202,7 @@ class TestCreateGaokaoLeader:
             m = stack.enter_context(
                 patch.object(ld, "get_llm_model", return_value=fake_model)
             )
-            for mod in (sr, sd, se):
+            for mod in (sr, sd, se, qm):
                 stack.enter_context(
                     patch.object(mod, "get_llm_model", return_value=fake_model)
                 )
@@ -206,20 +226,29 @@ class TestCreateGaokaoLeader:
 
 
 class TestLeaderInstruction:
-    """指令承载 MVP 双闭环流程、上下文隔离与 3 条铁律。"""
+    """指令承载 MVP 三闭环流程、上下文隔离与 3 条铁律。"""
 
     def test_mvp_closed_loops_and_member_names(self) -> None:
-        """双闭环定位与三个成员名（delegate_to_member 按名委派，必须出现）。
+        """三闭环定位与四个成员名（delegate_to_member 按名委派，必须出现）。
 
         输入定位是「待清洗信息」而非仅口述——口述/OCR 多题/粘贴文本来源同权，
         指令须泛化表述并列举来源（2026-08-28 用户修正）。
         """
         for marker in ("待清洗", "口述", "OCR", "入库",
                        "structure_recognition", "storage_decision",
-                       "search", "查询闭环", "检索"):
+                       "question_maintain", "search",
+                       "查询闭环", "数据维护闭环", "检索"):
             assert marker in ld.LEADER_INSTRUCTION
         # 不得回退成"只认口述"的窄定位
         assert "学生口述题目" not in ld.LEADER_INSTRUCTION
+
+    def test_manage_flow_markers(self) -> None:
+        """数据维护闭环（2026-09-04）：定位 question_id 归 Leader、改直接委派、
+        删先回显确认（user_confirmed 打包进 task）、结果契约字段对 Leader 可见。"""
+        for marker in ("定位 question_id", "user_confirmed", "绝不委派删除执行",
+                       "manage_result", "updated_fields", "cascade", "clarify",
+                       "不猜 id", "action"):
+            assert marker in ld.LEADER_INSTRUCTION
 
     def test_intent_routing_inline(self) -> None:
         """意图分流内联 Leader（2026-08-28 决策）：问→查询、给→摄入 + 判不准先追问。"""
@@ -257,22 +286,23 @@ class TestLeaderInstruction:
         assert "不自相矛盾" in ld.LEADER_INSTRUCTION
 
     def test_mvp_degradations(self) -> None:
-        """MVP 降级：错题告知暂不支持、讲解段忽略、topic_names 不传。"""
+        """MVP 降级：错题告知暂不支持、讲解段忽略、topic_names 不传、图形改动暂不支持。"""
         assert "错因记录暂不支持" in ld.LEADER_INSTRUCTION
         assert "topic_names" in ld.LEADER_INSTRUCTION
+        assert "图形相关改动暂不支持" in ld.LEADER_INSTRUCTION
 
     def test_no_full_version_claims(self) -> None:
         """防范围回潮：完整版 9 成员/意图分流子 Agent/未实现成员名不得出现。
 
         2026-08-29 更新：search 已落地，「搜索信息」「查询侧」不再是回潮标记；
-        仍未实现的成员（文档识别/题目维护/聚合数据/输出整理/VLM 等）继续钉死。
+        2026-09-04 更新：question_maintain 已落地，「题目维护」移出 banned；
+        仍未实现的成员（文档识别/聚合数据/输出整理/VLM 等）继续钉死。
         """
         for banned in (
             "9 成员",
             "意图分类",
             "意图识别",
             "文档识别",
-            "题目维护",
             "输出整理",
             "聚合数据",
             "VLM",

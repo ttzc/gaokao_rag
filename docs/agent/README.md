@@ -110,7 +110,7 @@ flowchart TD
 | --------- | ------ | --------- |
 | **文档识别 Agent** | 接收照片/PDF → 提取内容（图片走 VLM，PDF 走 PyMuPDF） | VLM + PyMuPDF 工具 |
 | **结构识别 Agent** | 区分讲解段 vs 题目段 → **语义划分每题「题目/答案/解析」**（不依赖关键词）→ 生成题目清单（每题一句话概括） | LLM 分类 |
-| **题目维护 Agent** | ① 知识点提取 → tag 归位 / 别名归并（写 topics）；② 改 / 删题（`manage` 意图，Leader 委派）：字段结构化 / 来源拆解 / 补解析 / 知识点重标 | `KnowledgeTool` + `UpdateQuestionTool` + `DeleteQuestionTool`（⏳ 后两个随门面落地） |
+| **题目维护 Agent** | ① 知识点提取 → tag 归位 / 别名归并（写 topics，待 V0.6c）；② 改 / 删题（`manage` 意图，Leader 委派）：字段结构化 / 来源拆解 / 补解析 / 知识点重标 | `KnowledgeTool`（⏳ V0.6c）+ `UpdateQuestionTool` + `DeleteQuestionTool`（✅ 2026-09-08） |
 | **入库决策 Agent** | 消费题目清单 + 用户去向（入库/错题/跳过）→ 写 questions/errors（**回显由 Leader 管理**） | SQLite 写入工具 |
 
 **设计要点**：

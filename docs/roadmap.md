@@ -26,7 +26,7 @@
 | 入口 | `scripts/chat.py`（对话调试）、`scripts/cli.py`（只读浏览） | QQ、MCP、HTTP |
 | 工程 | pytest + integration 分组 + GitHub Actions CI | Langfuse、Session 持久化 |
 
-**数据现状（这是当前最大的问题）**：`questions` 4 条（全部口述入库）、`files` 0 条、`topics` / `question_topics` **0 条**（题目维护 Agent 未落地，Leader 暂不传 `topic_names`）、`data/files/` 空。
+**数据现状（这是当前最大的问题）**：`questions` 4 条（全部口述入库）、`files` 0 条、`topics` / `question_topics` **0 条**（知识点归位未接入——`src/ingestion/topic.py` 门面待 V0.6c，Leader 暂不传 `topic_names`）、`data/files/` 空。
 08-29 chat.py 实测结论：检索体验差的根因是**数据量**，不是代码。
 
 ---
@@ -221,18 +221,18 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 
 ### f. 题目维护改 / 删（设计已定，2026-09-03；优先级低于 a–e）
 
-设计已写进 [ingestion/question.md](ingestion/question.md)（`update_question` / `delete_question`），代码未落地。排在 a–e 之后的理由：库里才 4 题时，改 / 删的需求几乎不会出现，先灌数据。
+设计已写进 [ingestion/question.md](ingestion/question.md)（`update_question` / `delete_question`）。门面 2026-09-04 落地（`29ae6ee`），Agent 链路（工具 + 题目维护 Agent `manage` 分支 + Leader `manage` 意图）2026-09-08 落地；仅剩阶段 2 两项随错题本 / 作答模块。当初排在 a–e 之后的理由：库里才 4 题时，改 / 删的需求几乎不会出现，先灌数据。
 
 - [x] store 层补 `QuestionTopicsDB.remove_by_question(question_id)`（现有只有单条 `remove`）
-- [ ] `src/ingestion/question.py` 加 `update_question`（部分更新 + 知识点全量替换 + VLM 描述回读重嵌）
-- [ ] 加 `delete_question`（先 Chroma 后 DB 的级联顺序；**阶段 1 只级联三处**：`question_topics` + Chroma + 主行）
-- [ ] `UpdateQuestionTool` / `DeleteQuestionTool` 并入写侧 `ingest_tool.py`，挂**题目维护 Agent**
-- [ ] 题目维护 Agent 扩 `manage` 分支（改题：字段结构化 / 来源拆解 / 补解析；删题：薄调用 + 回传 cascade）
-- [ ] Leader 加 `manage` 意图：定位 `question_id` + 打包委派 + 删前回显确认（Leader 不挂写工具）
+- [x] `src/ingestion/question.py` 加 `update_question`（部分更新 + 知识点全量替换 + VLM 描述回读重嵌）
+- [x] 加 `delete_question`（先 Chroma 后 DB 的级联顺序；**阶段 1 只级联三处**：`question_topics` + Chroma + 主行）
+- [x] `UpdateQuestionTool` / `DeleteQuestionTool` 并入写侧 `ingest_tool.py`，挂**题目维护 Agent**
+- [x] 题目维护 Agent 扩 `manage` 分支（改题：字段结构化 / 来源拆解 / 补解析；删题：薄调用 + 回传 cascade）
+- [x] Leader 加 `manage` 意图：定位 `question_id` + 打包委派 + 删前回显确认（Leader 不挂写工具）
 - [ ] **随错题本落地**：`delete_question` 级联扩展到 `errors` + 删除预检（查引用 → 回显连带影响 → 用户确认一起删）
 - [ ] **随作答功能落地**：同上扩展 `exam_attempts`
 
-> **归属决策（2026-09-03）**：改 / 删**不挂 Leader**——`create_gaokao_leader()` 不传 `tools=`，Leader 是纯编排者，挂写工具破坏「只委派」。执行者为**题目维护 Agent**：其原本就管「已入库题目的知识点改动」，树治理后置后并入改 / 删，属同一类写操作。代码未落地，扩职责零成本。
+> **归属决策（2026-09-03）**：改 / 删**不挂 Leader**——`create_gaokao_leader()` 不传 `tools=`，Leader 是纯编排者，挂写工具破坏「只委派」。执行者为**题目维护 Agent**：其原本就管「已入库题目的知识点改动」，树治理后置后并入改 / 删，属同一类写操作。决策时该 Agent 代码尚未落地，扩职责零成本（现已按此落地）。
 >
 > **级联分阶段（2026-09-03 用户拍板）**：现在门面只删三处，不为删题倒推建 errors / exam_attempts 模块；**错题本功能落地时同步修改删除代码**——检查该题是否在错题本中，命中则在回显阶段提示用户，确认后一起删除；作答同理。检查进回显而非当闸门，不做「删除时拒绝」。删题预检（首轮）与执行（用户确认后的新一轮）分属两轮、每轮只委派一次，与「每成员每任务最多委派一次」铁律天然不冲突，无需例外。
 

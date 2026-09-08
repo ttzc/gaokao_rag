@@ -55,7 +55,7 @@ Agent 只需要提供结构化数据，调用单个函数即可完成入库，�
 
 ## update_question — 修改题目信息
 
-> ⏳ **设计已定、代码未落地**（2026-09-03）。当前 `src/ingestion/` 只有 `ingest_question` 一个函数。
+> ✅ **已落地**（门面 2026-09-04，commit `29ae6ee`；Agent 侧工具 / 题目维护链路 2026-09-08）。
 
 ```python
 def update_question(
@@ -100,7 +100,7 @@ def update_question(
 
 ## delete_question — 删除题目
 
-> ⏳ **设计已定、代码未落地**（2026-09-03）。
+> ✅ **已落地**（门面 2026-09-04，commit `29ae6ee`；阶段 1 级联三处，`errors` / `exam_attempts` 恒 0，阶段 2 随错题本 / 作答模块扩展）。
 
 ```python
 def delete_question(*, question_id: int) -> dict:

@@ -2,15 +2,17 @@
 """agent 工具层（src/agent/tools/）测试：导出面 + FunctionTool 元数据 + 调用转发 + 分层铁律。
 
 被测主体是模块级工具实例（子 Agent 挂载的交付物）：写侧 ``ingest_question_tool``
-（FunctionTool）+ 读侧 ``knowledge_search_tool``（框架 LangchainKnowledgeSearchTool）
++ ``update_question_tool`` + ``delete_question_tool``（FunctionTool，后两件挂题目
+维护子 Agent）+ 读侧 ``knowledge_search_tool``（框架 LangchainKnowledgeSearchTool）
 + 读侧 ``get_question_detail_tool``（业务查询 FunctionTool），
 非测试内自行包装的副本。全部 mock 门面（src.ingestion / src.retrieval），
 不触真实存储 / 网络 / 计费 API。
 
 工具函数经 `from src.ingestion.question import ingest_question as _ingest_question`
-绑定到工具模块，monkeypatch 必须打在 ``src.agent.tools.ingest_tool._ingest_question``
-（from-import 在 import 时把函数对象绑进本模块全局，只 patch 源模块不会重绑——
-同 tests/conftest.py 嵌入层 patch 三处的教训）。
+（update / delete 同款）绑定到工具模块，monkeypatch 必须打在
+``src.agent.tools.ingest_tool._ingest_question`` / ``._update_question`` /
+``._delete_question``（from-import 在 import 时把函数对象绑进本模块全局，
+只 patch 源模块不会重绑——同 tests/conftest.py 嵌入层 patch 三处的教训）。
 
 `_run_async_impl` 直调（非公开 run_async）：仿官方 tests/tools/test_function_tool.py，
 run_async 的 filter 链是框架自身职责，本文件只测工具层语义。
@@ -30,7 +32,11 @@ from trpc_agent_sdk.tools import FunctionTool
 from trpc_agent_sdk.tools.utils import get_mandatory_args
 
 from src.agent.tools import ingest_tool, retrieve_tool
-from src.agent.tools.ingest_tool import ingest_question_tool
+from src.agent.tools.ingest_tool import (
+    delete_question_tool,
+    ingest_question_tool,
+    update_question_tool,
+)
 from src.retrieval.question import QuestionDetail
 
 
@@ -63,9 +69,20 @@ class TestToolExports:
         assert ingest_question_tool.name == "ingest_question"
         assert ingest_question_tool.func is ingest_tool.ingest_question
 
+    def test_maintain_instances_are_function_tools(self) -> None:
+        """改 / 删两件（题目维护子 Agent 挂载）同为模块级 FunctionTool 实例。"""
+        assert isinstance(update_question_tool, FunctionTool)
+        assert update_question_tool.name == "update_question"
+        assert update_question_tool.func is ingest_tool.update_question
+        assert isinstance(delete_question_tool, FunctionTool)
+        assert delete_question_tool.name == "delete_question"
+        assert delete_question_tool.func is ingest_tool.delete_question
+
     def test_public_names(self) -> None:
         """只导出 tool 实例；包装函数与未来工具不进公共接口面。"""
-        assert ingest_tool.__all__ == ["ingest_question_tool"]
+        assert ingest_tool.__all__ == [
+            "ingest_question_tool", "update_question_tool", "delete_question_tool",
+        ]
 
 
 class TestRetrieveToolExports:
@@ -194,6 +211,65 @@ class TestFunctionToolMetadata:
         assert tn.items.type.value == "STRING"
 
 
+class TestMaintainToolMetadata:
+    """改 / 删两件工具（题目维护子 Agent 挂载）的声明符合约定。"""
+
+    def test_update_declaration_schema(self) -> None:
+        """update_question：question_id + 9 个可变字段全 Optional；必填仅 question_id。
+
+        image_file_ids 不进工具 schema——图片摄入管线未落地、图形改动本版不支持，
+        薄封装收紧 LLM 参数面（同 ingest_question 不暴露 vlm_descriptions 的思路）。
+        """
+        tool = update_question_tool
+        decl = tool._get_declaration()
+        assert decl is not None
+        assert decl.name == "update_question"
+        props = decl.parameters.properties
+        assert set(props.keys()) == {
+            "question_id", "content_text", "answer_text", "analysis_text",
+            "question_number", "question_type", "exam_regions", "exam_year",
+            "exam_month", "topic_names",
+        }
+        assert "image_file_ids" not in props
+        qid = props["question_id"].model_dump(exclude_none=True)
+        assert qid == {"type": qid["type"]}  # 无 default/nullable → 必填
+        assert get_mandatory_args(tool.func) == ["question_id"]
+
+    def test_update_description_semantics(self) -> None:
+        """description（docstring）把三态语义 / 不可变字段 / 图形降级写清，LLM 可见。"""
+        desc = update_question_tool.description
+        assert desc == update_question_tool.func.__doc__
+        for marker in ("部分更新", "全量替换", "不可变字段", "清空",
+                       "图形", "暂不支持", "updated_fields"):
+            assert marker in desc
+
+    @pytest.mark.parametrize("param", ["topic_names", "exam_regions"])
+    def test_update_list_params_nullable(self, param: str) -> None:
+        """可空 list 参数同样走 typing.Optional 写法，schema 生成不炸（回归保护）。"""
+        prop = update_question_tool._get_declaration().parameters.properties[param]
+        assert prop.type.value == "ARRAY"
+        assert prop.nullable is True
+        assert prop.items.type.value == "STRING"
+
+    def test_delete_declaration_schema(self) -> None:
+        """delete_question：schema 只有 question_id（INTEGER、必填）。"""
+        tool = delete_question_tool
+        decl = tool._get_declaration()
+        assert decl.name == "delete_question"
+        props = decl.parameters.properties
+        assert set(props.keys()) == {"question_id"}
+        assert props["question_id"].type.value == "INTEGER"
+        assert get_mandatory_args(tool.func) == ["question_id"]
+
+    def test_delete_description_confirmation_gate(self) -> None:
+        """不可逆 + 确认前置（user_confirmed）必须写进 docstring——防 LLM 擅自删。"""
+        desc = delete_question_tool.description
+        assert desc == delete_question_tool.func.__doc__
+        for marker in ("不可逆", "仅当用户已明确确认删除", "user_confirmed",
+                       "级联", "幂等", "cascade"):
+            assert marker in desc
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 调用转发（mock 门面）
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -283,6 +359,161 @@ class TestCallForwarding:
             await tool._run_async_impl(
                 tool_context=_fake_tool_context(),
                 args={"question_text": "题干"},
+            )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# update / delete 调用转发（mock 门面）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class _MaintainRecorder:
+    """记录改 / 删门面入参的替身：返回构造时给定的固定结果。"""
+
+    def __init__(self, result: dict) -> None:
+        self.result = result
+        self.calls: list[dict] = []
+
+    def __call__(self, **kwargs) -> dict:
+        self.calls.append(kwargs)
+        return self.result
+
+
+class TestUpdateCallForwarding:
+    """update_question 工具经 FunctionTool 执行时，参数透传门面、返回值原样给出。"""
+
+    @pytest.mark.asyncio
+    async def test_forwards_all_args_to_facade(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        recorder = _MaintainRecorder(
+            {"question_id": 7, "doc_id": "q_7", "updated_fields": ["answer_text"]}
+        )
+        monkeypatch.setattr(ingest_tool, "_update_question", recorder)
+
+        result = await update_question_tool._run_async_impl(
+            tool_context=_fake_tool_context(),
+            args={
+                "question_id": 7,
+                "content_text": "已知函数 f(x) = x² - 2x，求最小值。",
+                "answer_text": "B",
+                "analysis_text": "配方 f(x) = (x-1)² - 1。",
+                "question_number": "第15题",
+                "question_type": "单选题",
+                "exam_regions": ["南昌", "江西"],
+                "exam_year": 2026,
+                "exam_month": 3,
+                "topic_names": ["二次函数", "配方法"],
+            },
+        )
+
+        assert result == {"question_id": 7, "doc_id": "q_7",
+                          "updated_fields": ["answer_text"]}
+        assert len(recorder.calls) == 1
+        assert recorder.calls[0] == {
+            "question_id": 7,
+            "content_text": "已知函数 f(x) = x² - 2x，求最小值。",
+            "answer_text": "B",
+            "analysis_text": "配方 f(x) = (x-1)² - 1。",
+            "question_number": "第15题",
+            "question_type": "单选题",
+            "exam_regions": ["南昌", "江西"],
+            "exam_year": 2026,
+            "exam_month": 3,
+            "topic_names": ["二次函数", "配方法"],
+        }
+
+    @pytest.mark.asyncio
+    async def test_defaults_forwarded_as_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """LLM 只传 question_id（部分更新）时，其余字段全部以 None 透传 = 不修改。"""
+        recorder = _MaintainRecorder(
+            {"question_id": 7, "doc_id": "q_7", "updated_fields": []}
+        )
+        monkeypatch.setattr(ingest_tool, "_update_question", recorder)
+
+        result = await update_question_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"question_id": 7},
+        )
+
+        assert result["updated_fields"] == []
+        fwd = recorder.calls[0]
+        assert fwd["question_id"] == 7
+        for field in ("content_text", "answer_text", "analysis_text",
+                      "question_number", "question_type", "exam_regions",
+                      "exam_year", "exam_month", "topic_names"):
+            assert fwd[field] is None, field
+        # 门面是 keyword-only：转发不得出现位置参数（recorder 只收 kwargs，能跑通即证明）
+
+    @pytest.mark.asyncio
+    async def test_facade_exception_not_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """question_id 不存在时门面 ValueError 原样抛出，由框架转 error 告知 Agent。"""
+
+        def boom(**kwargs) -> None:
+            raise ValueError("question_id=999 不存在，无法修改")
+
+        monkeypatch.setattr(ingest_tool, "_update_question", boom)
+
+        with pytest.raises(ValueError, match="不存在"):
+            await update_question_tool._run_async_impl(
+                tool_context=_fake_tool_context(), args={"question_id": 999},
+            )
+
+
+class TestDeleteCallForwarding:
+    """delete_question 工具：question_id 透传、cascade 返回体原样给出、幂等不抛。"""
+
+    @pytest.mark.asyncio
+    async def test_forwards_id_and_returns_cascade(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        recorder = _MaintainRecorder({
+            "question_id": 7, "doc_id": "q_7", "deleted": True,
+            "cascade": {"question_topics": 2, "errors": 0,
+                        "exam_attempts": 0, "vector": True},
+        })
+        monkeypatch.setattr(ingest_tool, "_delete_question", recorder)
+
+        result = await delete_question_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"question_id": 7},
+        )
+
+        assert result["deleted"] is True
+        assert result["cascade"]["question_topics"] == 2
+        assert recorder.calls == [{"question_id": 7}]
+
+    @pytest.mark.asyncio
+    async def test_idempotent_result_passthrough(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """门面幂等（不存在 → deleted=False 不抛）——工具原样透传，不加工不重试。"""
+        recorder = _MaintainRecorder({
+            "question_id": 999, "doc_id": "q_999", "deleted": False,
+            "cascade": {"question_topics": 0, "errors": 0,
+                        "exam_attempts": 0, "vector": False},
+        })
+        monkeypatch.setattr(ingest_tool, "_delete_question", recorder)
+
+        result = await delete_question_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"question_id": 999},
+        )
+
+        assert result["deleted"] is False
+        assert result["cascade"]["vector"] is False
+
+    @pytest.mark.asyncio
+    async def test_facade_exception_not_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """存储层异常原样抛出（工具不吞异常），由框架转 error 告知 Agent。"""
+
+        def boom(**kwargs) -> None:
+            raise RuntimeError("chroma down")
+
+        monkeypatch.setattr(ingest_tool, "_delete_question", boom)
+
+        with pytest.raises(RuntimeError, match="chroma down"):
+            await delete_question_tool._run_async_impl(
+                tool_context=_fake_tool_context(), args={"question_id": 7},
             )
 
 
@@ -382,6 +613,40 @@ class TestMissingMandatoryArg:
         assert isinstance(result, dict)
         assert "error" in result
         assert "question_text" in result["error"]
+        assert recorder.calls == []
+
+    @pytest.mark.asyncio
+    async def test_missing_question_id_returns_error_not_call_update(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """update 工具缺 question_id → error 提示补参，门面零调用。"""
+        recorder = _MaintainRecorder({"question_id": 0, "doc_id": "", "updated_fields": []})
+        monkeypatch.setattr(ingest_tool, "_update_question", recorder)
+
+        result = await update_question_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"answer_text": "B"},
+        )
+
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert "question_id" in result["error"]
+        assert recorder.calls == []
+
+    @pytest.mark.asyncio
+    async def test_missing_question_id_returns_error_not_call_delete(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """delete 工具缺 question_id → error 提示补参，门面零调用（防误删）。"""
+        recorder = _MaintainRecorder({"deleted": True})
+        monkeypatch.setattr(ingest_tool, "_delete_question", recorder)
+
+        result = await delete_question_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={},
+        )
+
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert "question_id" in result["error"]
         assert recorder.calls == []
 
 

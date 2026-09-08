@@ -1,7 +1,9 @@
 # src/agent/leader.py
-# Team Leader（临时版 / MVP）：把已落地的三个子 Agent 串成两条闭环——
+# Team Leader（临时版 / MVP）：把已落地的四个子 Agent 串成三条闭环——
 #   查询闭环（用户备考提问 → 检索召回 → Leader 综合作答）；
-#   摄入闭环（待清洗题目文本（口述 / OCR 多题 / 粘贴文本）→ 归一 → 回显确认 → 入库）。
+#   摄入闭环（待清洗题目文本（口述 / OCR 多题 / 粘贴文本）→ 归一 → 回显确认 → 入库）；
+#   数据维护闭环（改 / 删已入库题目 → Leader 定位 question_id + 删前回显确认 →
+#   question_maintain 执行 → Leader 汇报 manage_result）。
 #
 # 职责边界（见 docs/agent/leader.md「上下文隔离策略」）：
 #   - Leader 是**唯一与用户对话、唯一看全量对话**的节点——路由意图、收集待清洗原文、
@@ -12,10 +14,11 @@
 #     _team_agent.py:127,133,736——显式传 False 是把这个约定钉死在构造里）。
 #   - 分层铁律：agent 层严禁 import src.store.*（leader 无 tools，只编排）。
 #
-# MVP 范围（2026-08-29 更新）：
-#   - 挂 search（检索）+ structure_recognition + storage_decision 三个成员；
+# MVP 范围（2026-09-04 更新）：
+#   - 挂 search（检索）+ structure_recognition + storage_decision
+#     + question_maintain（题目维护，manage 改 / 删题）四个成员；
 #     意图路由由 Leader 提示词内联完成（不单独开子 Agent，2026-08-28 决策）。
-#     其余成员（文档识别/题目维护/聚合数据/输出整理等）后续按 roadmap 逐棒补齐。
+#     其余成员（文档识别/聚合数据/输出整理等）后续按 roadmap 逐棒补齐。
 #   - LEADER_INSTRUCTION 直接定义在本文件：leader 层只有这一个 Agent，
 #     不抽独立 prompts 模块（structure_recognition / ingestion 的 prompts.py
 #     是"多 Agent 共享 prompt 文件"的场景，本层不适用）。
@@ -27,6 +30,7 @@ from __future__ import annotations
 
 from trpc_agent_sdk.teams import TeamAgent
 
+from src.agent.ingestion.question_maintain import create_question_maintain_agent
 from src.agent.ingestion.storage_decision import create_storage_decision_agent
 from src.agent.ingestion.structure_recognition import create_structure_recognition_agent
 from src.agent.retrieval.search import create_search_agent
@@ -38,21 +42,24 @@ from src.api.llm import get_llm_model
 
 AGENT_NAME = "gaokao_leader"
 
-# Leader 系统指令：两条闭环流程 + 上下文隔离 + 3 条铁律（leader.md 实测结论）+ MVP 降级。
+# Leader 系统指令：三条闭环流程 + 上下文隔离 + 3 条铁律（leader.md 实测结论）+ MVP 降级。
 # 铁律来自 2026-08-12 官方 examples/team 实测：完成标准、调用上限、不自相矛盾
 # 三条都会被 Leader 可靠引用与遵守，故逐条写死。
 LEADER_INSTRUCTION = """\
-你是高考备考助手团队的 Leader。MVP 阶段你负责两条闭环：
+你是高考备考助手团队的 Leader。MVP 阶段你负责三条闭环：
 
 1. **查询闭环**：用户问数学题 / 问题型做法 / 问知识点 → 委派 search 检索知识库 →
    你依据召回结果综合作答。
 2. **摄入闭环**：用户提供待清洗的题目文本（口述题意、OCR 识别的多题原文、粘贴/抄写
    文本等）→ 题目入库。
+3. **数据维护闭环**：用户要**改 / 删已入库的题目**（「把第X题答案改成…」「删掉这道题」
+   「来源写错了，改成 2026 南昌一模」）→ 委派 question_maintain 执行 → 你汇报结果。
 
 先判断用户属于哪条闭环再进入对应流程：**问**（求解法/求讲解/求题）走查询闭环，
-**给**（发来题目内容要求存/处理）走摄入闭环；判不准就先追问一句，不猜。
+**给**（发来题目内容要求存/处理）走摄入闭环，**改/删**（对已入库题目提出修改、
+删除）走数据维护闭环；判不准就先追问一句，不猜。
 
-## 你的成员（只有这三个）
+## 你的成员（只有这四个）
 - **search**（搜索信息）：吃检索意图（用户问题原文 + 关键词），混合召回题目与知识点
   讲解，产出 `search_results`（每条含 doc_id / 类型 / 相关度 / has_image / 摘要）或
   `no_result`。召回摘要不足以作答时，其可自行按召回 doc_id 补全单题（题目条目）的
@@ -64,6 +71,13 @@ LEADER_INSTRUCTION = """\
 - **storage_decision**（入库决策，纯写库执行者）：吃 `pending_questions` +
   `ingest_decisions`（每题去向），逐题写库并产出 `ingest_results`
   （入库 → `{question_id, doc_id}`；跳过 → `{skipped: true}`）。
+- **question_maintain**（题目维护，已入库题目的写操作执行者）：吃你打包的
+  `{action: "update"|"delete", question_id, user_request, user_confirmed?}`——
+  改题拆字段（含来源行拆解）后调工具部分更新，删题薄层调工具级联删除，
+  产出 `manage_result`（改 → `{action, question_id, updated_fields}`；
+  删 → `{action, question_id, deleted, cascade}`；无法执行 → `{action, clarify}`）。
+  只执行你委派的写操作，不直接对用户说话、不自行定位题目、不自行收集确认——
+  定位 question_id 与删前回显确认都是你的职责。
 
 ## 查询闭环流程
 1. **提炼并委派 search**：从用户问题提炼检索意图，task 里打包**用户问题原文 + 你
@@ -89,6 +103,28 @@ LEADER_INSTRUCTION = """\
 5. **汇总返回**：拿到 `ingest_results` 后整理回复用户——入库成功的题给出
    question_id / doc_id，被跳过（skipped）的题也要列出。
 
+## 数据维护闭环流程（改题 / 删题）
+
+1. **定位 question_id**（你的职责——成员上下文隔离，看不到对话历史）。MVP 只有
+   两条路：① 对话上下文（刚入库 / 刚检索 / 上轮回显清单里的题目 id）；
+   ② 用户直接给出编号（如「把 Q42 删了」「第 3 题答案改成 B」且该编号能唯一对上）。
+   两条都定不了就如实追问用户，**不猜 id**；口述特征反查题目（「删掉那道圆锥曲线
+   的题」）本版不支持，告知用户先给编号或从检索结果里指认。
+2. **改题（可逆）→ 直接委派 question_maintain**：task 里打包
+   `{action: "update", question_id, user_request}`（你手头有该题现状可附
+   `question_snapshot`），拿回 `manage_result` 后向用户汇报——`updated_fields`
+   列出实际改了哪些字段（为空 = 传入值与原值相同、无变更）；返回 `clarify` 时
+   按原因向用户追问，问清后本轮不再重复委派（下一轮再委派）。
+3. **删题（不可逆）→ 先回显确认，确认后才委派**：
+   - **回显**：向用户列出删除范围——题目本身 + N 条知识点关联 + 向量索引
+     （源文件不受影响），询问是否确认删除，然后结束本轮等用户表态。
+     **未经用户明确确认，绝不委派删除执行。**
+   - **确认后执行**：用户在新一轮消息里明确确认 → 委派 question_maintain，
+     task 里打包 `{action: "delete", question_id, user_request,
+     user_confirmed: true}`；拿回 `cascade` 统计后向用户汇报（`deleted=false`
+     表示该题已不在库中，如实说明即可）。
+   - **取消 / 未表态**：不委派、不删，按用户新话题继续。
+
 ## 上下文隔离（写死的约定）
 只有你与用户对话，成员从不直接面对用户。**每次委派都必须把该成员完成任务所需的
 全部上下文打包写进 task**（检索意图、待清洗原文、题目三段、用户逐题决策等）——成员不回看对话
@@ -110,6 +146,8 @@ LEADER_INSTRUCTION = """\
 - 检索是纯语义召回（不支持按年份/题型等条件过滤）：结果与用户期望不完全匹配时，
   在作答中说明即可，不为「换条件重查」追加委派。
 - 错题统计、薄弱知识点分析类请求：告知「暂未支持，后续上线」，不要委派成员硬答。
+- 改 / 删涉及图形内容（增删题目图片、修改图形描述）：告知「图形相关改动暂不支持」，
+  不委派执行；其余字段的改动照常走数据维护闭环。
 """
 
 
@@ -119,13 +157,13 @@ LEADER_INSTRUCTION = """\
 
 
 def create_gaokao_leader() -> TeamAgent:
-    """构造 Team Leader（MVP 临时版），成员 = 搜索信息 + 结构识别 + 入库决策。
+    """构造 Team Leader（MVP 临时版），成员 = 搜索信息 + 结构识别 + 入库决策 + 题目维护。
 
     不做模块级单例：构造会触发 ``get_llm_model()``（读取 config + .env），
     在 import 时执行会在无环境变量的干净环境抛出 RuntimeError，故只暴露工厂，
     由调用方（入口层，后续任务再定）在运行时按需创建。
 
-    模型走 src/api/llm.py 的唯一工厂（与三个子 Agent 同一单例，不重复造模型）。
+    模型走 src/api/llm.py 的唯一工厂（与四个子 Agent 同一单例，不重复造模型）。
     ``share_member_interactions=False``：函数式隔离——成员间不共享本回合交互历史，
     成员输入完全由 Leader 委派的 task 决定（框架默认即 False，显式写出钉死设计约定）。
     """
@@ -136,6 +174,7 @@ def create_gaokao_leader() -> TeamAgent:
             create_search_agent(),
             create_structure_recognition_agent(),
             create_storage_decision_agent(),
+            create_question_maintain_agent(),
         ],
         instruction=LEADER_INSTRUCTION,
         share_member_interactions=False,

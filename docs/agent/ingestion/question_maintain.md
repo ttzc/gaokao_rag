@@ -41,10 +41,10 @@
 | `search_topic` | (keyword) → [node] | 按名字/别名模糊查节点 | 知识点归位 |
 | `create_topic` | (name, aliases=[]) → id | 新增 tag（内部先 search 去重） | 知识点归位 |
 | `add_alias` | (topic_id, alias) | 同义表述归并（别名查重） | 知识点归位 |
-| `update_question` | (question_id, ...) → {question_id, doc_id, updated_fields} | 改题目内容 / 答案 / 解析 / 元数据 / 知识点 | 题目维护 ⏳ |
-| `delete_question` | (question_id) → {deleted, cascade:{...}} | 级联删题目 | 题目维护 ⏳ |
+| `update_question` | (question_id, ...) → {question_id, doc_id, updated_fields} | 改题目内容 / 答案 / 解析 / 元数据 / 知识点 | 题目维护 ✅ |
+| `delete_question` | (question_id) → {deleted, cascade:{...}} | 级联删题目 | 题目维护 ✅ |
 
-> ⏳ = 门面未落地，随 `update_question` / `delete_question` 实现后补。
+> ✅ = 已落地（门面 2026-09-04 `29ae6ee`，工具与 Agent 挂载 2026-09-08）；知识点归位三件（`search_topic` / `create_topic` / `add_alias`）待 `src/ingestion/topic.py` 门面落地后接入（V0.6c）。
 
 ---
 
@@ -117,6 +117,6 @@ Leader 打包给本 Agent 的输入（示意）：
 | 字段 | 内容 |
 |------|------|
 | `topic_draft` | 每题知识点草案（topic_name 列表，待归位）——`ingest` 意图 |
-| `manage_result` | 改 / 删结果：`{"action", "question_id", "updated_fields"}` 或 `{"action":"delete", "cascade":{...}}`——`manage` 意图（⏳ 随门面落地） |
+| `manage_result` | 改 / 删结果：`{"action", "question_id", "updated_fields"}` 或 `{"action":"delete", "cascade":{...}}`——`manage` 意图（✅ 已落地，另含无法执行时的 `{"action", "clarify"}` 形态） |
 
 数据流见 [README.md 摄入侧数据流契约](../README.md)。
