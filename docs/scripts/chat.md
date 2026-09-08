@@ -30,6 +30,21 @@ uv run python scripts/chat.py
 
 启动后出现 `你（QQ）:` 提示符，输入消息回车即发送；`exit` / `quit` 结束。
 
+### 多行输入（长题目）
+
+输入基于 prompt_toolkit（`PromptSession`，multiline）：
+
+| 操作 | 效果 |
+|------|------|
+| **直接粘贴多行题目** | 整段进入缓冲区，换行保留，不触发发送（bracketed paste） |
+| `Enter` | 发送整段（单行短消息不受影响） |
+| `Alt+Enter` / `Ctrl+J` | 手动换行（Windows 终端常吞 Alt+Enter，Ctrl+J 兜底） |
+| `↑` / `↓` | 翻历史输入（持久化在 `{data_dir}/chat_history.txt`，跨进程可用） |
+
+> **终端限制**：Git Bash（mintty）伪终端下 Win32 控制台 API 不可用，脚本自动
+> 回退为单行 `input()` 并打印提示。需要多行粘贴请用 cmd / PowerShell /
+> Windows Terminal 运行。
+
 ## 交互流程
 
 ```
@@ -60,6 +75,7 @@ runner = Runner(
 
 - **MVP 用 InMemorySessionService**：进程内保持多轮上下文；重启即清空。持久化（`SqlSessionService`）随正式入口切换
 - `create_gaokao_leader()` 构造时读 `.env`，环境缺失会抛错——运行前确认配置
+- **输入层**：`_make_prompt_session()` 构造 prompt_toolkit 会话（自定义键位 Enter 提交 / Alt+Enter、Ctrl+J 换行 + `FileHistory`）；构造失败（伪终端）自动回退 `input()` 单行模式
 
 ## MVP 边界
 
