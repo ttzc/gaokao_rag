@@ -162,7 +162,13 @@ export QQ_APP_SECRET=xxx
 | 收消息·身份 | 群：`chat_id=group_openid`、`user_id=author.member_openid`；单聊：`chat_id=user_id=author.id/user_openid`（`chat_id` 回消息时当 `openid` 用） | runtime.py:540-550 |
 | 收消息·去重 | `_processed_ids`（deque 上限 1000），重复消息直接丢弃（QQ 可能重推） | runtime.py:554-557 |
 | 收消息·白名单 | `is_allowed(user_id)` 查 `allowFrom`（语义 `*` 通配 > 列表精确匹配 > deny）；**0.2.0 未授权直接静默丢弃**（`_on_message` 内 `if not is_allowed: return`，连 ack 都不发——联调无响应的头号原因）；列表精确匹配的是 **openid 不是 QQ 号**（C2C 的 `user_id=author.id/user_openid`） | qq.py:493（0.2.0 单文件版） |
-| 收消息·附件 | 分块流式下载（256KB chunk / 200MB 上限 / `.part` 临时文件 + 原子改名），存 `media_dir`（默认 `~/.nanobot/media/qq/`），内容拼 `Received files:` 列表带本地路径（VLM 读图数据源） | runtime.py:624-661/663-772 |
+| 收消息·附件 | 分块流式下载（256KB chunk / 200MB 上限 / `.part` 临时文件 + 原子改名），存 `media_dir`，内容拼 `Received files:` 列表带本地路径（VLM 读图数据源） | runtime.py:624-661/663-772 |
+
+> **media_dir 配置（openclaw.yaml → `channels.qq.media_dir`）**：显式配为
+> `data/files/raw/images/uploaded`（L1 文件层 raw 区，架构文档约定的「QQ 上传
+> 统一入口」，`data/` 已 gitignore）。**留空的默认值不可用**：nanobot 会落到
+> 配置文件旁边的 `src/im/media/qq/`（运行产物进源码树）。相对路径按进程 cwd
+> 解析（runtime.py:228 仅 `expanduser`），im_server 须在项目根启动。
 | 收消息·ack | `ack_message`（默认 `⏳ Processing...`）先回执再进 Agent，避免用户等十几秒无反馈 | runtime.py:596-605 |
 | 收消息·发布 | `_handle_message(...)` 封装 `InboundMessage` 进 MessageBus，与 Agent 解耦 | runtime.py:607 |
 | 发回复·顺序 | **先媒体后文本**（媒体失败 fallback 发 `[Attachment send failed: ...]`） | runtime.py:299-343 |

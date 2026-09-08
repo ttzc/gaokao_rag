@@ -17,6 +17,11 @@ channels:
     secret: ${QQ_APP_SECRET}
     allowFrom: ["*"]
     msgFormat: plain
+    # 收消息附件落地目录（nanobot QQ 通道 media_dir）：留空会落到配置文件旁边的
+    # src/im/media/qq/（运行产物进源码树，已废弃）。显式指到 L1 文件层 raw 区——
+    # 架构文档约定的「QQ 上传统一入口」，data/ 已 gitignore。
+    # 注意：相对路径按进程 cwd 解析（runtime.py 仅 expanduser），im_server 须在项目根启动。
+    media_dir: data/files/raw/images/uploaded
   # wecom 段删除或 enabled: false（MVP 不用）
 
 # gateway 段删除（WebUI 网关，我们不需要；留着也要改回 127.0.0.1）
