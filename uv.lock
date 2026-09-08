@@ -895,6 +895,7 @@ dependencies = [
     { name = "prompt-toolkit" },
     { name = "python-dotenv" },
     { name = "qq-botpy" },
+    { name = "rich" },
     { name = "trpc-agent-py", extra = ["knowledge", "langfuse", "openclaw"] },
 ]
 
@@ -914,6 +915,7 @@ requires-dist = [
     { name = "prompt-toolkit", specifier = ">=3.0.53,<4.0.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "qq-botpy", specifier = ">=1.2.0,<2.0.0" },
+    { name = "rich", specifier = ">=14.3.4,<15.0.0" },
     { name = "trpc-agent-py", extras = ["knowledge", "langfuse", "openclaw"], specifier = ">=1.1.16" },
 ]
 

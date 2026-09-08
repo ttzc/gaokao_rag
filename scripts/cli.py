@@ -1,19 +1,24 @@
 # scripts/cli.py
-# 题目只读 CLI（开发 / 外部 Agent 接口）：包装 src.retrieval.question 的
-# 两个纯数据库读门面——browse_questions（结构化浏览）与
-# get_question_detail（题目完整详情）。设计见 docs/scripts/cli.md。
+# 开发 CLI 统一入口：browse / detail 只读子命令（包装 src.retrieval.question
+# 的纯数据库读门面——browse_questions 结构化浏览、get_question_detail 完整
+# 详情）+ chat 对话调试子命令（转发 scripts/chat 包）。设计见 docs/scripts/cli.md。
 #
 # 要点：
-#   - 只读、无 LLM、无向量：browse / detail 全部走 SQLite 查询门面，
+#   - browse / detail 只读、无 LLM、无向量：全部走 SQLite 查询门面，
 #     不需要 .env 里的 API Key（仅 config.toml 路径解析），不写任何数据。
-#   - 双输出：默认人类可读；--json 输出纯 JSON（stdout 机器可读，
-#     便于外部 Agent / shell 管道消费；错误只打 stderr，stdout 保持干净）。
+#   - chat 子命令走真实链路（DeepSeek + Embedding + 写库，计费），且 chat 包
+#     import 即拉起 trpc/Leader 依赖——故处理器内惰性 import，只读子命令
+#     保持零 LLM 依赖不变。参数原样透传（选项详见 ``chat --help``）。
+#   - 双输出：browse / detail 默认人类可读；--json 输出纯 JSON
+#     （stdout 机器可读，便于外部 Agent / shell 管道消费；错误只打 stderr，
+#     stdout 保持干净）。
 #   - 退出码：0=成功（含空结果）；1=参数或查询错误（如 id 不存在）。
 #   - 门面组合逻辑不在这里重复——本文件只做参数解析 + 输出格式化。
 #
 # 示例：
 #   uv run python scripts/cli.py browse --year 2026 --region 南昌 --type 解答题
 #   uv run python scripts/cli.py detail 42 --json
+#   uv run python scripts/cli.py chat --no-think
 
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ import json
 import sys
 from dataclasses import asdict
 from io import TextIOWrapper
+from pathlib import Path
 
 from src.retrieval.question import QuestionDetail, QuestionHit, browse_questions, get_question_detail
 
@@ -31,20 +37,34 @@ from src.retrieval.question import QuestionDetail, QuestionHit, browse_questions
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+def _prog_name() -> str:
+    """当前入口的命令名：console script 启动为 ``gaokao``，脚本直跑为 ``cli.py``。
+
+    usage/help 按实际启动形态显示（``usage: gaokao chat ...``），不硬编码——
+    两种入口长期共存，写死哪个都会误导另一半使用者。
+    """
+    return Path(sys.argv[0]).name.removesuffix(".exe") or "cli.py"
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    """构造 argparse 解析器（browse / detail 两个子命令）。"""
+    """构造 argparse 解析器（browse / detail 只读子命令 + chat 对话子命令）。"""
+    prog = _prog_name()
     parser = argparse.ArgumentParser(
-        prog="cli.py",
-        description="Gaokao RAG 题目只读 CLI（结构化浏览 / 完整详情，纯 SQLite，不涉语义检索）",
+        prog=prog,
+        description=(
+            "Gaokao RAG 开发 CLI：browse / detail 只读（纯 SQLite，不涉语义检索）"
+            "+ chat 对话调试（真实 LLM，计费）"
+        ),
         epilog=(
             "示例:\n"
-            "  uv run python scripts/cli.py browse --year 2026 --region 南昌 --type 解答题\n"
-            "  uv run python scripts/cli.py browse --topic 椭圆 --limit 5 --json\n"
-            "  uv run python scripts/cli.py detail 42"
+            f"  uv run {prog} browse --year 2026 --region 南昌 --type 解答题\n"
+            f"  uv run {prog} browse --topic 椭圆 --limit 5 --json\n"
+            f"  uv run {prog} detail 42\n"
+            f"  uv run {prog} chat --no-think   （选项见 chat --help）"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    sub = parser.add_subparsers(dest="command", required=True, metavar="{browse,detail}")
+    sub = parser.add_subparsers(dest="command", required=True, metavar="{browse,detail,chat}")
 
     # ── browse：对应 browse_questions(filters) ──────────────────────
     p_browse = sub.add_parser("browse", help="结构化浏览题目（年份/考区/题型/知识点等组合过滤）")
@@ -68,6 +88,17 @@ def _build_parser() -> argparse.ArgumentParser:
     p_detail.add_argument("question_id", type=int, help="questions 表主键 ID")
     p_detail.add_argument("--json", dest="as_json", action="store_true",
                           help="输出纯 JSON（QuestionDetail）")
+
+    # ── chat：转发 scripts/chat 包（真实 LLM 对话调试，计费）──────────
+    # 仅作帮助清单占位——实际执行走 main() 的顶层早路由（chat 参数原样
+    # 透传给 app.run，不在这里二次解析）。不用 REMAINDER 硬接的原因：
+    # argparse 经典坑，REMAINDER 只在首 token 是位置参数时才吞选项，
+    # ``chat --help`` 这种首 token 即选项的形态会被外层判 unrecognized 报错。
+    sub.add_parser(
+        "chat",
+        help="对话调试入口（模拟 QQ ↔ Team Leader，真实链路计费；选项见 cli.py chat --help）",
+        add_help=False,
+    )
 
     return parser
 
@@ -162,6 +193,24 @@ def _cmd_detail(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_chat(argv: list[str]) -> int:
+    """chat 早路由：惰性 import chat 包，剩余参数原样交给 app.run。
+
+    惰性原因：chat 包 import 即拉起 trpc-agent / Leader / 模型工厂依赖，
+    放模块顶层会让 browse/detail 也背上 .env 要求——与本 CLI「只读零 Key」
+    的定位冲突。两种运行形态的路径不同（脚本执行时 sys.path[0]=scripts/，
+    ``python -m`` 时=项目根），故双路径 import。
+
+    Args:
+        argv: ``chat`` 之后的全部参数（含 --help / --no-think / --full）。
+    """
+    try:
+        from chat.app import run as chat_run
+    except ImportError:  # console script / ``python -m scripts.cli`` 形态到达
+        from scripts.chat.app import run as chat_run
+    return chat_run(argv, prog=f"{_prog_name()} chat")
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI 主入口：stdout UTF-8 兜底 + 门面 ValueError → 友好报错。
 
@@ -169,14 +218,22 @@ def main(argv: list[str] | None = None) -> int:
         argv: 参数列表，``None`` 时取 ``sys.argv[1:]``。
 
     Returns:
-        退出码：0=成功；1=查询错误（id 不存在 / filters 非法）。
-        argparse 自身的参数错误按标准行为退出码 2。
+        退出码：0=成功（含 chat 正常退出）；1=查询错误或 Leader 构造失败；
+        argparse 自身的参数错误按标准行为退出码 2（chat 的透传参数由
+        app 侧解析器同样以 2 报参数错误）。
     """
+    argv = list(sys.argv[1:] if argv is None else argv)
+
     # Git Bash / Windows 终端中文输出兜底（不依赖 PYTHONIOENCODING）；
     # stderr 同步兜底——错误信息中文在 GBK 控制台下同样会乱码
     for stream in (sys.stdout, sys.stderr):
         if isinstance(stream, TextIOWrapper):
             stream.reconfigure(encoding="utf-8")
+
+    # chat 顶层早路由：参数不过外层 argparse（REMAINDER 接不住首 token
+    # 即选项的形态，见 _build_parser 注释），整段交给 chat 自己的解析器。
+    if argv and argv[0] == "chat":
+        return _run_chat(argv[1:])
 
     args = _build_parser().parse_args(argv)
     handler = _cmd_browse if args.command == "browse" else _cmd_detail

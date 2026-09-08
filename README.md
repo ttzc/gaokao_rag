@@ -123,7 +123,7 @@ uv run python scripts/im_server.py
 
 ```bash
 uv run python scripts/im_server.py   # 无启用通道 → 自动 CLI 回退
-uv run python scripts/chat.py        # 或直接走对话调试入口（不读 openclaw.yaml）
+uv run gaokao chat                   # 或直接走对话调试入口（不读 openclaw.yaml）
 ```
 
 > 注意：回退的触发条件是**配置里没有启用任何通道**，不是 `.env` 缺凭证——`openclaw.yaml` 里的 `${QQ_APP_ID}` 占位符在 `.env` 缺该变量时会直接报错退出（快速失败），不会静默回退。
@@ -131,8 +131,8 @@ uv run python scripts/chat.py        # 或直接走对话调试入口（不读 o
 其他入口：
 
 ```bash
-uv run python scripts/cli.py browse --topic 椭圆 --limit 5   # 只读浏览知识库
-uv run python scripts/cli.py detail 42                        # 按 ID 看单题完整详情
+uv run gaokao browse --topic 椭圆 --limit 5   # 只读浏览知识库
+uv run gaokao detail 42                        # 按 ID 看单题完整详情
 uv run pytest                        # 跑测试（默认排除 integration，不产生 API 计费）
 uv run pytest -m integration         # 跑真实 API 用例（会计费）
 ```
@@ -190,7 +190,7 @@ gaokao_rag/
 │   ├── ingestion/             # 多模态摄取管线（README + 题目/试卷/错因/图像）
 │   ├── retrieval/             # 检索读门面（README + 题目/知识点/错题/报告等）
 │   ├── agent/                 # Agent 编排（README、leader、ingestion/、retrieval/、tools/、skills/）
-│   ├── scripts/               # CLI 入口说明（chat.py / cli.py）
+│   ├── scripts/               # CLI 入口说明（cli.py 统一入口 + chat/ 对话调试子文档）
 │   ├── vlm_strategy.md        # VLM 图形理解策略
 │   ├── mcp/                   # MCP 接口设计（README：工具定义、传输方式）
 │   ├── im/                    # IM 接入（QQ 官方 API + 通道适配器，README）
@@ -211,8 +211,8 @@ gaokao_rag/
 │   └── store/                 # 三层存储（SQLite + 文件 + Chroma 向量）
 ├── scripts/                   # CLI 入口
 │   ├── im_server.py           # IM 网关启动入口（QQ 通道，主力入口）
-│   ├── chat.py                # Team Leader 对话调试入口（模拟 QQ）
-│   └── cli.py                 # 只读 CLI（browse / detail）
+│   ├── chat/                  # Team Leader 对话调试入口包（模拟 QQ，rich 富渲染）
+│   └── cli.py                 # 开发 CLI 统一入口（browse / detail 只读 + chat 转发）
 ├── data/                      # 数据目录（运行时生成，不入库）
 │   ├── chroma_db/             # 向量数据库
 │   ├── files/                 # 文件层（raw 原始 / processed/{text,vlm_desc}）

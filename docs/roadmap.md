@@ -23,7 +23,7 @@
 | 检索门面 | `retrieval/knowledge.py`、`retrieval/question.py` | `knowledge_note` `topic` `error` `exam_attempt` `report` |
 | Agent | Leader + 3 成员（结构识别 / 入库决策 / 搜索信息） | 文档识别、题目维护、VLM 理解、聚合数据、输出整理 |
 | Tools | `ingest_question_tool`、`knowledge_search_tool`、`get_question_detail_tool` | Extract / VLM / Knowledge / 其余业务查询工具 |
-| 入口 | `scripts/chat.py`（对话调试）、`scripts/cli.py`（只读浏览） | QQ、MCP、HTTP |
+| 入口 | `gaokao chat`（对话调试）、`gaokao browse/detail`（只读浏览），console script 指向 `scripts/cli.py` | QQ、MCP、HTTP |
 | 工程 | pytest + integration 分组 + GitHub Actions CI | Langfuse、Session 持久化 |
 
 **数据现状（这是当前最大的问题）**：`questions` 4 条（全部口述入库）、`files` 0 条、`topics` / `question_topics` **0 条**（知识点归位未接入——`src/ingestion/topic.py` 门面待 V0.6c，Leader 暂不传 `topic_names`）、`data/files/` 空。
@@ -182,7 +182,7 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 - [ ] `src/agent/ingestion/doc_recognition.py` 文档识别 Agent（照片分支）
 - [ ] Leader 摄入闭环接图片入口
 
-**验收**：chat.py 传一张题目照片 → VLM 描述 → 结构识别 → 回显 → 入库
+**验收**：chat 入口传一张题目照片 → VLM 描述 → 结构识别 → 回显 → 入库
 
 ### b. PDF 摄入（数据量主力）
 

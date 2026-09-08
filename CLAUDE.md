@@ -73,7 +73,7 @@ flowchart LR
 ```
 
 当前状态（2026-08-30）：**摄入闭环 + 检索闭环均已跑通**（Leader + 结构识别 / 入库决策 /
-搜索信息 3 成员，`scripts/chat.py` 可端到端跑「口述题目 → 入库」与「语义检索 → 作答」）。
+搜索信息 3 成员，`uv run gaokao chat` 可端到端跑「口述题目 → 入库」与「语义检索 → 作答」）。
 SQLite 已建 4 / 9 表；`data/files/` 为空、`questions` 仅 4 条——**数据量是当前唯一瓶颈**，
 下一步 V0.6 摄入扩容（图片 / PDF / 知识点关联 / 讲解段）。
 
@@ -92,7 +92,8 @@ gaokao_rag/
 │   └── mcp/                   # MCP Server
 ├── scripts/
 │   ├── ingest.py              # 摄取 CLI
-│   ├── chat.py                # 对话 CLI（开发调试）
+│   ├── cli.py                 # 开发 CLI 统一入口（browse/detail 只读 + chat 转发）
+│   ├── chat/                  # 对话调试入口包（app/prompt/render，cli.py chat 转发至此）
 │   └── mcp_server.py          # MCP Server 入口
 ├── data/
 │   ├── raw/                   # 原始 PDF

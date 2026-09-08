@@ -297,15 +297,11 @@ RAG_PROMPT = """基于以下检索到的题目和知识点回答用户问题。
 ### CLI 交互
 
 ```bash
-# 交互式问答
-python scripts/chat.py
-
-# 单次查询
-python scripts/chat.py "椭圆离心率最值怎么求"
-
-# 复习模式
-python scripts/chat.py --mode review
+# 交互式问答（模拟 QQ ↔ Team Leader，rich 渲染委派链；真实调用计费）
+uv run gaokao chat
 ```
+
+> 单次查询 / 复习模式（`--mode review`）暂未实现，见 `docs/scripts/chat/README.md` MVP 边界。
 
 ### FastAPI HTTP
 

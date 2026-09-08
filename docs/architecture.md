@@ -84,34 +84,34 @@ gaokao_rag/
 │   │   └── embedding.py       #   嵌入模型 —— qwen3.7-text-embedding（DashScope）
 │   │
 │   ├── ingestion/             # 摄取门面（写，封装三层存储全部 增/删/改，无 LLM）
-│   │   ├── question.py        #   ingest_question() - 存储一道题（文件 + DB + 向量 + knowledge 四层）
-│   │   ├── image.py           #   ingest_image() - 存储一张图（文件 + DB）
-│   │   ├── exam_paper.py      #   ingest_exam_paper() - 存储一份试卷（文件 + DB）
-│   │   └── error.py           #   ingest_error() - 存储错题（DB + 关联题目）
+│   │   ├── question.py        #   ingest_question() 存一道题（文件 + DB + 向量 + knowledge 四层）；
+│   │   │                      #     update_question() / delete_question() 改题删题（级联清理）
+│   │   ├── image.py           #   ingest_image() - 存储一张图（规划中）
+│   │   ├── exam_paper.py      #   ingest_exam_paper() - 存储一份试卷（规划中）
+│   │   └── error.py           #   ingest_error() - 存储错题（规划中）
 │   │
 │   ├── retrieval/             # 检索门面（读，封装全部查询与聚合，只读不写，无 LLM）
 │   │   ├── knowledge.py       #   知识检索组件（GaokaoKnowledge + get_knowledge，过滤翻译）
 │   │   ├── question.py        #   search_questions / get_question_detail / browse_questions
-│   │   ├── knowledge_note.py  #   search_knowledge_notes
-│   │   ├── topic.py           #   search_topics / list_topics
-│   │   ├── error.py           #   get_error_stats / get_weak_topics
-│   │   ├── exam_attempt.py    #   aggregate_attempts
-│   │   └── report.py          #   get_report / compute_trend（周报双源聚合）
+│   │   ├── knowledge_note.py  #   search_knowledge_notes（规划中）
+│   │   ├── topic.py           #   search_topics / list_topics（规划中）
+│   │   ├── error.py           #   get_error_stats / get_weak_topics（规划中）
+│   │   ├── exam_attempt.py    #   aggregate_attempts（规划中）
+│   │   └── report.py          #   get_report / compute_trend（规划中）
 │   │
 │   ├── store/                 # 三层存储 + 知识点图谱（原语层，最低层）
 │   │   ├── file_store.py      #   Layer 1：文件存储（原始 PDF 管理，详见 [store/files/raw.md](store/files/raw.md)）
 │   │   ├── db/                #   Layer 2：SQLite 数据访问层（按表拆，共享连接）
-│   │   │   ├── __init__.py    #     连接管理（单例）+ schema 初始化
-│   │   │   ├── schema.py      #     9 张表 DDL + 索引
+│   │   │   ├── __init__.py    #     共享连接管理（单例）+ SQLiteTableDB 基类（DDL 单一来源 = docs/store/db/*.md）
 │   │   │   ├── files.py       #     文件注册表（title + 哈希路径 + sha256 去重）
-│   │   │   ├── topics.py      #     知识点标签 CRUD（MVP 扁平 tag，无树结构）
-│   │   │   ├── knowledge_notes.py
+│   │   │   ├── topics.py      #     知识点树（Materialized Path）
 │   │   │   ├── questions.py
 │   │   │   ├── question_topics.py
-│   │   │   ├── errors.py
-│   │   │   ├── exam_attempts.py
-│   │   │   ├── review_plans.py
-│   │   │   └── periodic_reports.py
+│   │   │   ├── knowledge_notes.py   # 规划中
+│   │   │   ├── errors.py            # 规划中
+│   │   │   ├── exam_attempts.py     # 规划中
+│   │   │   ├── review_plans.py      # 规划中
+│   │   │   └── periodic_reports.py  # 规划中
 │   │   ├── vector/             #   Layer 3：Chroma 向量库（存储读写原语）
 │   │   │   └── vector_store.py #     Chroma 增删读写 + 懒单例（document 入库，切片细则 V0.3 定）
 │   │   └── __init__.py
@@ -126,19 +126,20 @@ gaokao_rag/
 │   │   │   └── question-organize/     #    题目整理：整篇切出的题目段 / 零散输入 → 题目/答案/解析三段（已落地）
 │   │
 │   │   ├── ingestion/         #   摄入侧子 Agent（每文件一个 Agent，只调 src/ingestion 写门面）
-│   │   │   ├── doc_recognition.py       #  文档识别 Agent
+│   │   │   ├── doc_recognition.py       #  文档识别 Agent（规划中）
 │   │   │   ├── structure_recognition.py #  结构识别 Agent
 │   │   │   ├── question_maintain.py    #  题目维护 Agent（知识点归位 + 改 / 删题）
 │   │   │   ├── storage_decision.py      #  入库决策 Agent
 │   │   │   └── prompts.py               #  摄入侧各 Agent 的 instruction 常量（长 prompt 独立成模块）
 │   │
 │   │   └── retrieval/         #   查询侧子 Agent（每文件一个 Agent，只调 src/retrieval 读门面；意图路由内联 Leader 系统提示词，无 intent.py）
+│   │       ├── prompts.py     #    查询侧 instruction 常量（对称 ingestion/prompts.py）
 │   │       ├── search.py      #    搜索信息 Agent
-│   │       ├── vlm.py         #    VLM 理解 Agent
-│   │       ├── aggregate.py   #    聚合数据 Agent
-│   │       └── output.py      #    输出整理 Agent
+│   │       ├── vlm.py         #    VLM 理解 Agent（规划中）
+│   │       ├── aggregate.py   #    聚合数据 Agent（规划中）
+│   │       └── output.py      #    输出整理 Agent（规划中）
 │   │
-│   ├── mcp/                   # MCP Server（对外暴露）
+│   ├── mcp/                   # MCP Server（对外暴露；规划中）
 │   │   └── server.py          #   FastMCP 工具定义（14 个工具）
 │   │
 │   └── im/                    # IM 接入层（QQ 入口，详见 [im/README.md](im/README.md)）
@@ -147,9 +148,10 @@ gaokao_rag/
 │                              #   注：通道适配器 _qq.py 与 create_agent team 扩展属 trpc_agent_sdk 侧（上游 PR / 本地补丁）
 │
 ├── scripts/                   # CLI 入口
-│   ├── ingest.py              #   批量摄取（自动调用摄入侧 Agent 工具集，不经过 TeamLeader）
-│   ├── chat.py                #   对话 CLI（开发调试）
-│   ├── mcp_server.py          #   MCP Server 入口（stdio/SSE/HTTP）
+│   ├── cli.py                 #   开发 CLI 统一入口（browse/detail 只读 + chat 转发；console script `gaokao`）
+│   ├── chat/                  #   对话调试入口包（app/prompt/render，模拟 QQ ↔ Team Leader，rich 富渲染）
+│   ├── ingest.py              #   批量摄取（自动调用摄入侧 Agent 工具集，不经过 TeamLeader；规划中）
+│   ├── mcp_server.py          #   MCP Server 入口（stdio/SSE/HTTP；规划中）
 │   └── im_server.py           #   IM 网关入口（trpc-claw QQ 通道，方式 A）
 │
 ├── data/                      # 数据目录（gitignore）
@@ -165,7 +167,7 @@ gaokao_rag/
 │   ├── chroma_db/             # chroma_dir：Chroma 持久化
 │   └── gaokao.db              # sqlite_path：SQLite 索引
 │
-└── tests/                     # 测试（V0.5 后补充）
+└── tests/                     # pytest 单测（conftest 隔离 + integration 标记，覆盖 api / store / 两门面 / agent；scripts/ 薄壳不进 pytest）
 ```
 
 ### 各层职责速览
@@ -180,7 +182,7 @@ gaokao_rag/
 | Agent 编排 | `src/agent/` | TeamAgent 编排（leader.py）+ 子 Agent（ingestion/ 摄入侧、retrieval/ 查询侧，每文件一个 Agent）+ FunctionTool（tools/）+ Skills（skills/，可复用领域指令，渐进式披露）；**只调用 ingestion（写）/ retrieval（读）封装函数**，严禁 import `src.store.*` |
 | MCP 服务 | `src/mcp/` | 对外暴露工具，委托 agent（含 tools） |
 | IM 接入（**新增**） | `src/im/` | QQ 通道网关装配（trpc-claw `ClawApplication` + TeamAgent 方式 A）；通道适配器 `_qq.py` 与 `create_agent` team 扩展属 trpc_agent_sdk 侧（上游 PR / 本地补丁），见 [im/README.md](im/README.md) |
-| CLI 入口 | `scripts/` | ingest / chat / mcp_server / im_server 四个命令 |
+| CLI 入口 | `scripts/` | `gaokao` 命令（browse / detail 只读 + chat 对话调试，console script）+ im_server；ingest / mcp_server 规划中 |
 | 数据 | `data/` | 原始文件 + 处理后数据 + 两个数据库 |
 
 ## 分层边界契约（强制）
