@@ -112,6 +112,19 @@ nanobot gateway
 
 ```yaml
 # src/im/openclaw.yaml —— openclaw 网关配置（可进 git，无明文密钥）
+agent:
+  memory_window: 30
+  # create_model 用 api_key/api_base/model 构造 OpenAIModel：TeamAgent 不走它
+  # （模型在 src/agent/ 工厂显式构造），但 session 摘要器与 heartbeat 真调 LLM，
+  # 须指向真实 DeepSeek 兼容端点（与 config.toml [llm] 同一套 .env 凭证）
+  api_key: ${DEEPSEEK_API_KEY}
+  api_base: https://api.deepseek.com
+  model: deepseek-v4-flash
+
+gateway:
+  heartbeat:
+    enabled: false   # nanobot 默认 True + 30min 一轮——真 key 下会静默计费，显式关闭
+
 channels:
   qq:
     enabled: true
@@ -120,19 +133,22 @@ channels:
     allowFrom: ["*"]        # MVP 通配放行；0.2.0 空列表=deny（静默丢弃），非"允许所有人"；
                             # 精确匹配须填 openid（C2C 的 user_id 是 openid，不是 QQ 号）
     msgFormat: plain        # plain | markdown（默认 plain）
+    media_dir: data/files/raw/images/uploaded   # 收消息附件落地（L1 raw 区，见下文附件行）
 ```
 
-> **配置注入机制**（`openclaw/config/_config.py`）：`load_config(config_path)` 搜索顺序 = ①显式 `config_path` 参数 → ②`$TRPC_CLAW_CONFIG` 环境变量 → ③默认 `~/.trpc_claw/config.yaml`。读文件后 `set_config_path()` 同步给 nanobot loader（`channels.qq` 由此生效）+ `_expand_env_vars()` 递归展开 `${VAR}`（`os.path.expandvars`）。**openclaw 配置（yaml）与 gaokao 自身配置（config.toml + `.env`，TeamAgent 模型/存储）是两套，互不干扰**。
+> **配置注入机制**（`openclaw/config/_config.py`）：`load_config(config_path)` 搜索顺序 = ①显式 `config_path` 参数 → ②`$TRPC_CLAW_CONFIG` 环境变量 → ③默认 `~/.trpc_claw/config.yaml`。读文件后 `set_config_path()` 同步给 nanobot loader（`channels.qq` 由此生效）+ `_expand_env_vars()` 递归展开 `${VAR}`（`os.path.expandvars`，`.env` 由 claw.py:96 `load_dotenv()` 先行加载）。**分工**：`agent` 段的模型三件套只喂 session 摘要器（ClawSummarizer，`memory_window` 触发滚动摘要）与 heartbeat；TeamAgent 四成员的模型/存储走 gaokao 自身配置（config.toml + `.env` + src/agent 工厂），两套互不读取。**heartbeat 必须显式关闭**——nanobot 默认 `enabled=True` + 30min 一轮（nanobot/config/schema.py:330），真 key 下会静默真实计费。
 
 2. **TeamAgent 接入**（方式 A，`src/im/claw_app.py` 子类覆写 `ClawApplication`）
 3. **启动入口**（`scripts/im_server.py`，见下文方式 A 节）
 
-**环境变量**：
+**环境变量**（`.env`，openclaw.yaml 经 `${VAR}` 桥接）：
 
 ```bash
 # QQ 机器人（AppID / AppSecret）
-export QQ_APP_ID=xxx
-export QQ_APP_SECRET=xxx
+QQ_APP_ID=xxx
+QQ_APP_SECRET=xxx
+# openclaw agent 段（session 摘要器用；与 config.toml [llm] 同一凭证）
+DEEPSEEK_API_KEY=xxx
 ```
 
 #### `_qq.py` 通道增强（V1.1+ 迭代项，MVP 不做）

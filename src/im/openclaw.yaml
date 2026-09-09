@@ -4,9 +4,19 @@ runtime:
 
 agent:
   memory_window: 30
-  api_key: sk-xxx       # ← 必须能解析出非空值（防 create_model 崩）
-  api_base: api.example.com     #    建议与 gaokao 模型一致（DeepSeek 兼容端点）
-  model: deepseek      #    TeamAgent 实际不用它，但构造绕不过
+  # create_model 用下面三项构造 OpenAIModel（claw.py:115 create_model）。TeamAgent
+  # 本身不走它（模型在 src/agent/ 工厂显式构造），但 session 摘要器（ClawSummarizer，
+  # memory_window 触发滚动摘要）与 heartbeat 用它真调 LLM——须指向真实端点，
+  # ${VAR} 经 _expand_env_vars（os.path.expandvars）从 .env 展开。
+  api_key: ${DEEPSEEK_API_KEY}
+  api_base: https://api.deepseek.com
+  model: deepseek-v4-flash
+
+gateway:
+  heartbeat:
+    # nanobot HeartbeatConfig 默认 enabled=True + 30min 一轮——真 key 下会每半小时
+    # 静默真实计费一次 LLM 调用。MVP 无常驻任务需求，显式关闭。
+    enabled: false
 
 channels:
   send_progress: false       # ← 关闭流式增量转发（默认 true = 逐字刷屏）
