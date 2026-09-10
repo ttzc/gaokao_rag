@@ -2,8 +2,10 @@
 # trpc-claw QQ 主入口的 TeamAgent 接入（方式 A，设计见 docs/im/README.md）。
 #
 # 思路：ClawApplication.__init__ 默认装配（bus/channels/model/storage/session/
-# memory/heartbeat）全部保留，只把主 agent 从默认 LlmAgent 换成 gaokao
-# TeamAgent，并按 claw.py:171-183 的原逻辑重建两个 Runner。
+# memory/heartbeat）全部保留，只做两处替换——① session service 换成哈希短
+# 文件名版（QQ openid 使默认落盘路径派生的存储 key 超长、快照从未落盘，问题
+# 推导与修复理由见 session_service.py 模块头）；② 主 agent 从默认 LlmAgent
+# 换成 gaokao TeamAgent——并按 claw.py:171-183 的原逻辑重建两个 Runner。
 # 不覆写其他环节、不碰 trpc_agent_sdk 包内文件（MVP 免补丁决策，
 # 长答案分片等 _qq.py 适配器改造属 V1.1+）。
 
@@ -17,13 +19,15 @@ from trpc_agent_sdk.runners import Runner
 from trpc_agent_sdk.server.openclaw.claw import ClawApplication
 
 from src.agent.leader import create_gaokao_leader
+from src.im.session_service import ShortKeyClawSessionService
 
 # 项目内默认配置（channels.qq + ${VAR} 桥接 .env），实测通过
 DEFAULT_CONFIG_PATH = Path(__file__).with_name("openclaw.yaml")
 
 
 class GaokaoClaw(ClawApplication):
-    """TeamAgent 替换默认 LlmAgent 的 ClawApplication 子类（方式 A）。"""
+    """TeamAgent 替换默认 LlmAgent、session service 换成哈希短文件名版
+    （ShortKeyClawSessionService）的 ClawApplication 子类（方式 A）。"""
 
     def __init__(
         self,
@@ -31,7 +35,20 @@ class GaokaoClaw(ClawApplication):
         config_path: Optional[Path] = None,
     ) -> None:
         super().__init__(workspace, config_path)  # 默认装配：bus/channels/model/storage/session/memory
-        # 唯一替换点：主 agent 换成 gaokao TeamAgent
+        # 替换 1：session service——默认 ClawSessionService 的落盘文件名由
+        # "{app}/{openid}/qq:{openid}" 路径 quote 派生，QQ 场景实测 key=152
+        # > AioFileStorage 上限 128，快照从未落盘（详见 session_service.py
+        # 模块头）。哈希短文件名版在 Runner 重建【之前】替换，两个 Runner
+        # 构造时读到的即是新实例；command_handler.params 是可变 dataclass
+        # 字段、handler 在调用点读它，故同步替换即闭合（worker_runner 由
+        # 下方既有代码重建，无需单独处理）。复用父类 _summarizer_manager
+        # 是为了不重建摘要器状态。
+        self.session_service = ShortKeyClawSessionService(
+            config=self.config,
+            summarizer_manager=self._summarizer_manager,
+        )
+        self.command_handler.params.session_service = self.session_service
+        # 替换 2：主 agent 换成 gaokao TeamAgent
         self.agent = create_gaokao_leader()
         # 重建 runner（对照 claw.py:171-183，worker_runner 必须一并重建，
         # 否则后台任务仍指向旧 LlmAgent；TeamAgent 的 sub_agents 为空——

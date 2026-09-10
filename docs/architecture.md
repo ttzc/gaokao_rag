@@ -144,7 +144,9 @@ gaokao_rag/
 │   │
 │   └── im/                    # IM 接入层（QQ 入口，详见 [im/README.md](im/README.md)）
 │       ├── __init__.py        #   create_claw_app()：装配 TeamAgent → ClawApplication（方式 A，QQ 主入口）
-│       └── claw_app.py        #   ClawApplication team 模式扩展 + openclaw 配置加载（channels.qq + ${VAR} 桥接 .env）
+│       ├── claw_app.py        #   ClawApplication team 模式扩展 + openclaw 配置加载（channels.qq + ${VAR} 桥接 .env）
+│       ├── session_service.py #   ShortKeyClawSessionService：session 文件名哈希化（修 AioFileStorage 128 字符 key 上限）
+│       └── openclaw.yaml      #   trpc-claw 网关配置（agent 模型段 / heartbeat 开关 / channels.qq）
 │                              #   注：通道适配器 _qq.py 与 create_agent team 扩展属 trpc_agent_sdk 侧（上游 PR / 本地补丁）
 │
 ├── scripts/                   # CLI 入口

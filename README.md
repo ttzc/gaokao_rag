@@ -257,7 +257,7 @@ gaokao_rag/
 | [Agent 编排设计](docs/agent/README.md) | TeamAgent 子 Agent 分工、委派策略、Prompt 策略 |
 | [VLM 策略](docs/vlm_strategy.md) | 模型选型、图像理解 prompt、描述粒度 |
 | [MCP 接口](docs/mcp/README.md) | MCP 工具定义、传输方式 |
-| [IM 接入](docs/im/README.md) | trpc-claw QQ 接入（nanobot 通道适配器）、单用户 MVP |
+| [IM 接入](docs/im/README.md) | trpc-claw QQ 接入总览（选型、平台侧操作、交互流程）；代码侧见 [claw_app.md](docs/im/claw_app.md)、持久化见 [session_service.md](docs/im/session_service.md) |
 | [学习指南](docs/onboarding.md) | 协作者从零上手的学习路径（含 AI 搜索关键词） |
 | [测试规范](docs/test.md) | pytest 单元测试约定、目录结构、fixture 规范 |
 | [开发路线图](docs/roadmap.md) | 实际开发时间线 + 待完成顺序（V0.6 → V1.0 MVP）、风险与坑 |
