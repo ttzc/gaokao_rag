@@ -20,7 +20,7 @@ def ingest_error(
 
 | 来源 | 说明 |
 |------|------|
-| 用户口述错因 | 学生用自然语言描述为什么做错，LLM 结构化为 `error_summary` |
+| 用户口述错因 | 学生用自然语言描述为什么做错，LLM 结构化为 `error_summary`（JSON 四键：`error_type` / `cause` / `knowledge_gap` / `fix_suggestion`） |
 | 整卷作答 | `exam_attempts` 中逐题对错后，自动生成 error 记录 |
 
 **设计原则**：不存手写解题过程（VLM 识别手写 CER 15-20% 不可靠），只存用户口述 + LLM 结构化总结。

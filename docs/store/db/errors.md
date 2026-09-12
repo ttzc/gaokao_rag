@@ -11,9 +11,8 @@ CREATE TABLE errors (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     question_id     INTEGER REFERENCES questions(id),
     source_text     TEXT,                            -- 错题原始文本（如果未关联到题目）
-    error_type      TEXT,                            -- "计算错误" / "思路错误" / "知识盲区" / "审题错误"
     user_reflection TEXT,                            -- 用户口述的原始错因描述（自由文本）
-    error_summary   TEXT,                            -- LLM 生成的结构化错因总结（JSON: {cause, knowledge_gap, fix_suggestion}）
+    error_summary   TEXT,                            -- LLM 生成的结构化错因总结（JSON: {error_type, cause, knowledge_gap, fix_suggestion}）
     error_count     INTEGER DEFAULT 1,              -- 同一题错了几次
     first_seen      TEXT DEFAULT (datetime('now')),
     last_seen       TEXT DEFAULT (datetime('now')),
@@ -21,7 +20,6 @@ CREATE TABLE errors (
 );
 
 CREATE INDEX idx_errors_question ON errors(question_id);
-CREATE INDEX idx_errors_type ON errors(error_type);
 ```
 
 ## 关键设计点
@@ -30,8 +28,19 @@ CREATE INDEX idx_errors_type ON errors(error_type);
 
 - **不存学生手写解题过程**——VLM 识别手写 CER 15-20% 不可靠（vlm_strategy.md 调研结论），存储成本也高
 - `user_reflection`：用户自己的话描述"我当时怎么错的"（QQ 文字/语音）
-- `error_summary`：LLM 基于口述 + 题目上下文生成的结构化总结（`{cause, knowledge_gap, fix_suggestion}`）
+- `error_summary`：LLM 基于口述 + 题目上下文生成的结构化总结（`{error_type, cause, knowledge_gap, fix_suggestion}`）
 - 周报/复习建议**优先消费 `error_summary`**（结构化、可比对），`user_reflection` 作为原始依据保留
+
+### 错误类型并入 error_summary，不设独立列（2026-09-13 决策）
+
+原设计把错误类型（计算错误 / 思路错误 / 知识盲区 / 审题错误）做成独立列 + `idx_errors_type` 索引，
+现**降级为 `error_summary` JSON 内的一个键**：
+
+- **没有"按类型聚合 / 检索"的真实需求**——学生要的是"我哪里薄弱"（知识点维度），不是"我计算错误错了几道"
+- **万一将来要按类型找错题**，对 `error_summary` 做语义检索（向量）即可覆盖，不必为它建列 + 索引
+- 类型仍是 LLM 同一次结构化的产出（零额外成本），留在 JSON 里供**展示**（「▸ 错误类型：知识盲区」）与向量化文本使用
+
+> 代价明确：放弃 SQL 层的 `GROUP BY error_type`。真需要恢复该维度时，从 JSON 提取聚合或重新加列，届时按需再定。
 
 ### 错误计数与状态
 
@@ -42,7 +51,7 @@ CREATE INDEX idx_errors_type ON errors(error_type);
 ## 常见操作
 
 - 录入：`question_id`（或 source_text 兜底）→ 口述 → LLM 生成 error_summary（事务内）
-- 聚合：按 `error_type` / 按知识点（经 question_topics 的 `topic_name` 匹配）/ **按学科（join questions.subject，无需冗余）**统计
+- 聚合：按知识点（经 question_topics 的 `topic_name` 匹配）/ **按学科（join questions.subject，无需冗余）** / 按时间窗（`first_seen` / `last_seen`）统计
 - 更新：错同题 +1 次、标记 resolved
 
 ## 与其他表的关系
@@ -50,7 +59,7 @@ CREATE INDEX idx_errors_type ON errors(error_type);
 ```mermaid
 flowchart LR
     E[errors] -->|question_id| Q[questions]
-    E -->|error_type/知识点| AGG[周报聚合]
+    E -->|知识点| AGG[周报聚合]
     Q --> QT[question_topics 按名字标注] --> T[topics tag 匹配]
     AGG --> R[periodic_reports]
 ```

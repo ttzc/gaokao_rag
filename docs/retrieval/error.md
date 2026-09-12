@@ -13,10 +13,10 @@ def get_error_stats(
 **内部流程**：`errors` 表按可选时间窗（`first_seen BETWEEN`）聚合：
 
 - 总错题数、已掌握数（`resolved`）、掌握率
-- 按 `error_type` 分布（计算 / 思路 / 知识盲区 / 审题）
 - 按知识点分布（经 `question_topics.topic_name` 匹配）
+- 时间分布（窗口内新增趋势，按 `first_seen` 分桶）
 
-**返回**：`ErrorStats`（总数 / 掌握率 / 类型分布 / 知识点分布）。
+**返回**：`ErrorStats`（总数 / 掌握率 / 知识点分布 / 时间趋势）。
 
 ## get_error_details — 错题明细
 
