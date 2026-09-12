@@ -229,7 +229,7 @@ src/store  ←  { src/ingestion, src/retrieval }  ←  { src/agent, src/mcp, src
 | 输入格式 | Markdown | PDF + 图像 + Markdown |
 | 图形处理 | 无 | VLM（核心技术差异点） |
 | 知识点 | 扁平 tag + 题目关联 | 树形图谱 + 题目关联 |
-| 用户 | 个人 | 单人（MVP；user_id 字段预留未来多用户） |
+| 用户 | 个人 | 单人（MVP 单用户；不做多用户隔离设计，见 CLAUDE.md 决策 8） |
 | 元数据 | source/type/tags | 科目/年份/题型/知识点/考区 |
 | MCP | 手写 9 工具 | 框架内置 MCPToolset |
 | 服务化 | CLI | CLI + FastAPI + MCP |

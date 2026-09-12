@@ -42,32 +42,31 @@ async def report_generate(state: GaokaoState) -> dict:
     按周期（周/月）聚合错题，生成复习报告。
     指令示例："生成周报" / "这个月的月报" / "上周的学习报告"
     """
-    user_id = state.get("user_id", "default")
     period_type = state["period_type"]      # "weekly" | "monthly"，由 Leader 解析
     period_start, period_end = resolve_period_window(period_type)
     
     # ① 幂等检查：同周期已生成过，直接返回缓存
-    cached = get_report(user_id, period_type, period_start, period_end)
+    cached = get_report(period_type, period_start, period_end)
     if cached:
         return {"report": cached}
     
     # ② 聚合窗口内错题统计（errors 表）
-    stats = aggregate_errors(user_id, period_start, period_end)
+    stats = aggregate_errors(period_start, period_end)
     # {total_errors, resolved_errors, resolve_rate, by_topic: [{topic, error_count}]}
     
     # ②b 聚合窗口内整卷作答（exam_attempts 表）
-    attempt_stats = aggregate_attempts(user_id, period_start, period_end)
+    attempt_stats = aggregate_attempts(period_start, period_end)
     # {attempt_count, avg_score, weak_question_types: [{qtype, lost_score}]}
     
     # ③ 对比上一周期 → 趋势
-    prev_stats = aggregate_errors(user_id, prev_period(period_start, period_end))
+    prev_stats = aggregate_errors(prev_period(period_start, period_end))
     trend = compute_trend(stats, prev_stats)
     
     # ④ LLM 生成针对性练习建议（结合知识点图谱 + 作答失分分析）
     recommendation = await llm_generate_report_recommendation(stats, attempt_stats, trend)
     
     # ⑤ 写入 periodic_reports 表（UNIQUE 幂等）
-    report = save_report(user_id, period_type, period_start, period_end,
+    report = save_report(period_type, period_start, period_end,
                          stats, trend, recommendation)
     
     return {"report": report}

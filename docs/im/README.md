@@ -305,11 +305,14 @@ Bot: 完成：1 → 入库（questions）
 - **学生发图片** → trpc-claw 收到 image part → Gaokao RAG 用 VLM 理解
 - **Bot 发图片** → 题目图形回传（需要把 VLM 描述/原图转给通道）
 
-## 用户模型（MVP 单用户）
+## 用户模型（MVP 单用户，不做多用户设计）
 
 - **MVP 只服务一个用户**（作者的高三朋友），不存在多用户隔离问题
-- 各表保留 `user_id` 字段（固定单一值），为未来多用户扩展预留
-- trpc-claw 的 `user_id`（QQ openid / bot 会话）仍会设置，但 MVP 阶段所有数据归同一用户
+- **业务表不带用户归属字段、读 / 写门面不带 `user_id` 参数**（2026-09-13 决策：移除「字段保留 + 固定单一值」式预留，将来真需要多用户时再设计隔离方案，见 CLAUDE.md 决策 8）
+- 但**框架 / 通道层的 `user_id` 依然存在**，看到代码里出现它不必困惑，那是第三方 API 的形状、与业务数据归属无关：
+  - `Runner.run_async(user_id=...)` —— tRPC-Agent 的**必填参数**（会话身份），`scripts/chat/app.py` 传固定值
+  - trpc-claw 的 `runtime.user_id` —— 通道运行时配置（`src/im/openclaw.yaml`）
+  - nanobot 收消息里的 `user_id` —— 即 QQ **openid**（单聊 `chat_id = user_id`），通道字段
 
 ## 当前限制（QQ 官方机器人，2026-08-30 依官方 wiki 核实）
 

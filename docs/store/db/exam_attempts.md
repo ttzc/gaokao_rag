@@ -9,7 +9,6 @@
 ```sql
 CREATE TABLE exam_attempts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id         TEXT NOT NULL,                  -- 用户标识（MVP 固定单一用户）
     subject         TEXT NOT NULL,                  -- 学科: "数学" / "物理" / ...（查询热维度，冗余列，同 questions）
     file_id         INTEGER NOT NULL REFERENCES files(id),  -- 关联试卷（files 表，title 经 join 获取）
     attempt_date    TEXT NOT NULL,                  -- 作答日期
@@ -21,7 +20,7 @@ CREATE TABLE exam_attempts (
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
-CREATE INDEX idx_attempts_user_date ON exam_attempts(user_id, attempt_date);
+CREATE INDEX idx_attempts_date ON exam_attempts(attempt_date);
 CREATE INDEX idx_attempts_subject ON exam_attempts(subject);
 CREATE INDEX idx_attempts_file ON exam_attempts(file_id);
 ```
@@ -50,7 +49,7 @@ CREATE INDEX idx_attempts_file ON exam_attempts(file_id);
 ## 常见操作
 
 - 录入：口述 → LLM 结构化 → 本表（事务）
-- 按用户+时间窗查：`WHERE user_id = ? AND attempt_date BETWEEN ...`
+- 按时间窗查：`WHERE attempt_date BETWEEN ...`
 - 聚合：平均分、正确率、失分题型（周报数据源）
 
 ## 与其他表的关系

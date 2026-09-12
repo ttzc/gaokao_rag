@@ -42,3 +42,4 @@ htmlcov/
 # 日志
 *.log
 outputs/
+.local

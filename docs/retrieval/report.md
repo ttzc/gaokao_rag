@@ -7,7 +7,7 @@
 ## aggregate_errors — 错题侧聚合
 
 ```python
-def aggregate_errors(user_id: str, start: str, end: str) -> ErrorAggregate:
+def aggregate_errors(start: str, end: str) -> ErrorAggregate:
 ```
 
 **内部流程**：窗口内 `errors` 聚合（新增数 / 已解决数 / 掌握率 / 薄弱知识点），封装为 `ErrorAggregate`。
@@ -15,7 +15,7 @@ def aggregate_errors(user_id: str, start: str, end: str) -> ErrorAggregate:
 ## aggregate_attempts — 作答侧聚合
 
 ```python
-def aggregate_attempts(user_id: str, start: str, end: str) -> AttemptAggregate:
+def aggregate_attempts(start: str, end: str) -> AttemptAggregate:
 ```
 
 **内部流程**：窗口内 `exam_attempts` 聚合（作答次数 / 平均分 / 失分题型），封装为 `AttemptAggregate`。
@@ -24,7 +24,6 @@ def aggregate_attempts(user_id: str, start: str, end: str) -> AttemptAggregate:
 
 ```python
 def get_report(
-    user_id: str,
     period_type: str,        # "weekly" / "monthly"
     period_start: str,
     period_end: str,
@@ -41,7 +40,7 @@ def get_report(
 ## compute_trend — 周期趋势
 
 ```python
-def compute_trend(user_id: str, period_type: str, current: PeriodicReport) -> Trend:
+def compute_trend(period_type: str, current: PeriodicReport) -> Trend:
 ```
 
 **内部流程**：取上一周期同类型报告，算 `total_errors_delta` / `resolve_rate_delta` / `top_topic_delta`，封装为 `Trend`。

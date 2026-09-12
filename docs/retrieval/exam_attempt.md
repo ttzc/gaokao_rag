@@ -6,13 +6,12 @@
 
 ```python
 def get_attempt_stats(
-    user_id: str,
     start: str,
     end: str,
 ) -> AttemptStats:
 ```
 
-**内部流程**：`exam_attempts` 表按 `user_id AND attempt_date BETWEEN start AND end` 聚合：
+**内部流程**：`exam_attempts` 表按 `attempt_date BETWEEN start AND end` 聚合：
 
 - 作答次数、平均分、平均正确率
 - 失分题型分布（按 `question_results[].correct` + 关联 `questions.question_type` 分组）

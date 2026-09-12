@@ -9,7 +9,6 @@
 ```sql
 CREATE TABLE review_plans (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id         TEXT NOT NULL,                  -- 用户标识（MVP 固定单一用户）
     plan_type       TEXT NOT NULL,                  -- "knowledge_gap" / "exam_review" / "custom"
     target_topics   TEXT,                            -- 目标知识点 JSON 数组
     description     TEXT,                            -- 建议内容
@@ -17,8 +16,6 @@ CREATE TABLE review_plans (
     created_at      TEXT DEFAULT (datetime('now')),
     completed_at    TEXT
 );
-
-CREATE INDEX idx_review_user ON review_plans(user_id);
 ```
 
 ## 关键设计点
@@ -33,7 +30,7 @@ CREATE INDEX idx_review_user ON review_plans(user_id);
 ## 常见操作
 
 - 生成：聚合 Agent 分析 errors/exam_attempts → 本表
-- 查未完成：`WHERE user_id = ? AND completed_at IS NULL ORDER BY priority DESC`
+- 查未完成：`WHERE completed_at IS NULL ORDER BY priority DESC`
 - 完成：`UPDATE ... SET completed_at = datetime('now')`
 
 ## 与其他表的关系

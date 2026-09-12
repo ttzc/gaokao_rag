@@ -9,7 +9,6 @@
 ```sql
 CREATE TABLE periodic_reports (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id         TEXT NOT NULL,                  -- 用户标识（MVP 固定单一用户）
     period_type     TEXT NOT NULL,                  -- "weekly" / "monthly"
     period_start    TEXT NOT NULL,                  -- 周期起始日期
     period_end      TEXT NOT NULL,                  -- 周期结束日期
@@ -22,10 +21,10 @@ CREATE TABLE periodic_reports (
     recommendation  TEXT,                            -- LLM 生成的针对性练习建议
     raw_stats       TEXT,                            -- 完整统计原始数据（JSON，供重新生成/调试）
     created_at      TEXT DEFAULT (datetime('now')),
-    UNIQUE(user_id, period_type, period_start, period_end)   -- 同周期幂等
+    UNIQUE(period_type, period_start, period_end)   -- 同周期幂等
 );
 
-CREATE INDEX idx_reports_user_period ON periodic_reports(user_id, period_type, period_start);
+CREATE INDEX idx_reports_period ON periodic_reports(period_type, period_start);
 ```
 
 ## 关键设计点
@@ -36,7 +35,7 @@ CREATE INDEX idx_reports_user_period ON periodic_reports(user_id, period_type, p
 
 ### 幂等（UNIQUE 约束）
 
-`UNIQUE(user_id, period_type, period_start, period_end)`——同一周期重复触发"生成周报"不会产生重复记录，而是命中已有行（返回缓存/或显式重新生成覆盖）。
+`UNIQUE(period_type, period_start, period_end)`——同一周期重复触发"生成周报"不会产生重复记录，而是命中已有行（返回缓存/或显式重新生成覆盖）。
 
 ### 双源聚合
 
@@ -58,7 +57,7 @@ flowchart TD
 ## 常见操作
 
 - 生成：REPORT_GEN 逻辑（见 `docs/agent/retrieval/aggregate.md`）——窗口计算 → 双源聚合 → 对比上周期 → LLM 建议 → 落库
-- 查询：`WHERE user_id = ? AND period_type = ? AND period_end = ?`（幂等命中）
+- 查询：`WHERE period_type = ? AND period_end = ?`（幂等命中）
 - 重生成：同周期覆盖（先查后写，UNIQUE 冲突时 UPDATE）
 
 ## 与其他表的关系

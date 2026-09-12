@@ -9,7 +9,6 @@
 ```sql
 CREATE TABLE errors (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id         TEXT NOT NULL,                  -- 用户标识（MVP 固定单一用户，字段预留未来多用户）
     question_id     INTEGER REFERENCES questions(id),
     source_text     TEXT,                            -- 错题原始文本（如果未关联到题目）
     error_type      TEXT,                            -- "计算错误" / "思路错误" / "知识盲区" / "审题错误"
@@ -21,7 +20,6 @@ CREATE TABLE errors (
     resolved        BOOLEAN DEFAULT 0               -- 是否已掌握
 );
 
-CREATE INDEX idx_errors_user ON errors(user_id);
 CREATE INDEX idx_errors_question ON errors(question_id);
 CREATE INDEX idx_errors_type ON errors(error_type);
 ```
@@ -43,7 +41,7 @@ CREATE INDEX idx_errors_type ON errors(error_type);
 
 ## 常见操作
 
-- 录入：`user_id + question_id`（或 source_text 兜底）→ 口述 → LLM 生成 error_summary（事务内）
+- 录入：`question_id`（或 source_text 兜底）→ 口述 → LLM 生成 error_summary（事务内）
 - 聚合：按 `error_type` / 按知识点（经 question_topics 的 `topic_name` 匹配）/ **按学科（join questions.subject，无需冗余）**统计
 - 更新：错同题 +1 次、标记 resolved
 

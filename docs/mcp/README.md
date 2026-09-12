@@ -65,23 +65,23 @@ async def get_question_detail(doc_id: str) -> dict:
 |--------|------|------|
 | `add_error` | 记录错题（用户口述错因 → LLM 生成错因总结后入库） | `question_id`、`error_type`、`user_reflection`（用户口述）、`error_summary`（LLM 生成） |
 | `add_exam_attempt` | 记录整卷作答（用户口述 → LLM 解析逐题对错 + 整卷分析后入库） | `file_id`（files 表）、`user_statement`（口述，可含成绩单图片）、`attempt_date` |
-| `get_error_stats` | 获取错题统计 | `user_id`（可选，MVP 默认单一用户） |
-| `generate_review_plan` | 生成复习计划 | `user_id`、`focus_topics`（可选聚焦知识点） |
-| `get_review_plan` | 获取已有复习计划 | `user_id` |
+| `get_error_stats` | 获取错题统计 | — |
+| `generate_review_plan` | 生成复习计划 | `focus_topics`（可选聚焦知识点） |
+| `get_review_plan` | 获取已有复习计划 | — |
 
 ### 周期报告类（周报 / 月报）
 
 | 工具名 | 描述 | 参数 |
 |--------|------|------|
-| `generate_periodic_report` | 生成周报/月报（错题聚合 + 知识点分析 + 针对性练习建议） | `user_id`、`period_type`（"weekly"/"monthly"）、`force`（可选，强制刷新缓存） |
-| `get_periodic_report` | 获取已生成的周期报告 | `user_id`、`period_type`、`period_start`（可选） |
-| `list_periodic_reports` | 列出历史报告 | `user_id`、`period_type`（可选） |
+| `generate_periodic_report` | 生成周报/月报（错题聚合 + 知识点分析 + 针对性练习建议） | `period_type`（"weekly"/"monthly"）、`force`（可选，强制刷新缓存） |
+| `get_periodic_report` | 获取已生成的周期报告 | `period_type`、`period_start`（可选） |
+| `list_periodic_reports` | 列出历史报告 | `period_type`（可选） |
 
 ### 分析类
 
 | 工具名 | 描述 | 参数 |
 |--------|------|------|
-| `analyze_weak_points` | 分析薄弱知识点 | `user_id`（可选，MVP 默认单一用户） |
+| `analyze_weak_points` | 分析薄弱知识点 | — |
 | `recommend_similar_questions` | 推荐同类题目 | `question_id`、`top_k` |
 
 ## 实现方式

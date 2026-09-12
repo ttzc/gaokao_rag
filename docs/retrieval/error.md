@@ -6,12 +6,11 @@
 
 ```python
 def get_error_stats(
-    user_id: str,
     window: tuple[str, str] | None = None,
 ) -> ErrorStats:
 ```
 
-**内部流程**：`errors` 表按 `user_id`（+ 可选时间窗 `first_seen BETWEEN`）聚合：
+**内部流程**：`errors` 表按可选时间窗（`first_seen BETWEEN`）聚合：
 
 - 总错题数、已掌握数（`resolved`）、掌握率
 - 按 `error_type` 分布（计算 / 思路 / 知识盲区 / 审题）
@@ -32,7 +31,7 @@ def get_error_details(question_id: int) -> list[ErrorDetail]:
 ## get_weak_topics — 薄弱知识点
 
 ```python
-def get_weak_topics(user_id: str, top_n: int = 5) -> list[WeakTopic]:
+def get_weak_topics(top_n: int = 5) -> list[WeakTopic]:
 ```
 
 **内部流程**：按知识点聚合错题数 + 正确率，取错得最多 / 正确率最低的前 `top_n` 个，作为复习建议的输入。

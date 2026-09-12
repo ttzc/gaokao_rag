@@ -121,7 +121,7 @@ gaokao_rag/
 5. **tRPC-Agent 的 AgenticLangchainKnowledgeSearchTool** —— 让 LLM 自动构建过滤条件，不手写路由
 6. **用户入口是 IM（QQ 主力）而非 MCP/CLI** —— 高考生零学习成本、无电脑也能用；TeamAgent 作为主 Agent 直接注册进 trpc-claw；QQ 通道走**官方 API（AppID/AppSecret）+ nanobot 原生 QQ channel + trpc-claw `_qq.py` 适配器扩展**（2026-08 调研修正：社区版 OpenClaw 的 `openclaw-qqbot` 插件与 trpc-claw 不兼容）；无封号风险
 7. **模型中立，不国产化** —— 无比赛背书需求，架构上不绑定任何模型厂商（OpenAI 兼容协议抽象）；**开发期后台写死默认模型**：LLM = DeepSeek 官方 API（V4-Flash），VLM = Qwen 官方 API（DashScope），嵌入 = Qwen3-Embedding-4B（DashScope，2026-08 调研：中文 CMTEB 68.09 碾压 bge-m3、32k 长上下文整文档嵌入、与 VLM 同厂商一套 Key）；模型名/API Key 全部走 config.toml + 环境变量，用户理论上可自选模型
-8. **MVP 单用户** —— 只服务作者的高三朋友；`user_id` 字段保留（固定单一值）为未来多用户预留，不做隔离逻辑
+8. **MVP 单用户，不做多用户设计** —— 只服务作者的高三朋友；**`user_id` 设计已全面移除**（2026-09-13 决策：不再用「字段保留 + 固定单一值」这类预留占位，需要多用户时重新设计隔离方案）。各表不带用户归属字段，门面签名不带 `user_id` 参数。注意区分：框架 / 通道层的 `user_id`（`Runner.run_async` 的会话身份、QQ openid、nanobot 通道字段）是第三方 API 的形状，**与业务数据归属无关**，保留不动
 9. **数据源自给自足，不接题库网站** —— 只摄入"用户自己拥有的数据"（ima 导入 + 用户拍照/作业 + 用户上传解析）；不爬取组卷网等第三方题库（版权风险 + 无必要，解析可用户上传或 AI 生成）
 10. **统一摄入范式** —— 任意文档上传（试卷/专题/作业/笔记）都走同一条逻辑：提取内容 → LLM 区分讲解段/题目段 → 回显题目清单（每题一句话概括）→ 用户批量决定去向（入库/错题/跳过）。系统不替用户做主
 11. **知识点讲解 = 纯文本 RAG** —— 讲解段存 `knowledge_notes` 表（关联 topic_id），向量化为 knowledge_point chunk；不需要 VLM，比带图题目更简单
