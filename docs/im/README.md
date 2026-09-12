@@ -20,6 +20,8 @@ tRPC-Agent-Python 原生提供 **trpc-claw**（OpenClaw-like Agent 运行时，*
 | [session_service.md](session_service.md) | `src/im/session_service.py` | session / memory 持久化（ClawSessionService / Summarizer / ClawMemoryService）、key 超长 bug 与哈希修复 |
 
 > 本 README 保留：选型与平台侧操作（创建机器人 / 沙箱联调 / 环境变量）、用户交互流程、限制与里程碑。
+>
+> 另有 [issue.md](issue.md)：上游 issue [#333](https://github.com/trpc-group/trpc-agent-python/issues/333) 的完整记录（`AioFileStorage` 128 key 上限 / `max_key_length` 死配置），非设计文档。
 
 ## 术语澄清：OpenClaw ≠ trpc-claw（2026-08-30 联网核实）
 
