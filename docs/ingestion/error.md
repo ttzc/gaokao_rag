@@ -72,7 +72,7 @@ def delete_error(question_id: int) -> dict:
 | 用户口述（事后补录） | 同上；经 `update_error` 写入先前留空的行（隔天补录是主路径） |
 | 整卷作答 | ⏳ **MVP 内但后置**：`exam_attempts` 中逐题对错后自动生成 error 记录——随**整卷作答功能**落地时一并实现（先错题本、后作答，见 [roadmap](../roadmap.md)） |
 
-**「错因待补」的判定**：`user_reflection IS NULL AND error_summary IS NULL`——不新增状态字段。周报 / 薄弱点分析对这类记录只计数量，不参与错因分析。
+**「错因待补」的判定**：判定规则见 [../store/db/errors.md](../store/db/errors.md)（两列均为空，不新增状态字段）。周报 / 薄弱点分析对这类记录只计数量，不参与错因分析。
 
 **设计原则**：不存手写解题过程（VLM 识别手写 CER 15-20% 不可靠），只存用户口述 + LLM 结构化总结。
 

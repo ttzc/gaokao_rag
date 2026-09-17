@@ -37,7 +37,7 @@
 
 ### Layer 3: Chroma 向量库
 
-负责语义检索。每个 document 携带检索快照 metadata——只存过滤/展示需要的字段，**字段规范与过滤语义见 [vector/vector_store.md「Metadata 格式与过滤语义」](vector/vector_store.md)**（单一来源，此处不重复）。
+负责语义检索。每个 document 携带检索快照 metadata——只存过滤/展示需要的字段，**字段规范与过滤语义见 [vector/vector_store.md「Metadata 格式与过滤语义」](vector/vector_store.md)**。
 
 ## 分层边界
 

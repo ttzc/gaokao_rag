@@ -12,7 +12,7 @@ def get_error_stats(
 
 **内部流程**：`errors` 表按可选时间窗（`first_seen BETWEEN`）聚合：
 
-- 总错题数、已掌握数（`resolved`）、掌握率、**错因待补数**（`user_reflection IS NULL AND error_summary IS NULL` 的行数）
+- 总错题数、已掌握数（`resolved`）、掌握率、**错因待补数**（判定见 [store/db/errors.md](../store/db/errors.md)，统计两列均为空的行）
 - 按知识点分布（经 `question_topics.topic_name` 匹配）
 - 时间分布（窗口内新增趋势，按 `first_seen` 分桶）
 
@@ -30,7 +30,7 @@ def get_error_details(question_id: int) -> list[ErrorDetail]:
 
 ## 错因待补记录的处理（2026-09-17 定）
 
-「待补」判定：`user_reflection IS NULL AND error_summary IS NULL`——**不新增状态字段**，空值即状态本身（不可能与数据不同步）。
+「待补」的判定规则见 [store/db/errors.md](../store/db/errors.md)——**不新增状态字段**，空值即状态本身（不可能与数据不同步）。
 
 **读到待补记录时，Leader 要提示用户补充**（用户明确要求）：
 

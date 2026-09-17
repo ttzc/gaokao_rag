@@ -58,7 +58,7 @@ flowchart TD
 
 核心是一个 **TeamAgent**：Leader 自由委派任务给查询侧 + 摄入侧两组专业子 Agent。
 
-> 完整编排设计（系统总览三层结构、团队结构、GaokaoState、子 Agent 职责、Skill 分工、Session/Memory）统一维护在 **[Agent 编排设计](agent/README.md)**，此处不重复。
+> 完整编排设计（系统总览三层结构、团队结构、GaokaoState、子 Agent 职责、Skill 分工、Session/Memory）见 **[Agent 编排设计](agent/README.md)**。
 
 ## 三层存储架构
 

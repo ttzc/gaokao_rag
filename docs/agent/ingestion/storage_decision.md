@@ -44,26 +44,11 @@ Bot: 已识别到 3 道题目：
 `ingest_question` 与 `ingest_error` 是两个**独立原子工具**：
 
 - `ingest_question` 不接收任何 errors 参数，只把题写进三层存储，返回 `{question_id, doc_id}`——完全不感知 `errors`
-- 标记「错题」的题**先入库**（拿 `question_id`），再由**错题管理 Agent** 调 `ingest_error(question_id, user_reflection, error_summary)` 写错因——错因本体由**结构识别 Agent** 过 `error-organize` Skill 产出，本 Agent 与错题管理 Agent 都不做整理
+- 标记「错题」的题**先入库**（拿 `question_id`），再由**错题管理 Agent** 调 `ingest_error` 写错因（签名见 [../../ingestion/error.md](../../ingestion/error.md)）——错因本体由**结构识别 Agent** 过 `error-organize` Skill 产出，本 Agent 与错题管理 Agent 都不做整理
 - 依赖方向：`errors.question_id` FK → questions，错题本体系依赖题目摄入体系，**杜绝 `ingest_question ↔ errors` 循环依赖**
 
-```python
-# 本 Agent（入库决策）只写题
-result = await ingest_question(
-    raw_file_path=raw_file_path,
-    question_text=question_text,
-    answer_text=answer_text,
-    analysis_text=analysis_text,
-    topic_names=topic_names,        # 来自 topic_draft
-)                                   # → {question_id, doc_id}
-
-# 标为「错题」的题：Leader 拿 question_id 再委派错题管理 Agent 写错因
-#   await ingest_error(
-#       question_id=result["question_id"],
-#       user_reflection=user_reflection,   # 用户口述原文（Leader 收集）
-#       error_summary=error_summary,       # error-organize Skill 产出，可为空
-#   )
-```
+**本 Agent 只调 `ingest_question`**（拿回 `question_id` / `doc_id`）；标为「错题」的题由 Leader 再委派**错题管理 Agent** 写错因。
+完整调用链示例见 [../tools/ingest_tool.md](../tools/ingest_tool.md)。
 
 > **为什么本 Agent 不顺手把 `ingest_error` 也调了**：工具是 Agent 能力的边界——入库决策 Agent 挂 `IngestQuestionTool`，错题管理 Agent 挂 `IngestErrorTool`，各写各的表（见 [../tools/ingest_tool.md](../tools/ingest_tool.md) 挂载矩阵）。这样 `errors` 的写操作只有一个入口，不会出现"两处都能写错题本"的失控。
 

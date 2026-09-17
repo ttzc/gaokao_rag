@@ -152,7 +152,7 @@ Bot: 已识别到 3 道题目：
 | 决策 | 写入内容 |
 |------|----------|
 | **a 入库** | 调用 `ingest_question` → questions + question_topics + Chroma |
-| **b 错题** | 本 Agent 先 `ingest_question` 入库题目（与 a 完全相同），**再由错题管理 Agent** 调 `ingest_error(question_id, user_reflection, error_summary)` 写入错因（见 [error.md](error.md)、[agent/ingestion/error_maintain.md](../agent/ingestion/error_maintain.md)） |
+| **b 错题** | 本 Agent 先 `ingest_question` 入库题目（与 a 完全相同），**再由错题管理 Agent** 调 `ingest_error` 写入错因（签名见 [error.md](error.md)，职责见 [agent/ingestion/error_maintain.md](../agent/ingestion/error_maintain.md)） |
 | **c 跳过** | 不调用 `ingest_question`（题目不写入任何表） |
 
 **决策原则**：
@@ -174,7 +174,7 @@ Bot: 已识别到 3 道题目：
 
 | Tool | 用途 |
 |------|------|
-| `ingest_error(question_id, user_reflection, error_summary)` | 写错因，**允许空错因入库**（空值 = 「错因待补」状态，不新增状态字段） |
+| `ingest_error` | 写错因，**允许空错因入库**（空值 = 「错因待补」状态，不新增状态字段；签名见 [error.md](error.md)） |
 | `update_error(question_id, ...)` | 补录空错因 / 修正已有错因 / 标记掌握（`resolved`） |
 | `delete_error(question_id)` | 移出错题本（**不动题目本身**——与删题是两件事） |
 
@@ -291,7 +291,7 @@ class IngestQuestionTool(FunctionTool):
             ...
         )
         # 标记「错题」的题目：ingest_question 返回 question_id 后，
-        # 再由错题管理 Agent 调 ingest_error(question_id, user_reflection, error_summary) 写错因
+        # 再由错题管理 Agent 调 ingest_error 写错因（签名见 docs/ingestion/error.md）
 ```
 
 Agent 运行时：

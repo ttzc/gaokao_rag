@@ -59,7 +59,7 @@ Leader 打包给本 Agent 的输入（示意）：
 - **先题后错**：题目必然已入库（`ingest_question` 先跑，拿回 `question_id`）——错题本体系依赖题目摄入体系，而非相反
 - **幂等，不必先查**：`errors` 一题一行（`UNIQUE INDEX idx_errors_question`），同一题再次标为错题 = **更新已有记录**（2026-09-17 定，原 `error_count` 计数机制随之移除）。工具内部先查后写，Agent 直接调即可；更新时**传入的空值不覆盖已有错因**
 - **再次错同一题自动重置 `resolved`**：更新路径把"已掌握"复位（又错了说明还没掌握），`last_seen` 刷新；此时若带来新错因按**覆盖**语义写入——多次错因的演化不用系统层追加字段，由 `error-organize` 在 `cause` 的自然语言里描述
-- **允许空错因入库**（2026-09-13 定）：用户没交代错因时，`user_reflection` 与 `error_summary` 均传空 → 该行是「**错因待补**」状态（`user_reflection IS NULL AND error_summary IS NULL`），不新增状态字段
+- **允许空错因入库**（2026-09-13 定）：用户没交代错因时，`user_reflection` 与 `error_summary` 均传空 → 该行进入「**错因待补**」状态（判定见 [../../store/db/errors.md](../../store/db/errors.md)），不新增状态字段
 - **也允许入库时就交代错因**：用户在同一条消息里说了「这题我算错了，符号看漏了」→ 结构识别 Agent 一并过 `error-organize` 整理出 `error_summary` → 随本次写入落库
 - `user_reflection` **照存原文**：它是"用户口述的原始依据"（见 [../../store/db/errors.md](../../store/db/errors.md)），Agent 不改写、不润色
 - **写入范围**：SQLite `errors` 行 + Chroma `err_{id}` document（**错因非空时**才写向量；待补状态没有可嵌文本，不写）——两态一致由门面保证，Agent 不感知细节（见 [../../ingestion/error.md](../../ingestion/error.md)）
@@ -68,7 +68,7 @@ Leader 打包给本 Agent 的输入（示意）：
 
 **这是隔天补录的主路径**（2026-09-13 用户明确：错题增删改查的「改」是必做功能）：
 
-**触发时机**（2026-09-17 定）：查询错题本 / 薄弱点时结果里含**待补**记录（`user_reflection IS NULL AND error_summary IS NULL`）
+**触发时机**（2026-09-17 定）：查询错题本 / 薄弱点时结果里含**待补**记录（判定见 [../../store/db/errors.md](../../store/db/errors.md)）
 → Leader 如实标注「（错因待补）」并邀请用户补充（**不催、不阻塞**）→ 用户口述 → 委派本 Agent 写入。
 
 1. **补录空错因**：先前留空的记录，用户事后交代了 → 写入 `user_reflection` + `error_summary`
@@ -98,14 +98,14 @@ Leader 定位时要分清语义，拿不准先追问。
 
 ## 挂载工具
 
-| Tool | 状态 | 签名 | 用途 |
+| Tool | 状态 | 用途 | 签名 / 返回契约 |
 |------|------|------|------|
-| `ingest_error` | ⏳门面未落地 | (question_id, user_reflection="", error_summary=None) → {error_id, created} | 写错因（允许空；`created=false` = 更新了已有行） |
-| `update_error` | ⏳门面未落地 | (question_id, user_reflection=None, error_summary=None, resolved=None) → {error_id, updated_fields} | 补录 / 修正 / 标记掌握 |
-| `delete_error` | ⏳门面未落地 | (question_id) → {question_id, deleted} | 移出错题本 |
-| `resolve_error` | ⏳待定（可能并入 `update_error`） | (question_id, resolved=True) → {error_id} | 标记掌握 |
+| `ingest_error` | ⏳门面未落地 | 写错因（**允许空错因入库**） | 见 [ingest_tool.md](../tools/ingest_tool.md) |
+| `update_error` | ⏳门面未落地 | 补录 / 修正 / 标记掌握 | 同上 |
+| `delete_error` | ⏳门面未落地 | 移出错题本 | 同上 |
+| `resolve_error` | ⏳待定（可能并入 `update_error`） | 标记掌握 | 同上 |
 
-全部并入写侧 [`ingest_tool.py`](../tools/ingest_tool.md)，与 `ingest_question` / `update_question` / `delete_question` 同一文件。
+全部并入写侧 `ingest_tool.py`，与 `ingest_question` / `update_question` / `delete_question` 同一文件。
 
 ## 输出（State 契约）
 

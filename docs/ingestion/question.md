@@ -25,7 +25,7 @@ def ingest_question(
 4. **知识点层**：`search_topic` / `create_topic` → 知识点归位（复用 `store/db/topics.py`）
 
 > **原子化约定**：`ingest_question` 只负责把「一道题」写进三层存储，**不接收任何 errors 参数**。
-> 标记为「错题」的题同样先经本函数入库；错因记录由**错题管理 Agent** 调 `ingest_error(question_id, user_reflection, error_summary)` 写入（先题后错）
+> 标记为「错题」的题同样先经本函数入库；错因记录由**错题管理 Agent** 调 `ingest_error` 写入（先题后错；签名见 [error.md](error.md)）
 > 在题目入库后单独写入（见 error.md）。这样 `ingest_question` 与 `errors` 无循环依赖。
 
 **返回**：`{"question_id": int, "doc_id": str}`

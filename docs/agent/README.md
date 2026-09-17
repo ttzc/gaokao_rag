@@ -180,7 +180,7 @@ flowchart TD
 1. **文档识别只提取不写库**：`raw_blocks` 是内存态，由结构识别消费，不落任何表
 2. **讲解段自动入库、题目才回显**：`lecture_segments` 直接写 knowledge_notes（无需用户确认）；只有题目进回显清单
 3. **题目维护 Agent 的知识点双路由**：题目段标注 → `question_topics` 关联；讲解段标注 → `knowledge_notes.topic_tags`。两者都走 tag 归位原语（见 [ingestion/question_maintain.md](ingestion/question_maintain.md)）
-4. **错题先题后错**：标记「错题」的题**先** `ingest_question` 入库、**再**由错题管理 Agent 调 `ingest_error(question_id, user_reflection, error_summary)` 写错因，杜绝循环依赖（见 [ingestion/storage_decision.md](ingestion/storage_decision.md) 与 [ingestion/error_maintain.md](ingestion/error_maintain.md)）
+4. **错题先题后错**：标记「错题」的题**先** `ingest_question` 入库、**再**由错题管理 Agent 调 `ingest_error` 写错因，杜绝循环依赖（见 [ingestion/storage_decision.md](ingestion/storage_decision.md) 与 [ingestion/error_maintain.md](ingestion/error_maintain.md)；签名见 [../ingestion/error.md](../ingestion/error.md)）
 
 ## 目录导航（与 src/agent/ 一一对应）
 
