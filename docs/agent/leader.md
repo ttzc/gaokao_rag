@@ -4,7 +4,7 @@
 
 ## 定位
 
-Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给查询侧 4 个 / 摄入侧 4 个子 Agent，再综合成员结果输出最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。
+Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给查询侧 4 个 / 摄入侧 5 个子 Agent，再综合成员结果输出最终答案。Leader 看问题灵活决定调谁、调几个、什么顺序——不是固定流程模板。
 
 ## 上下文隔离策略（函数式委派，2026-08-28 决策）
 
@@ -26,12 +26,12 @@ Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给�
 
 `src/agent/leader.py` 当前串三个已落地成员，跑通「检索作答」+「待清洗题目文本 → 入库」双闭环：
 
-- **members** = `search`（搜索信息，见 [retrieval/search.md](retrieval/search.md)）+ `structure_recognition`（结构识别）+ `storage_decision`（入库决策），其余 5 个成员（查询侧 3 + 摄入侧 2）后续按 roadmap 补齐
+- **members** = `search`（搜索信息，见 [retrieval/search.md](retrieval/search.md)）+ `structure_recognition`（结构识别）+ `storage_decision`（入库决策）+ `question_maintain`（题目维护，2026-09-08 落地），其余 5 个成员（查询侧 3：VLM 理解 / 聚合数据 / 输出整理；摄入侧 2：文档识别 / **错题管理**）后续按 roadmap 补齐
 - **意图分流**（2026-08-28 决策的内联实现）：Leader 自行判断——**问**（求解法/求讲解/求题）→ 查询闭环；**给**（发来题目内容要求存/处理）→ 摄入闭环；判不准先追问一句。不单独开意图子 Agent
 - **查询闭环**：提炼检索意图打包委派 search → 依据 `search_results` 综合作答（引用来源，讲解配例题互相印证）；`no_result` 如实告知不编造；`has_image=true` 注明图形暂不可读。成员清单向 Leader 声明 search 可按召回 doc_id **自行补全**单题（题目条目）完整题干/答案/解析/溯源（题号/来源试卷/考区年月）、随该次委派一并交付——Leader 无需为缺溯源重复委派（2026-08-31 补挂 `get_question_detail` 后新增，与「最多委派一次」铁律同向）
 - **摄入闭环**（输入泛化，2026-08-28 用户修正）：入口不假定题目来源——口述题意、OCR 识别的多题原文、粘贴/抄写文本都是**待清洗信息**，来源形式无本质区别；Leader 只转不洗，清洗切分归结构识别。流程：收原文 → 委派结构识别 → 回显题目清单问去向（入库/跳过）→ 打包 `pending_questions` + `ingest_decisions` 委派入库决策 → 汇总 `ingest_results` 返回用户
 - **数据维护闭环**（2026-09-03 新增，⏳门面未落地）：改 / 删题走 `manage` 意图，**Leader 只定位 `question_id` + 打包委派给题目维护 Agent**，不自己调工具（Leader 构造不传 `tools=`，保持纯编排者）。改题：委派执行后 Leader 汇报改动字段；删题：**Leader 先回显确认**（含连带影响：该题还有 N 条错题记录 / M 条作答记录会一并删除），确认后才委派执行
-- **MVP 降级**：错题意图降级为「错因记录暂不支持」提示；`topic_names` 本轮不传；`lecture_segments` 忽略；检索无 metadata 过滤（不完全匹配时不追加委派重查）；错题统计/薄弱点分析类请求告知暂未支持（聚合数据成员未接入）；**改 / 删题在门面落地前降级为「暂不支持修改/删除题目」提示**（2026-09-03）
+- **MVP 降级**：错题意图降级为「错因记录暂不支持」提示（⏳ **随错题本功能落地移除**，设计见 [ingestion/error_maintain.md](ingestion/error_maintain.md)）；`topic_names` 本轮不传；`lecture_segments` 忽略；检索无 metadata 过滤（不完全匹配时不追加委派重查）；错题统计/薄弱点分析类请求告知暂未支持（聚合数据成员未接入）；**改 / 删题在门面落地前降级为「暂不支持修改/删除题目」提示**（2026-09-03）
 - `share_member_interactions=False` 显式写出（框架默认即 False），把「函数式隔离」钉进构造
 - `LEADER_INSTRUCTION` 直接定义在 `leader.py` 内——leader 层只有这一个 Agent，不抽独立 prompts 模块
 - 3 条铁律（完成标准 / 每成员每任务最多委派一次 / 不自相矛盾）写死在 instruction 里
@@ -53,9 +53,9 @@ Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给�
 | `report` | "帮我生成这周的周报" | 聚合数据 → 输出整理 |
 | `browse` | "列出2026年南昌一模的所有题目" | 搜索信息 → 输出整理 |
 | `ingest` | "帮我存这道题/这道题我不会" | 文档识别 → 结构识别 → 题目维护 → 入库决策 |
-| `manage` | "第3题答案改一下" / "把那道题删了" | **题目维护**——Leader 定位 id + 打包委派，不自己调工具 |
+| `manage` | "第3题答案改一下" / "把那道题删了" / "那道错题我搞懂了" | **按对象分派**：题目改 / 删 → 题目维护；错题改错因 / 删错题 / 标记掌握 → 错题管理（Leader 定位 id + 打包委派，不自己调工具） |
 
-> **`manage` 意图（2026-09-03 新增）**：改 / 删是**数据维护**而非摄入流水线的一环——摄入侧流水线是「非结构化输入 → 结构化数据」，入库决策 Agent 消费 `pending_questions + ingest_decisions`，改 / 删没有 pending 形态。执行者扩为**题目维护 Agent**，Leader 只做三件事：**定位 `question_id`、打包委派、删前回显确认**。
+> **`manage` 意图（2026-09-03 新增，2026-09-13 扩错题本）**：改 / 删是**数据维护**而非摄入流水线的一环——摄入侧流水线是「非结构化输入 → 结构化数据」，入库决策 Agent 消费 `pending_questions + ingest_decisions`，改 / 删没有 pending 形态。**执行者按对象分两个**：题目侧归**题目维护 Agent**（`question_maintain`），错题本侧（改错因 / 删错题 / 标记掌握）归**错题管理 Agent**（`error_maintain`，见 [ingestion/error_maintain.md](ingestion/error_maintain.md)）。Leader 只做三件事：**定位 id、打包委派、删前回显确认**。
 >
 > **为什么不让 Leader 自己调工具**：`create_gaokao_leader()`（`src/agent/leader.py:132`）构造时**不传 `tools=`**——Leader 是纯编排者。挂写工具等于把「只委派」改成「既委派又执行」，破坏现有架构一致性；且改题有实打实的 LLM 编排活（口述 → 字段结构化、来源行拆解、补解析生成），全塞 `LEADER_INSTRUCTION` 必然臃肿。
 >

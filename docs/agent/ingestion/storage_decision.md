@@ -34,7 +34,7 @@ Bot: 已识别到 3 道题目：
 | 决策 | 写入内容 |
 |------|----------|
 | **a 入库** | 调用 `ingest_question` → questions + question_topics + Chroma |
-| **b 错题** | 先 `ingest_question` 入库题目（与 a 完全相同），再由错题本体系调用 `ingest_error(question_id, user_reflection)` 写入错因（见 [error.md](../../ingestion/error.md)） |
+| **b 错题** | 本 Agent **只做一半**：`ingest_question` 入库题目（与 a 完全相同）并回传 `question_id`；写错因归**错题管理 Agent**（见 [error_maintain.md](error_maintain.md)）——两个原子门面由 Leader 按序委派两个 Agent 串联 |
 | **c 跳过** | 不调用 `ingest_question`（题目不写入任何表） |
 
 ## 原子化：先题后错（2026-08-25 决议）
@@ -44,11 +44,11 @@ Bot: 已识别到 3 道题目：
 `ingest_question` 与 `ingest_error` 是两个**独立原子工具**：
 
 - `ingest_question` 不接收任何 errors 参数，只把题写进三层存储，返回 `{question_id, doc_id}`——完全不感知 `errors`
-- 标记「错题」的题**先入库**，再由错题本体系调 `ingest_error(question_id, user_reflection)` 写错因
+- 标记「错题」的题**先入库**（拿 `question_id`），再由**错题管理 Agent** 调 `ingest_error(question_id, user_reflection, error_summary)` 写错因——错因本体由**结构识别 Agent** 过 `error-organize` Skill 产出，本 Agent 与错题管理 Agent 都不做整理
 - 依赖方向：`errors.question_id` FK → questions，错题本体系依赖题目摄入体系，**杜绝 `ingest_question ↔ errors` 循环依赖**
 
 ```python
-# 示例：入库决策 Agent 的 FunctionTool 调用链
+# 本 Agent（入库决策）只写题
 result = await ingest_question(
     raw_file_path=raw_file_path,
     question_text=question_text,
@@ -56,18 +56,22 @@ result = await ingest_question(
     analysis_text=analysis_text,
     topic_names=topic_names,        # 来自 topic_draft
 )                                   # → {question_id, doc_id}
-if decision == "error_book":
-    await ingest_error(
-        question_id=result["question_id"],
-        user_reflection=user_reflection,  # 用户口述错因
-    )
+
+# 标为「错题」的题：Leader 拿 question_id 再委派错题管理 Agent 写错因
+#   await ingest_error(
+#       question_id=result["question_id"],
+#       user_reflection=user_reflection,   # 用户口述原文（Leader 收集）
+#       error_summary=error_summary,       # error-organize Skill 产出，可为空
+#   )
 ```
+
+> **为什么本 Agent 不顺手把 `ingest_error` 也调了**：工具是 Agent 能力的边界——入库决策 Agent 挂 `IngestQuestionTool`，错题管理 Agent 挂 `IngestErrorTool`，各写各的表（见 [../tools/ingest_tool.md](../tools/ingest_tool.md) 挂载矩阵）。这样 `errors` 的写操作只有一个入口，不会出现"两处都能写错题本"的失控。
 
 ## 决策原则
 
 - 只消费传入的题目与意图，写库后返回结果，不发起对话 / 不回显 / 不收集决策
 - 决策缺失或模糊（某题无对应意图）→ 标记 `pending` 交还 Leader 补充，不擅自猜测去向
-- **错题不在题目摄入时内联写 `errors`**：先题后错，保持 `ingest_question` 原子化
+- **错题不在题目摄入时内联写 `errors`**：先题后错，保持 `ingest_question` 原子化；且错因写入归**错题管理 Agent**（本 Agent 工具面只有 `IngestQuestionTool`，不具备写 `errors` 的能力）
 
 ## 输出（State 契约）
 

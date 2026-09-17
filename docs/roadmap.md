@@ -256,14 +256,22 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 
 **目标**：把入库决策 Agent 里 `error_pending` 那个降级还掉。这是 MVP 的差异化核心。
 
-- [ ] `errors` 表（第 6 张，含 `error_summary`）
-- [ ] `src/ingestion/error.py`：`ingest_error`（先题后错，原子化）
-- [ ] 错因口述结构化：用户口述 → LLM 转 `error_summary`（替代手写识别）
+- [ ] `errors` 表（第 6 张；`error_summary` 为四键 JSON，**无 `error_type` 独立列**，见 [store/db/errors.md](store/db/errors.md)）
+- [ ] `src/ingestion/error.py`：`ingest_error`（**允许空错因入库**）/ `update_error`（补录 / 修正 / 标记掌握）/ `delete_error`
+- [ ] **`error-organize` Skill**（口述错因 → 四键 JSON）+ 并入结构识别 Agent 的 `ALLOWED_SKILLS`
+- [ ] **错题管理 Agent**（`src/agent/ingestion/error_maintain.py`）+ 三个写工具（`IngestErrorTool` / `UpdateErrorTool` / `DeleteErrorTool`，并入 `ingest_tool.py`）
+- [ ] Leader：摄入闭环恢复「错题」去向、错因收集与后补流程、`manage` 意图**按对象分派**
+- [ ] 入库决策 Agent 去掉 `error_pending` 降级分支（工具面只保留 `IngestQuestionTool`，不写 `errors`）
 - [ ] `src/retrieval/error.py`：`get_error_stats` / `get_error_details` / `get_weak_topics`
-- [ ] 入库决策 Agent 去掉 `error_pending` 降级分支
 - [ ] Leader `review` 意图落地
+- [ ] 删题阶段 2：`delete_question` 级联扩展到 `errors` + 删除预检（查引用 → 回显连带影响 → 确认一起删）
 
-**验收**：说"这题我算错了，符号看漏了" → 错题入库；问"我的薄弱知识点" → 返回分布 + 复习建议
+**验收**：
+- 说「这题我算错了，符号看漏了」→ 错题入库（含结构化错因）；不说错因只说「这题进错题本」→ 建行成功、错因标记待补
+- 隔天说「上次那道题我不是公式记混，是审题没看清」→ 改错因成功
+- 问「我的薄弱知识点」→ 返回分布 + 复习建议
+
+> 设计见 [agent/ingestion/error_maintain.md](agent/ingestion/error_maintain.md)（错题管理 Agent）、[agent/skills/error-organize.md](agent/skills/error-organize.md)（错因整理 Skill）、[ingestion/error.md](ingestion/error.md)（写门面）。
 
 ## V0.9 周报 / 月报
 

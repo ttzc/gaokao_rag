@@ -14,7 +14,7 @@
 
 ## 架构视角：摄入侧 Agent 群
 
-摄取不是固定流程，而是 **TeamLeader 按需委派摄入侧 4 个子 Agent** 协作完成。LLM 贯穿始终：整理输入格式、判断有无答案/解析、分析图片、提取知识点、决定何时需要用户确认。
+摄取不是固定流程，而是 **TeamLeader 按需委派摄入侧 5 个子 Agent** 协作完成。LLM 贯穿始终：整理输入格式、判断有无答案/解析、分析图片、提取知识点、整理错因、决定何时需要用户确认。
 
 ```mermaid
 flowchart TD
@@ -24,15 +24,16 @@ flowchart TD
     
     subgraph "摄入侧（写）"
         B --> B1[文档识别 Agent<br/>提取内容]
-        B1 --> B2[结构识别 Agent<br/>划分讲解/题目]
+        B1 --> B2[结构识别 Agent<br/>划分讲解/题目<br/>含错因口述时整理错因]
         B2 -->|讲解段| B2a[知识点讲解<br/>自动入库]
         B2 -->|题目段| B3[题目维护 Agent<br/>标注知识点]
         B3 --> L2[Leader<br/>回显清单收集决策]
-        L2 -->|ingest_decisions| B4[入库决策 Agent<br/>分流写库]
+        L2 -->|ingest_decisions| B4[入库决策 Agent<br/>写 questions]
+        L2 -->|标为错题的题| B5[错题管理 Agent<br/>写 errors]
     end
     
     B4 -->|a 入库| C[questions + Chroma]
-    B4 -->|b 错题| D[questions + errors]
+    B5 -->|b 错题| D[errors<br/>题目已由 B4 写入]
     B4 -->|c 跳过| E[不写入]
 ```
 
@@ -42,7 +43,7 @@ flowchart TD
 - LLM 需要判断一切：输入格式整理、内容三分、图像理解、知识点提取、回显策略
 - 固定流程无法覆盖这些灵活决策，应该由 Agent 自主编排
 
-摄入侧 4 个子 Agent 的职责与工具，见 [Agent 编排设计](../agent/README.md)「摄入侧（写）」章节。
+摄入侧 5 个子 Agent 的职责与工具，见 [Agent 编排设计](../agent/README.md)「摄入侧（写）」章节。
 
 ---
 
@@ -151,15 +152,40 @@ Bot: 已识别到 3 道题目：
 | 决策 | 写入内容 |
 |------|----------|
 | **a 入库** | 调用 `ingest_question` → questions + question_topics + Chroma |
-| **b 错题** | 先 `ingest_question` 入库题目（与 a 完全相同），再由错题本体系调用 `ingest_error(question_id)` 写入错因（见 error.md） |
+| **b 错题** | 本 Agent 先 `ingest_question` 入库题目（与 a 完全相同），**再由错题管理 Agent** 调 `ingest_error(question_id, user_reflection, error_summary)` 写入错因（见 [error.md](error.md)、[agent/ingestion/error_maintain.md](../agent/ingestion/error_maintain.md)） |
 | **c 跳过** | 不调用 `ingest_question`（题目不写入任何表） |
 
 **决策原则**：
 - 只消费传入的题目与意图，写库后返回结果，不发起对话 / 不回显 / 不收集决策
 - 决策缺失或模糊（某题无对应意图）→ 标记 `pending` 交还 Leader 补充，不擅自猜测去向
-- **错题不在题目摄入时内联写 `errors`**：入库决策 Agent 对标记为「错题」的题目，**先** `ingest_question` 入库，**再**调用独立的 `ingest_error(question_id, user_reflection)` 写入错因（见 error.md）。`ingest_question` 保持原子化、完全不感知 `errors`，避免 `ingest_question` ↔ `errors` 的循环依赖。
+- **错题不在题目摄入时内联写 `errors`**：对标记为「错题」的题目，**先** `ingest_question` 入库（拿 `question_id`），**再**由**错题管理 Agent** 调 `ingest_error` 写错因（见 [error.md](error.md)）。`ingest_question` 保持原子化、完全不感知 `errors`，避免 `ingest_question` ↔ `errors` 的循环依赖；错因整理本身也不在本 Agent 做（是结构识别 Agent 过 `error-organize` Skill 的产出）
 
 **输出**：`ingest_results`（每题 question_id / doc_id，或跳过标记）
+
+---
+
+### 错题管理 Agent（2026-09-13 新增）
+
+**职责**：`errors` 表（错题本）的**写操作执行者**——记错因 / 改错因（隔天补录、事后修正）/ 删错题 / 标记掌握。与**题目维护 Agent** 平级：一个管 `questions`（共享题库），一个管 `errors`（用户私有错题本）。
+
+**不挂 Skill**：错因整理是 `error-organize` Skill 的活，由**结构识别 Agent** 执行（与 `question-organize` 同级、同 Agent）；本 Agent 只消费整理成品写库——与「入库决策 Agent 不做归一化」是同一条分工原则。
+
+**挂载工具**（见 [agent/ingestion/error_maintain.md](../agent/ingestion/error_maintain.md)）：
+
+| Tool | 用途 |
+|------|------|
+| `ingest_error(question_id, user_reflection, error_summary)` | 写错因，**允许空错因入库**（空值 = 「错因待补」状态，不新增状态字段） |
+| `update_error(question_id, ...)` | 补录空错因 / 修正已有错因 / 标记掌握（`resolved`） |
+| `delete_error(question_id)` | 移出错题本（**不动题目本身**——与删题是两件事） |
+
+**错因录入的两条路径**（2026-09-13 定）：
+
+1. **入库时交代**：用户在同一条消息里说了错因（「这题我算错了，符号看漏了」）→ 结构识别 Agent 一并过 `error-organize` 整理成四键 JSON → 随本次写入落库
+2. **入库后补录**（主路径，隔天也能用）：先建 `errors` 行（错因为空、待补）→ Leader 后续与用户讨论、收集口述 → 结构识别整理 → 本 Agent 改错因
+
+> 后补路径就是**错题本增删改查的「改」**，属必做功能（2026-09-13 用户明确）。定位 `question_id` 由 Leader 负责，MVP 三条路径：对话上下文 / 用户给题号来源 / **列出错题本让用户指认**。
+
+**输出**：`error_result`（`{action, question_id, error_id, updated_fields?}`；删除 → `{action, deleted}`）
 
 ---
 

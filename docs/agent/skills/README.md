@@ -30,6 +30,7 @@
 | Skill | 目录 | 执行方 / 消费方 | 职责 |
 |-------|------|----------------|------|
 | **题目整理** | `question-organize/`（文档：[question-organize.md](question-organize.md)） | 执行：结构识别 Agent 逐题（`ALLOWED_SKILLS` 白名单）；消费：入库决策 Agent | 把单个题目单元（整篇切出的题目段 / 零散输入：口述/OCR/VLM/聊天片段）归一为「题目 / 答案 / 解析」三段，供入库决策导入；讲解段不加载 |
+| **错因整理** | `error-organize/`（文档：[error-organize.md](error-organize.md)，2026-09-13 新增） | 执行：结构识别 Agent（同一 `ALLOWED_SKILLS`）；消费：错题管理 Agent | 把用户口述的错因归一为四键 JSON（`error_type` / `cause` / `knowledge_gap` / `fix_suggestion`）；**仅当输入含错因口述时加载**；红线＝**不脑补用户没说的错因** |
 
 > 曾被列为萃取候选、现已撤回（2026-08-27）：意图识别 / 结构识别 / 输出整理 —— 三者 prompt 即各自 agent 的系统提示词，留在 instruction，不建 SKILL.md。其中**意图识别已于 2026-08-28 内联 Leader 系统提示词**（非独立 Agent，无 prompt 可萃），剩余结构识别 / 输出整理两条仍成立。
 
@@ -51,13 +52,16 @@ description: <一句话，注入概览层用于路由选择>
 ```mermaid
 flowchart LR
     S[结构识别 Agent<br/>ALLOWED_SKILLS + knowledge_only] -->|skill_load| Q[question-organize/SKILL.md]
+    S -->|skill_load<br/>仅当有错因口述| E[error-organize/SKILL.md]
     Q -->|题目/答案/解析 三段| D[入库决策 Agent]
+    E -->|四键 JSON| M[错题管理 Agent]
 ```
 
-`question-organize` 是摄入链路的归一化指令模块：结构识别 Agent 对**每道题目**（整篇切出的题目段，或零散单题）逐题 `skill_load` 执行，产出交给入库决策 Agent 写库；讲解段不走此 Skill。它不替代 TeamAgent 的委派结构。
+两个 Skill 都是摄入链路的归一化指令模块，**同一个 Agent 执行、按需加载**：`question-organize` 对每道题目（整篇切出的题目段，或零散单题）逐题执行，产出交入库决策 Agent 写库、讲解段不走；`error-organize` 仅在输入含用户错因口述时执行，产出交错题管理 Agent 写库。二者都不替代 TeamAgent 的委派结构。
 
 ## 落地状态（2026-08-28）
 
 - `src/agent/skills/question-organize/SKILL.md` 已落地（commit `f68ef9a`）。
 - 共享 Skill 基础设施（`SKILLS_ROOT` / `create_skill_tool_set` / `_AllowlistedSkillRepository` 白名单仓库）已落地；结构识别 Agent 已接线 `ALLOWED_SKILLS=("question-organize",)` + `knowledge_only` 工具面（待 commit）。
+- ⏳ `error-organize` 设计已定稿（2026-09-13，[error-organize.md](error-organize.md)）：待 SKILL.md 实现后并入结构识别 Agent 的 `ALLOWED_SKILLS`（届时为 `("question-organize", "error-organize")`）。
 - 其余 SKILL.md 与 `src/agent/` 包本体随 Claude 跟进实现；本清单为设计锚点。

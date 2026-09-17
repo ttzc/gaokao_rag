@@ -5,7 +5,7 @@
 
 ## 定位
 
-子 Agent 的写能力全部通过 FunctionTool 注入：PDF / 图像提取、VLM 图形理解、知识点 tag 归位、题目 / 错题摄入。工具是子 Agent 与摄入门面之间的适配层——内部封装函数调用 + 参数整形，**不含 LLM 决策**（LLM 只负责判断与生成结构化数据，调用由工具执行）。
+子 Agent 的写能力全部通过 FunctionTool 注入：PDF / 图像提取、VLM 图形理解、知识点 tag 归位、题目摄入、错题本写操作。工具是子 Agent 与摄入门面之间的适配层——内部封装函数调用 + 参数整形，**不含 LLM 决策**（LLM 只负责判断与生成结构化数据，调用由工具执行）。
 
 > 工具包按「写 / 读」拆为两个文件：`ingest_tool.py`（本文件，写侧）+ `retrieve_tool.py`（读侧，见 [retrieve_tool.md](retrieve_tool.md)）。
 
@@ -16,9 +16,12 @@
 | `ExtractTool` | `extract_tool` | PDF / 图像提取（PyMuPDF + VLM，只提取不切结构） | （文件 IO + VLM） | 文档识别（摄入侧） |
 | `VLMUnderstandTool` | `vlm_tool` | VLM 图形理解（描述入库，查询不重复调用） | VLM | VLM 理解（查询侧）、文档识别（摄入侧） |
 | `KnowledgeTool` | `knowledge_tool` | 知识点查询 / tag 归位（`search` / `create` / `add_alias`） | `src.ingestion.topic` | 搜索信息（查询侧）、题目维护（摄入侧） |
-| `IngestQuestionTool` | `ingest_tool` | 题目 / 错题摄入（`ingest_question` → `ingest_error`，先题后错） | `src.ingestion.question` | 入库决策（摄入侧） |
+| `IngestQuestionTool` | `ingest_tool` | 题目摄入（`ingest_question`） | `src.ingestion.question` | 入库决策（摄入侧） |
 | `UpdateQuestionTool` | — | 修改题目信息（内容 / 答案 / 解析 / 元数据 / 知识点） | `src.ingestion.question` | **题目维护**（2026-09-03） |
 | `DeleteQuestionTool` | — | 删除题目（级联 question_topics / errors / exam_attempts + Chroma） | `src.ingestion.question` | **题目维护**（2026-09-03） |
+| `IngestErrorTool` | — | 写错因（`ingest_error`，**允许空错因入库**） | `src.ingestion.error` | **错题管理**（2026-09-13） |
+| `UpdateErrorTool` | — | 改错因 / 补录空错因 / 标记掌握（`update_error`） | `src.ingestion.error` | **错题管理**（2026-09-13） |
+| `DeleteErrorTool` | — | 移出错题本（`delete_error`，不动题目本身） | `src.ingestion.error` | **错题管理**（2026-09-13） |
 
 > **实现现状（2026-09-08 更新）**：代码侧已落地 `IngestQuestionTool`（`src/agent/tools/ingest_tool.py`，导出 `ingest_question_tool`，2026-08-28）与改 / 删两件（导出 `update_question_tool` / `delete_question_tool`，2026-09-08）；`ExtractTool` / `VLMUnderstandTool` / `KnowledgeTool` 及读侧工具**逐个按链路需要实现中，不急于归并**——写齐后再对齐本文件与 `retrieve_tool.md` 的两文件结构。本表为规划目标，不代表已全部实现。
 >
@@ -64,7 +67,7 @@
 | Tool | 状态 | 签名 | 用途 |
 |------|------|------|------|
 | `ingest_question` | ✅已实现 | (question_text, answer_text="", analysis_text="", topic_names=None, raw_file_path=None, question_type="", source_type="exam", subject="数学", exam_year=None, exam_month=None, question_number=None, exam_regions=None) → {question_id, doc_id} | 一道题入库：文件 + SQLite（questions + question_topics）+ Chroma（`doc_id = q_{id}`） |
-| `ingest_error` | ⏳门面未落地 | (question_id, user_reflection) → error_id | 错题写错因：LLM 结构化 `error_summary` + 关联题目 |
+| `ingest_error` | ⏳门面未落地 | (question_id, user_reflection="", error_summary=None) → error_id | 错题写错因——**2026-09-13 起归错题管理 Agent**（经 `IngestErrorTool`），不并入本工具 |
 | `ingest_image` | ⏳门面未落地 | (image_path, source) → file_id | 图片入库（文件 + files 表） |
 | `ingest_exam_paper` | ⏳门面未落地 | (pdf_path, title="") → file_id | 试卷文件注册（文件 + files 表） |
 
@@ -77,7 +80,7 @@
 - **注解写法硬约束**：可空参数必须 `typing.Optional[...]`，不能 `X | None`——FunctionTool schema 生成器只识别 typing 写法，PEP 604 直接抛 `ValueError`（实测）
 - **必填校验**：仅 `question_text` 无默认值（必填）；缺失时 FunctionTool 返回 error 提示 LLM 补参重试，不触门面
 - **exam_regions 透传**：工具暴露 `exam_regions: Optional[list[str]]`（考区/卷型层级，从小到大），由入库决策 Agent instruction 负责从结构识别下传的「来源」行拆解映射（如「2026高考全国1卷」→ `exam_year=2026` / `exam_regions=["全国1卷"]`）；工具只透传不做解析
-- 错题分支（`ingest_error`）待其门面落地后再补，本轮只封装 `ingest_question`（**先题后错**，杜绝 `ingest_question ↔ errors` 循环依赖）
+- 错题分支**不并入本工具**（2026-09-13 决策）：写错因归**错题管理 Agent** 的 `IngestErrorTool`；库层仍是「先题后错」——`ingest_question` 不接收、不感知 errors 参数，杜绝 `ingest_question ↔ errors` 循环依赖
 
 **调用链（入库决策子 Agent）**：
 
@@ -151,6 +154,7 @@ Bot: 确认删除第 3 题【导数应用】恒成立参数取值范围（Q42）
 | 文档识别 | `ExtractTool` + `VLMUnderstandTool` |
 | 题目维护 | `KnowledgeTool` + `UpdateQuestionTool` + `DeleteQuestionTool`（`manage` 意图由 Leader 委派本 Agent） |
 | 入库决策 | `IngestQuestionTool` |
+| **错题管理** | `IngestErrorTool` + `UpdateErrorTool` + `DeleteErrorTool`（`ingest` 标为错题时 + `manage` 错题侧，2026-09-13 新增） |
 | VLM 理解 | `VLMUnderstandTool`（理解检索到的图，见 retrieve_tool 侧） |
 
 ## 与门面的边界

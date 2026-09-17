@@ -9,17 +9,16 @@
 ```sql
 CREATE TABLE errors (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    question_id     INTEGER REFERENCES questions(id),
-    source_text     TEXT,                            -- 错题原始文本（如果未关联到题目）
+    question_id     INTEGER NOT NULL REFERENCES questions(id),  -- 必填：错题本只记错因，经 id 关联到具体题目
     user_reflection TEXT,                            -- 用户口述的原始错因描述（自由文本）
     error_summary   TEXT,                            -- LLM 生成的结构化错因总结（JSON: {error_type, cause, knowledge_gap, fix_suggestion}）
-    error_count     INTEGER DEFAULT 1,              -- 同一题错了几次
-    first_seen      TEXT DEFAULT (datetime('now')),
-    last_seen       TEXT DEFAULT (datetime('now')),
+    first_seen      TEXT DEFAULT (datetime('now')),  -- 首次记入错题本
+    last_seen       TEXT DEFAULT (datetime('now')),  -- 最后一次更新（补录 / 修正错因）
     resolved        BOOLEAN DEFAULT 0               -- 是否已掌握
 );
 
-CREATE INDEX idx_errors_question ON errors(question_id);
+-- 一题一行：同一道题在错题本里只有一条记录
+CREATE UNIQUE INDEX idx_errors_question ON errors(question_id);
 ```
 
 ## 关键设计点
@@ -42,17 +41,27 @@ CREATE INDEX idx_errors_question ON errors(question_id);
 
 > 代价明确：放弃 SQL 层的 `GROUP BY error_type`。真需要恢复该维度时，从 JSON 提取聚合或重新加列，届时按需再定。
 
-### 错误计数与状态
+### 一题一行（2026-09-17 定）
 
-- `error_count`：同一题反复错，累加（"第三次错同一道题"要触发复习提醒）
-- `resolved`：已掌握标记——周报"掌握率 = resolved / total"的数据源
-- `first_seen` / `last_seen`：时间窗口过滤（本周新增/已解决）
+`UNIQUE INDEX idx_errors_question` 保证同一道题在错题本里**只有一条记录**——这是 `update_error` / `delete_error` 按 `question_id` 定位的前提（否则「改哪条 / 删哪条」无从决定）。再次错同一题 = **更新这条记录**，不新增行。
+
+**`question_id` 必填**（`NOT NULL`，2026-09-17 定）：错题表**只记录错因、经 id 关联到具体题目**——题目必须先经 `ingest_question` 入库（"先题后错"铁律）。原 `source_text` 兜底列（错题原文不经题目表直接落库）已随之删除。
+
+### 状态与时间
+
+- `resolved`：已掌握标记——周报"掌握率 = resolved / total"的数据源。**再次错同一题时自动重置为 0**（2026-09-17 定）：又错了说明还没掌握，"已掌握"不能一直挂着
+- `first_seen` / `last_seen`：首次记入 / 最后一次更新的时间，用于时间窗过滤（本周新增 / 已解决）
+
+> **不设 `error_count`（2026-09-17 决策，原字段已删）**：原设计有「同一题错了几次」的计数字段，现移除。理由：
+> ① **错一次和错多次同样需要被重视**——计数不产生任何行动差异，也不存在「检索错过两次的题」这类场景；
+> ② 同一题的多次错因可以在 `error_summary` 的**自然语言描述**里体现（如 cause 里写明「首次是符号看漏、这次是公式记混」），不必单独建键。
+> 连带效果：`WeakTopic.error_count`（该知识点下的错题数）不再与表字段同名，此前的命名冲突消失。
 
 ## 常见操作
 
-- 录入：`question_id`（或 source_text 兜底）→ 口述 → LLM 生成 error_summary（事务内）
+- 录入：`question_id`（必填）→ 口述 → LLM 生成 `error_summary`（由 `error-organize` Skill 产出后传入，见 [../../agent/skills/error-organize.md](../../agent/skills/error-organize.md)）
 - 聚合：按知识点（经 question_topics 的 `topic_name` 匹配）/ **按学科（join questions.subject，无需冗余）** / 按时间窗（`first_seen` / `last_seen`）统计
-- 更新：错同题 +1 次、标记 resolved
+- 更新：补录 / 修正错因、标记 `resolved`（`update_error`，同一题恒一条记录——再次错同一题是**更新**而非新增）
 
 ## 与其他表的关系
 
