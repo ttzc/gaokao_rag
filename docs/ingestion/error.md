@@ -4,6 +4,8 @@
 
 > **调用方**：错题管理 Agent（`src/agent/ingestion/error_maintain.py`）经 [ingest_tool.py](../agent/tools/ingest_tool.md) 的工具调用。
 > **本层无 LLM 决策**：`error_summary` 由结构识别 Agent 过 `error-organize` Skill 产出后传入（见 [skills/error-organize.md](../agent/skills/error-organize.md)）。
+> **本层负责两态一致**：SQLite `errors` 行为权威源 + Chroma `err_{id}` document（错因嵌入文本，见 [vector_store.md](../store/vector/vector_store.md)「错因 document 的 embedding 文本格式」）。
+> **JSON 只到本层为止**——四键 JSON 存 SQLite，写向量前转成中文分节文本，**JSON 不进向量库**。
 
 ## ingest_error — 记错因
 
@@ -19,6 +21,8 @@ def ingest_error(
 **内部流程**：**先查后写**（`errors` 上有 `UNIQUE INDEX idx_errors_question`，一题一行）——该题不在错题本则插入、已存在则更新该行。全项目无 UPSERT 先例（`grep "ON CONFLICT" src/store/db` 零命中），故沿用「先查后写」而非 SQL 的 `ON CONFLICT DO UPDATE`；`error_summary` 以 JSON 字符串落库。
 
 **幂等语义**：调用方（错题管理 Agent）**无需先判断该题是否已在错题本**——直接调本函数即可，重复调用是更新而非报错（与 `topics.create` 冲突抛 `ValueError` 的语义不同：那是"重名是错误"，这里"同一题又错一次/又补一句"是常态）。
+
+**向量层**：写库后 upsert `err_{id}` document（四键转中文分节文本）。**错因待补（`error_summary` 为空）时不写向量**——没有可嵌文本，补录后由 `update_error` 建 document。这样「错因待补」的行在向量库里不存在，不会污染召回。
 
 **空值不覆盖已有值**（新建 / 更新的双态语义，实现时勿混）：**新建**时空值照写（得到「错因待补」行）；**更新**时传入的空值（`""` / `None`）**不覆盖**原有内容——否则用户只说一句「这题我又错了」，就会把已经记好的错因清空。
 
@@ -42,6 +46,8 @@ def update_error(
 
 **部分更新语义**（与 `update_question` 一致）：不传 / `None` = 不修改该字段。
 
+**向量层**：`error_summary` 有变化 → 重嵌并 upsert 同 `err_{id}`；此前处于待补（无 document）→ 首次建 document。**只改 `resolved` 时不重嵌**——掌握状态不影响语义。
+
 `resolved`（是否已掌握）是 `errors` 行的字段，**标记掌握本质上也是修改**（2026-09-13 用户明确），归本函数——是否再拆出独立的 `resolve_error` 属函数粒度问题，随落地时定。
 
 **返回**：`{"error_id": int, "updated_fields": list[str]}`
@@ -53,6 +59,8 @@ def delete_error(question_id: int) -> dict:
 ```
 
 删 `errors` 行，**不动 `questions` 主行**——与 `delete_question` 是两件事：一个是「这道题我不想再在错题本里看到」，一个是「这道题从题库删掉」。不可逆 → 调用前须经 Leader 回显确认。
+
+**向量层**：**先删向量、后删 DB**——沿用跨存储删除的既定顺序（中断时残留"数据还在、可重建"，优于留下孤儿向量）。待补记录本无 document，删除不存在的 doc_id 幂等跳过。
 
 **返回**：`{"question_id": int, "deleted": bool}`
 

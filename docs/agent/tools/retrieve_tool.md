@@ -65,7 +65,7 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 [
   {
     "document": {
-      "page_content": "题目/讲解的正文……",
+      "page_content": "题目 / 讲解 / 错因的正文……",
       "metadata": { "doc_id": "q_42", "doc_type": "question", "subject": "数学", "...": "..." }
     },
     "score": 0.87

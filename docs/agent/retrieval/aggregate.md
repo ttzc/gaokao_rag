@@ -52,7 +52,7 @@ async def report_generate(state: GaokaoState) -> dict:
     
     # ② 聚合窗口内错题统计（errors 表）
     stats = aggregate_errors(period_start, period_end)
-    # {total_errors, resolved_errors, resolve_rate, by_topic: [{topic, error_count}]}
+    # {total_errors, resolved_errors, resolve_rate, pending_count, by_topic: [{topic, error_count}]}
     
     # ②b 聚合窗口内整卷作答（exam_attempts 表）
     attempt_stats = aggregate_attempts(period_start, period_end)
@@ -78,7 +78,7 @@ async def report_generate(state: GaokaoState) -> dict:
 ## 📊 数学学习周报（8.4 - 8.10）
 
 ### 本周概况
-- 新增错题：12 道 | 已掌握：4 道 | 掌握率：33%
+- 新增错题：12 道 | 已掌握：4 道 | 掌握率：33% | 错因待补：5 道
 - 较上周：错题 +3 道（↑33%），掌握率持平
 
 ### 薄弱知识点 Top 3

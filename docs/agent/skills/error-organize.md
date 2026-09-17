@@ -59,7 +59,7 @@
 - **消费**：错题管理 Agent（`error_maintain.py`）只接收本 Skill 产出的四键 JSON + Leader 打包的 `question_id`，执行写库——**不执行整理**。
 - 上游：Leader 收集的用户口述错因
 - 平行：题目整理（`question-organize`）——同一 Agent、同一批次、逐单元执行
-- 下游门面：`src/ingestion/error.py` 的 `ingest_error` / `update_error`（见 [../../ingestion/error.md](../../ingestion/error.md)）
+- 下游门面：`src/ingestion/error.py` 的 `ingest_error` / `update_error`（见 [../../ingestion/error.md](../../ingestion/error.md)）。**四键 JSON 到此为止**——门面存进 SQLite，并在写向量前把四键转成**中文分节文本**（花括号/引号/键名都是语义噪声，JSON 不进向量库，见 [vector_store.md](../../store/vector/vector_store.md)）
 
 ## 落地
 

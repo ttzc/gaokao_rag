@@ -30,7 +30,7 @@
 
 ## 混合检索语义
 
-与架构约定一致——搜「离心率最值」可能同时命中题目与讲解，搜「分离参数法」以讲解为主。因此检索门面默认走 `GaokaoKnowledge.search()` 联合召回（题目 + 讲解同 Collection），不按「题目 / 知识点」拆分检索入口。具体过滤翻译复用 `knowledge.GaokaoKnowledge.build_search_extra_params`（将 `KnowledgeFilterExpr` 翻成 Chroma 过滤子句，见 [knowledge.md](knowledge.md)）。
+与架构约定一致——搜「离心率最值」可能同时命中题目与讲解，搜「分离参数法」以讲解为主，**搜「我总是错在离心率」则命中错因 document**（`doc_type=error`）。因此检索门面默认走 `GaokaoKnowledge.search()` 联合召回（题目 + 讲解 + 错因同 Collection），不按「题目 / 知识点 / 错因」拆分检索入口。具体过滤翻译复用 `knowledge.GaokaoKnowledge.build_search_extra_params`（将 `KnowledgeFilterExpr` 翻成 Chroma 过滤子句，见 [knowledge.md](knowledge.md)）。
 
 > **2026-08-28 决策**：语义检索的「召回 + 过滤」逻辑框架已实现（`LangchainKnowledgeSearchTool` / `GaokaoKnowledge.search`），原 `hybrid_search` 设计即手写 Agentic 检索工具，**已删除**（`retriever.py` / `retriever.md` 不再存在）；无 LLM 场景直接调 `GaokaoKnowledge.search`。
 

@@ -111,8 +111,8 @@ def __init__(self, collection_name: str, persist_dir: str, expected_dim: int) ->
 
 | 字段 | 类型 | 示例 | 过滤方式 | 说明 |
 | ---- | ---- | ---- | -------- | ---- |
-| `doc_id` | str | `q_42` / `kn_7` | 不参与过滤 | 幂等 upsert 键 + SQLite 桥 |
-| `doc_type` | str | `question` / `note` | `$eq` / `$in` | 来源类型，检索混合召回用 |
+| `doc_id` | str | `q_42` / `kn_7` / `err_5` | 不参与过滤 | 幂等 upsert 键 + SQLite 桥 |
+| `doc_type` | str | `question` / `note` / `error` | `$eq` / `$in` | 来源类型，检索混合召回用 |
 | `subject` | str | `数学` | `$eq` | 学科（MVP 固定，扩科后过滤） |
 | `source_type` | str | `exam` / `homework` / `notes` | `$in` | 资料类型 |
 | `title` | str | `2026 南昌一模数学卷` | 不参与过滤 | files.title 快照，检索结果可读 |
@@ -128,6 +128,31 @@ def __init__(self, collection_name: str, persist_dir: str, expected_dim: int) ->
 | `has_image` | bool | `True` | `$eq`（Chroma 过滤专用快照） |
 
 讲解 document（`kn_*`）只有通用字段，无 `exam_*` / `question_type` / `has_image`。
+
+**错因专属字段**（`err_*`，2026-09-17 新增）：
+
+| 字段 | 类型 | 示例 | 过滤方式 | 说明 |
+| ---- | ---- | ---- | -------- | ---- |
+| `question_id` | int | `42` | `$eq` | 关联题目——**回查 SQLite 的唯一入口**（错因 document 不含题面，取题面/答案必须靠它） |
+| `error_type` | str | `知识盲区` | `$eq` / `$in` | 错误性质；**判不出时不写该字段**（空字符串不写，遵守下方"空值不写"约束） |
+| `first_seen` | str | `2026-09-17` | `$gte` / `$lte` | 首次记入日期（SQLite 列快照） |
+
+> **错因 document 明确不存**：`resolved`（状态会变且不影响语义，掌握率查 SQLite）、题面（题目有自己的 document，重复会污染语义重心）、
+> `user_reflection`（`cause` 已是它的提炼版）、`title`（要出处就靠 `question_id` 回查）。
+
+**示例（错因 err_5）**：
+
+```python
+{
+    "doc_id": "err_5",
+    "doc_type": "error",
+    "subject": "数学",
+    "question_id": 42,                    # 回查 SQLite（errors + questions）
+    "error_type": "知识盲区",              # 判不出则不写该字段
+    "topic_tags": ["椭圆", "离心率"],      # 该题的知识点快照，支持"按知识点找错因"
+    "first_seen": "2026-09-17",
+}
+```
 
 **示例（题目 q_42）**：
 
@@ -195,6 +220,7 @@ vectorstore = Chroma(
 | -------- | ---- | ---- |
 | **题目 document**（`doc_type=question`） | 题干 + 答案 + 解析 + VLM 图形描述，四段以换行连接，空段跳过 | `questions` 行 |
 | **讲解 document**（`doc_type=note`） | 知识点讲解段文本（概念/公式/方法），为一篇 | `knowledge_notes` 行 |
+| **错因 document**（`doc_type=error`，2026-09-17 新增） | 四键错因转成的**中文分节文本**（格式见下节）——**JSON 不进向量库** | `errors` 行 |
 
 **page_content 拼接规则**（来自 `src/ingestion/question.py` 的 `ingest_question`）：
 
@@ -206,6 +232,34 @@ embedding_text = "\n".join(p for p in parts if p)   # 仅拼接非空段
 ```
 
 即「题干 → 答案 → 解析 → VLM 描述」顺序，缺答案 / 缺解析 / 无图时不留空行。题目 document 与讲解 document 在同一个 Collection 混合召回（用户问"什么是分离参数法" → 命中讲解 document；搜题 → 命中题目 document），由 LLM 综合组织。
+
+### 错因 document 的 embedding 文本格式（2026-09-17 定）
+
+**核心约束：JSON 不进向量库。** `error_summary` 在 SQLite 里存四键 JSON（便于结构化消费），
+但**嵌入文本不能是 JSON**——花括号、引号、键名（`cause` / `knowledge_gap`）都是语义噪声，
+会稀释向量、拉低与其他文本的相似度。故写 Chroma 前先把四键**转成中文分节文本**（`src/ingestion/error.py` 内的纯函数，无 LLM）：
+
+```text
+错因类型：知识盲区
+错因：把离心率 e = c/a 与 b² = a² - c² 两个关系记混，误将 b/a 当作离心率
+知识点缺口：椭圆离心率定义与 a、b、c 的关系
+改进建议：复习「焦点三角形」模型，配套练习 3 道离心率计算题
+```
+
+**拼接规则**（与题目 document 同思路——只拼非空段、不留空行）：
+
+| 段 | 来源键 | 空值处理 |
+|----|--------|----------|
+| `错因类型：` | `error_type` | 空则整段跳过 |
+| `错因：` | `cause` | 必填（没有 cause 就没有可嵌内容） |
+| `知识点缺口：` | `knowledge_gap` | 空则整段跳过 |
+| `改进建议：` | `fix_suggestion` | 空则整段跳过 |
+
+**待补记录不进向量库**：`error_summary` 为空（错因待补）时没有可嵌文本 → **不写 document**；
+待补录写入 `error_summary` 后再 upsert。这样"错因待补"的行在向量库里根本不存在，不会污染召回。
+
+**生命周期**：`ingest_error` / `update_error` 写库后 upsert（同 `err_{id}` 幂等覆盖，改了错因就重嵌）；
+`delete_error` 同步删 document——顺序沿用既定约定：**先删向量后删 DB**（中断时残留"数据还在、可重建"优于孤儿向量）。
 
 ### 题目 document 实例
 
@@ -261,8 +315,8 @@ doc_id = "{entity}_{id}"
 
 | 段 | 取值 | 说明 |
 | --- | ---- | ---- |
-| `entity` | `q`（questions）/ `kn`（knowledge_notes） | 业务实体缩写 |
-| `id` | 业务表主键（questions.id / knowledge_notes.id） | 定位到行 |
+| `entity` | `q`（questions）/ `kn`（knowledge_notes）/ `err`（errors） | 业务实体缩写 |
+| `id` | 业务表主键（questions.id / knowledge_notes.id / errors.id） | 定位到行 |
 
 **示例**：
 
@@ -270,11 +324,12 @@ doc_id = "{entity}_{id}"
 | ------ | ---- |
 | `q_42` | 题目 42 的完整 document（题干+答案+解析+VLM 描述） |
 | `kn_7` | 讲解 7 的 document |
+| `err_5` | 错因 5 的 document（四键转成的中文分节文本） |
 
 **规则**：
 1. **幂等**：同实体（entity + id）恒生成同 doc_id——Chroma `upsert` 天然去重，重复摄入不产生重复 document（更新同 id 的题目内容 = 重算向量后 upsert 同名 doc_id 覆盖）
 2. **按实体操作**：删除/更新题目 = 直接按 doc_id（`q_42`）操作，一个实体一个键
-3. **双来源共存**：`q_*`（题目）与 `kn_*`（讲解）在同一 collection，前缀区分来源；检索按 `doc_type` 过滤时天然混用两者（题目 + 讲解都答"什么是X"）
+3. **三来源共存**：`q_*`（题目）/ `kn_*`（讲解）/ `err_*`（错因）在同一 collection，前缀区分来源；检索按 `doc_type` 过滤时天然混用（题目 + 讲解都答"什么是X"）；错因 document 是**用户私有数据**，MVP 单用户不隔离，多用户时须按 `user_id` 过滤（届时 metadata 需补该字段）
 4. **检索不依赖 doc_id**：查询走 metadata 过滤（subject/topic_tags/doc_type），doc_id 只做桥接与生命周期管理（更新/删除）
 
 ## 组件装配

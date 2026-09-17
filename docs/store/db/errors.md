@@ -63,12 +63,15 @@ CREATE UNIQUE INDEX idx_errors_question ON errors(question_id);
 - 聚合：按知识点（经 question_topics 的 `topic_name` 匹配）/ **按学科（join questions.subject，无需冗余）** / 按时间窗（`first_seen` / `last_seen`）统计
 - 更新：补录 / 修正错因、标记 `resolved`（`update_error`，同一题恒一条记录——再次错同一题是**更新**而非新增）
 
+- 向量化：`error_summary` 非空时写 `err_{id}` document（四键转**中文分节文本**，**JSON 不进向量库**）；待补记录不写向量——见 [vector_store.md](../vector/vector_store.md)「错因 document 的 embedding 文本格式」
+
 ## 与其他表的关系
 
 ```mermaid
 flowchart LR
     E[errors] -->|question_id| Q[questions]
     E -->|知识点| AGG[周报聚合]
+    E -->|err_{id}| V[(Chroma 错因 document)]
     Q --> QT[question_topics 按名字标注] --> T[topics tag 匹配]
     AGG --> R[periodic_reports]
 ```

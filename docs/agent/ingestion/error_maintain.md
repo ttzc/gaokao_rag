@@ -62,10 +62,14 @@ Leader 打包给本 Agent 的输入（示意）：
 - **允许空错因入库**（2026-09-13 定）：用户没交代错因时，`user_reflection` 与 `error_summary` 均传空 → 该行是「**错因待补**」状态（`user_reflection IS NULL AND error_summary IS NULL`），不新增状态字段
 - **也允许入库时就交代错因**：用户在同一条消息里说了「这题我算错了，符号看漏了」→ 结构识别 Agent 一并过 `error-organize` 整理出 `error_summary` → 随本次写入落库
 - `user_reflection` **照存原文**：它是"用户口述的原始依据"（见 [../../store/db/errors.md](../../store/db/errors.md)），Agent 不改写、不润色
+- **写入范围**：SQLite `errors` 行 + Chroma `err_{id}` document（**错因非空时**才写向量；待补状态没有可嵌文本，不写）——两态一致由门面保证，Agent 不感知细节（见 [../../ingestion/error.md](../../ingestion/error.md)）
 
 ### 改错因（action = "update"）
 
 **这是隔天补录的主路径**（2026-09-13 用户明确：错题增删改查的「改」是必做功能）：
+
+**触发时机**（2026-09-17 定）：查询错题本 / 薄弱点时结果里含**待补**记录（`user_reflection IS NULL AND error_summary IS NULL`）
+→ Leader 如实标注「（错因待补）」并邀请用户补充（**不催、不阻塞**）→ 用户口述 → 委派本 Agent 写入。
 
 1. **补录空错因**：先前留空的记录，用户事后交代了 → 写入 `user_reflection` + `error_summary`
 2. **修正已有错因**：用户改口（「我不是公式记混，是审题没看清」）→ 覆盖对应字段

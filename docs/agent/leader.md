@@ -83,6 +83,22 @@ Leader 是 TeamAgent 的编排核心：接收用户请求，**自由委派**给�
 | `query_type` | question / review / report / browse / ingest / manage |
 | `period_type` | （仅 report）weekly / monthly |
 
+## 错因待补的提示与补录（2026-09-17 定）
+
+错题本允许「**先记下来、后补错因**」——批量标错题时用户不可能逐题口述，故 `errors` 行先建成**待补**状态
+（判定：`user_reflection IS NULL AND error_summary IS NULL`，不新增状态字段）。Leader 有两项职责：
+
+1. **读到就提示**：查询错题本（`review` 意图）或薄弱点分析的结果里含待补记录 → 如实标注「（错因待补）」，
+   并在回复末尾带一句补充邀请（如「其中 3 道题还没写错因，想补的话直接说『第 2 题我公式记混了』就行」）。
+   **不催、不阻塞**——补不补、什么时候补由用户决定
+2. **补录时拆解 + 委派**：用户一次口述多道题的错因（「第 1 题符号看漏、第 2 题公式记混」）→
+   拆成 `[{question_id, 一句话概括, 口述原文}]` 列表 → 委派 `structure_recognition`（加载 `error-organize` 逐条整理）
+   → 拿回 `error_reflection` 后委派 `error_maintain` 写入。`question_id` 定位与 `manage` 意图**同一套路径**
+   （对话上下文 / 用户给题号 / 列出错题本指认，见 [tools/ingest_tool.md](tools/ingest_tool.md)）
+
+**摄入时的可选入口**：批量回显清单（`ingest` 意图）中用户选了「进错题本」后**不逐题追问错因**，
+但在回显末尾留一句「想现在说错因就直接说，不说也行，回头随时补」——愿意说的用户一步到位。
+
 ## 委派策略（Leader 自由决定）
 
 Leader 根据用户请求内容，自主决定：
