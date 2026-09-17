@@ -29,6 +29,7 @@ CREATE UNIQUE INDEX idx_errors_question ON errors(question_id);
 - `user_reflection`：用户自己的话描述"我当时怎么错的"（QQ 文字/语音）
 - `error_summary`：LLM 基于口述 + 题目上下文生成的结构化总结（`{error_type, cause, knowledge_gap, fix_suggestion}`）
 - 周报/复习建议**优先消费 `error_summary`**（结构化、可比对），`user_reflection` 作为原始依据保留
+- **两列均可空**：均为空 = 「**错因待补**」状态（判定 `user_reflection IS NULL AND error_summary IS NULL`，**不新增状态字段**）——批量录入先建行、错因后补；检索碰到由 Leader 提示补充（见 [ingestion/error.md](../../ingestion/error.md)、[retrieval/error.md](../../retrieval/error.md)）
 
 ### 错误类型并入 error_summary，不设独立列（2026-09-13 决策）
 
@@ -62,7 +63,6 @@ CREATE UNIQUE INDEX idx_errors_question ON errors(question_id);
 - 录入：`question_id`（必填）→ 口述 → LLM 生成 `error_summary`（由 `error-organize` Skill 产出后传入，见 [../../agent/skills/error-organize.md](../../agent/skills/error-organize.md)）
 - 聚合：按知识点（经 question_topics 的 `topic_name` 匹配）/ **按学科（join questions.subject，无需冗余）** / 按时间窗（`first_seen` / `last_seen`）统计
 - 更新：补录 / 修正错因、标记 `resolved`（`update_error`，同一题恒一条记录——再次错同一题是**更新**而非新增）
-
 - 向量化：`error_summary` 非空时写 `err_{id}` document（四键转**中文分节文本**，**JSON 不进向量库**）；待补记录不写向量——见 [vector_store.md](../vector/vector_store.md)「错因 document 的 embedding 文本格式」
 
 ## 与其他表的关系

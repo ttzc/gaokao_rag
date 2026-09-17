@@ -25,7 +25,7 @@ def ingest_question(
 4. **知识点层**：`search_topic` / `create_topic` → 知识点归位（复用 `store/db/topics.py`）
 
 > **原子化约定**：`ingest_question` 只负责把「一道题」写进三层存储，**不接收任何 errors 参数**。
-> 标记为「错题」的题同样先经本函数入库，错因记录由错题本体系的 `ingest_error(question_id)`
+> 标记为「错题」的题同样先经本函数入库；错因记录由**错题管理 Agent** 调 `ingest_error(question_id, user_reflection, error_summary)` 写入（先题后错）
 > 在题目入库后单独写入（见 error.md）。这样 `ingest_question` 与 `errors` 无循环依赖。
 
 **返回**：`{"question_id": int, "doc_id": str}`
@@ -46,7 +46,7 @@ class IngestQuestionTool(FunctionTool):
             question_text=question_text,
             ...
         )
-        # 标记「错题」的题：拿到 question_id 后，错题本体系再调 ingest_error(question_id) 写错因
+        # 标记「错题」的题：拿到 question_id 后，错题管理 Agent 再调 ingest_error(question_id, ...) 写错因
 ```
 
 Agent 只需要提供结构化数据，调用单个函数即可完成入库，不需要知道 `insert_question` → `insert_question_topics` → `upsert_question_doc` 三个步骤。

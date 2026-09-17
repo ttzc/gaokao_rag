@@ -291,7 +291,7 @@ class IngestQuestionTool(FunctionTool):
             ...
         )
         # 标记「错题」的题目：ingest_question 返回 question_id 后，
-        # 再由错题本体系调用独立的 ingest_error(question_id, user_reflection) 写错因
+        # 再由错题管理 Agent 调 ingest_error(question_id, user_reflection, error_summary) 写错因
 ```
 
 Agent 运行时：

@@ -11,7 +11,7 @@
 | **记错因** | `ingest_error` | 摄入链路标为「错题」的题目写完题后写错因；也用于补写之前留空的错因 | 可逆（可再改） |
 | **改错因** | `update_error` | 隔天补录、事后修正（用户改口 / 补充细节）；**`resolved` 标记同样走此路** | 可逆 |
 | **删错题** | `delete_error` | 用户要把某道题移出错题本（≠ 删题目本身） | 不可逆 → 需 Leader 先回显确认 |
-| **标记掌握** | `resolve_error` | 用户说「这题我搞懂了」 | 可逆 |
+| **标记掌握** | `update_error`（或独立 `resolve_error`，待定） | 用户说「这题我搞懂了」 | 可逆 |
 
 > `resolved` 的归属（2026-09-13 定）：**它是 `errors` 行的一个字段，本质是「修改」，归本 Agent**。至于做成独立的 `resolve_error` 还是并入 `update_error` 的一个参数，是函数粒度问题（倾向独立函数——FunctionTool 的 name / description 是 LLM 选工具的唯一依据），具体随门面落地时定。
 
@@ -100,10 +100,10 @@ Leader 定位时要分清语义，拿不准先追问。
 
 | Tool | 状态 | 签名 | 用途 |
 |------|------|------|------|
-| `ingest_error` | ⏳门面未落地 | (question_id, user_reflection="", error_summary=None) → {error_id} | 写错因（允许空） |
+| `ingest_error` | ⏳门面未落地 | (question_id, user_reflection="", error_summary=None) → {error_id, created} | 写错因（允许空；`created=false` = 更新了已有行） |
 | `update_error` | ⏳门面未落地 | (question_id, user_reflection=None, error_summary=None, resolved=None) → {error_id, updated_fields} | 补录 / 修正 / 标记掌握 |
-| `delete_error` | ⏳门面未落地 | (question_id) → {deleted} | 移出错题本 |
-| `resolve_error` | ⏳待定 | (question_id, resolved=True) → {error_id} | 标记掌握（或并入 `update_error`） |
+| `delete_error` | ⏳门面未落地 | (question_id) → {question_id, deleted} | 移出错题本 |
+| `resolve_error` | ⏳待定（可能并入 `update_error`） | (question_id, resolved=True) → {error_id} | 标记掌握 |
 
 全部并入写侧 [`ingest_tool.py`](../tools/ingest_tool.md)，与 `ingest_question` / `update_question` / `delete_question` 同一文件。
 

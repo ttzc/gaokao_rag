@@ -24,7 +24,7 @@ def get_error_stats(
 def get_error_details(question_id: int) -> list[ErrorDetail]:
 ```
 
-**内部流程**：取某题的全部错题记录（口述 `user_reflection` + LLM 结构化 `error_summary`）。
+**内部流程**：取该题的错题记录（`errors` 一题一行，实际恒单条——签名保留 `list` 是为将来留口）：口述 `user_reflection` + LLM 结构化 `error_summary`。
 
 **返回**：`ErrorDetail` 列表（含 **`pending` 标记**——错因待补时为 `True`），供输出整理 Agent 拼「这题为什么错」。
 

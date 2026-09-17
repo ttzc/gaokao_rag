@@ -67,7 +67,7 @@
 | Tool | 状态 | 签名 | 用途 |
 |------|------|------|------|
 | `ingest_question` | ✅已实现 | (question_text, answer_text="", analysis_text="", topic_names=None, raw_file_path=None, question_type="", source_type="exam", subject="数学", exam_year=None, exam_month=None, question_number=None, exam_regions=None) → {question_id, doc_id} | 一道题入库：文件 + SQLite（questions + question_topics）+ Chroma（`doc_id = q_{id}`） |
-| `ingest_error` | ⏳门面未落地 | (question_id, user_reflection="", error_summary=None) → error_id | 错题写错因——**2026-09-13 起归错题管理 Agent**（经 `IngestErrorTool`），不并入本工具 |
+| `ingest_error` | ⏳门面未落地 | (question_id, user_reflection="", error_summary=None) → {error_id, created} | 错题写错因——**2026-09-13 起归错题管理 Agent**（经 `IngestErrorTool`），不并入本工具 |
 | `ingest_image` | ⏳门面未落地 | (image_path, source) → file_id | 图片入库（文件 + files 表） |
 | `ingest_exam_paper` | ⏳门面未落地 | (pdf_path, title="") → file_id | 试卷文件注册（文件 + files 表） |
 
@@ -85,17 +85,17 @@
 **调用链（入库决策子 Agent）**：
 
 ```python
+# 本 Agent 只写题
 result = await ingest_question(
     raw_file_path=raw_file_path, question_text=question_text,
     answer_text=answer_text, analysis_text=analysis_text,
     topic_names=topic_names,        # 来自题目维护 Agent 的 topic_draft
 )                                   # → {question_id, doc_id}
 
-if decision == "error_book":        # 先题后错：错因单独写
-    await ingest_error(
-        question_id=result["question_id"],
-        user_reflection=user_reflection,
-    )
+# 标为「错题」的题：Leader 拿 question_id 再委派错题管理 Agent 写错因
+#   await ingest_error(question_id=result["question_id"],
+#                      user_reflection=...,   # Leader 收集的口述原文
+#                      error_summary=...)     # error-organize Skill 产出，可为空
 ```
 
 ## 题目维护工具（改 / 删）

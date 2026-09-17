@@ -50,7 +50,7 @@ flowchart TD
 | ----------- | ------ | --------- |
 | VLM 图形理解 | FunctionTool | 挂到 VLM 子 Agent 的 tools |
 | 知识点查询 | FunctionTool | 挂到搜索子 Agent 的 tools 列表 |
-| PDF 摄取管线 | 业务 I/O 工具集（Agent 调用） | ingestion 层提供写入函数（ingest_question / ingest_image / ingest_exam_paper / ingest_error 等）；知识点归位复用 src/ingestion/topic.py |
+| PDF 摄取管线 | 业务 I/O 工具集（Agent 调用） | ingestion 层提供写入函数（ingest_question / ingest_image / ingest_exam_paper / ingest_error / update_error / delete_error 等）；知识点归位复用 src/ingestion/topic.py |
 | 意图路由 | Leader 系统提示词能力 | `LEADER_INSTRUCTION` 内置子 Agent 能力清单 + 意图集合表，Leader 匹配后委派（2026-08-28 决策，原独立意图识别子 Agent 已移除） |
 | 错题分析 | FunctionTool + Memory | 挂到聚合子 Agent，读取错题记录 |
 
@@ -88,7 +88,7 @@ gaokao_rag/
 │   │   │                      #     update_question() / delete_question() 改题删题（级联清理）
 │   │   ├── image.py           #   ingest_image() - 存储一张图（规划中）
 │   │   ├── exam_paper.py      #   ingest_exam_paper() - 存储一份试卷（规划中）
-│   │   └── error.py           #   ingest_error() - 存储错题（规划中）
+│   │   └── error.py           #   ingest_error / update_error / delete_error（规划中）
 │   │
 │   ├── retrieval/             # 检索门面（读，封装全部查询与聚合，只读不写，无 LLM）
 │   │   ├── knowledge.py       #   知识检索组件（GaokaoKnowledge + get_knowledge，过滤翻译）
@@ -179,7 +179,7 @@ gaokao_rag/
 | 配置 | `config.toml` + `.env` | 模型、存储、VLM 参数，代码不硬编码 |
 | 模型接入 | `src/api/` | OpenAI 兼容协议封装，LLM / VLM / Embedding 统一接口 |
 | 三层存储（原语） | `src/store/` | 最低层：文件(raw) / SQLite 逐表 CRUD / Chroma 原语。只被 ingestion、retrieval 依赖，不向上依赖 |
-| 摄取门面（写） | `src/ingestion/` | **封装三层存储的全部 增/删/改**：ingest_question / update_question / delete_question、ingest_image、ingest_exam_paper、ingest_error、ingest_knowledge_note、topic 归位（create_topic / add_topic_alias / resolve_or_create_topics / delete_topic）、record_exam_attempt、save_review_plan、save_report。保证三态一致，**无 LLM** |
+| 摄取门面（写） | `src/ingestion/` | **封装三层存储的全部 增/删/改**：ingest_question / update_question / delete_question、ingest_image、ingest_exam_paper、ingest_error / update_error / delete_error、ingest_knowledge_note、topic 归位（create_topic / add_topic_alias / resolve_or_create_topics / delete_topic）、record_exam_attempt、save_review_plan、save_report。保证三态一致，**无 LLM** |
 | 检索门面（读，**新增**） | `src/retrieval/` | **封装全部查询与聚合逻辑**：知识检索组件（`GaokaoKnowledge.search` 语义召回 + 过滤翻译）、search_questions / get_question_detail / browse_questions、search_knowledge_notes、search_topics / list_topics、get_error_stats / get_weak_topics、aggregate_errors / aggregate_attempts / get_report / compute_trend。只读不写 |
 | Agent 编排 | `src/agent/` | TeamAgent 编排（leader.py）+ 子 Agent（ingestion/ 摄入侧、retrieval/ 查询侧，每文件一个 Agent）+ FunctionTool（tools/）+ Skills（skills/，可复用领域指令，渐进式披露）；**只调用 ingestion（写）/ retrieval（读）封装函数**，严禁 import `src.store.*` |
 | MCP 服务 | `src/mcp/` | 对外暴露工具，委托 agent（含 tools） |
