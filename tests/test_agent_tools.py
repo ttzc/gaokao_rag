@@ -468,8 +468,8 @@ class TestDeleteCallForwarding:
     ) -> None:
         recorder = _MaintainRecorder({
             "question_id": 7, "doc_id": "q_7", "deleted": True,
-            "cascade": {"question_topics": 2, "errors": 0,
-                        "exam_attempts": 0, "vector": True},
+            "blocked_by": None,
+            "cascade": {"question_topics": 2, "vector": True},
         })
         monkeypatch.setattr(ingest_tool, "_delete_question", recorder)
 
@@ -488,8 +488,8 @@ class TestDeleteCallForwarding:
         """门面幂等（不存在 → deleted=False 不抛）——工具原样透传，不加工不重试。"""
         recorder = _MaintainRecorder({
             "question_id": 999, "doc_id": "q_999", "deleted": False,
-            "cascade": {"question_topics": 0, "errors": 0,
-                        "exam_attempts": 0, "vector": False},
+            "blocked_by": None,
+            "cascade": {"question_topics": 0, "vector": False},
         })
         monkeypatch.setattr(ingest_tool, "_delete_question", recorder)
 

@@ -100,25 +100,37 @@ def update_question(
 
 ## delete_question — 删除题目
 
-> ✅ **已落地**（门面 2026-09-04，commit `29ae6ee`；阶段 1 级联三处，`errors` / `exam_attempts` 恒 0，阶段 2 随错题本 / 作答模块扩展）。
+> ✅ **已落地**（门面 2026-09-04，commit `29ae6ee`）；**依赖闸门与逐层手动清理见下「删除前依赖检查」（2026-09-18 定）**。
 
 ```python
 def delete_question(*, question_id: int) -> dict:
-    # → {"question_id": 42, "doc_id": "q_42", "deleted": True,
-    #    "cascade": {"question_topics": 2, "errors": 1, "exam_attempts": 3, "vector": True}}
+    # 无依赖 → 正常删除
+    # → {"question_id": 42, "doc_id": "q_42", "deleted": True, "blocked_by": None,
+    #    "cascade": {"question_topics": 2, "vector": True}}
+    # 有依赖 → 拒绝删除（不删任何东西）
+    # → {"question_id": 42, "doc_id": "q_42", "deleted": False,
+    #    "blocked_by": {"errors": 1, "exam_attempts": 0},
+    #    "cascade": {"question_topics": 0, "vector": False}}
 ```
 
-**级联范围（分阶段）**：`question_topics` → `errors` → `exam_attempts` → `questions` 行，外加 Chroma document。孤儿关联没有业务意义（题没了，错题 / 作答留着也查不动），一并清掉。但 errors / exam_attempts 的 DB 模块未落地，级联分两阶段实现：
+**删除前依赖检查（2026-09-18 定，闸门语义）**：删题前先查该题在 `errors` / `exam_attempts` 中的引用：
 
-- **阶段 1（门面落地时）**：级联三处——`question_topics` + Chroma document + `questions` 主行。当前库里 errors / exam_attempts 为 0 行（模块都没有，写不进数据），三处即全量。返回的 `cascade` **恒含四键**（question_topics / errors / exam_attempts / vector）——契约形状从第一天定死（见上返回示例），阶段 1 中 errors / exam_attempts 恒为 0，阶段 2 只让计数变非零、不新增键
-- **阶段 2（errors / exam_attempts DB 模块落地时，随错题本 / 作答功能）**：级联扩展到五处 + 删除预检（见下「删除预检」）
+- **无依赖** → 正常删除（下述三处）
+- **有依赖** → **拒绝删除**，返回 `blocked_by` 计数，**一个字节都不删**；由调用方（Agent）**先手动清依赖**（`delete_error` → 再删题）
+
+**为什么改成闸门（原级联方案作废）**：删除动作永远只影响一个实体——避免「删题顺手抹掉错因」这种不可逆的连带损失。「先删依赖、再删主行」也天然符合外键方向（子表引用父表）。
+
+**回显确认不冲突，是补充**（2026-09-18 用户明确）：Leader 拿 `blocked_by` 回显（「该题还有 1 条错题记录，要先清掉吗」）→ 用户确认 → Leader **先委派错题管理 Agent 删错题、再委派题目维护 Agent 删题**（逐层，先依赖后主行）。
+
+**级联范围**：`question_topics` → Chroma document → `questions` 主行（**不再含 errors / exam_attempts**）。
 
 **执行顺序（重要）**：
 
 1. `get_by_id` 校验存在 + 取 `doc_id`
-2. **先删 Chroma document**
-3. 再删 `question_topics` / `errors` / `exam_attempts`
-4. 最后删 `questions` 行
+2. **查依赖**（errors / exam_attempts）→ 有则拒绝返回，到此为止
+3. **先删 Chroma document**
+4. 再删 `question_topics`
+5. 最后删 `questions` 行
 
 > **为什么先删 Chroma**：跨 SQLite / Chroma 没有分布式事务，中断必然留下不一致。两种残留二选一——
 >
@@ -133,7 +145,7 @@ def delete_question(*, question_id: int) -> dict:
 
 - **raw 永不删**：删题不动 `files` 表、不动 `data/files/raw/`（源数据不可再生原则，见 [store/files/raw.md](../store/files/raw.md)）。即使某题是该文件唯一引用，`files` 登记行也保留——注册表是事实记录
 - **processed 不主动清理**：中间产物可重建，随后续清理策略统一走
-- **幂等**：`question_id` 不存在 → 返回 `{"deleted": False}`，**不抛异常**（删一个不存在的题不是错误，与 store 层 `delete()` 返回 `False` 的语义一致）
+- **幂等**：`question_id` 不存在 → `deleted=False` + `blocked_by=None`，**不抛异常**（删一个不存在的题不是错误，与 store 层 `delete()` 返回 `False` 的语义一致）。**两种 `deleted=False` 必须分清**：`blocked_by=None` = 题不存在；`blocked_by={...}` = 被依赖挡住（需先清依赖）
 - **不可逆**：MVP 不做软删除 / 回收站（单用户低频操作）。因此 **Agent 侧必须先回显确认再调用**，见 [agent/tools/ingest_tool.md](../agent/tools/ingest_tool.md)「题目维护工具」
 
 ---
@@ -142,14 +154,14 @@ def delete_question(*, question_id: int) -> dict:
 
 | 缺口 | 现状 | 影响 |
 |------|------|------|
-| `errors` / `exam_attempts` 的 DB 模块 | `src/store/db/` 当前只有 `files` / `questions` / `question_topics` / `topics` 四个模块 | 级联删无原语可调，门面不能自己写 SQL |
+| `exam_attempts` 的 DB 模块 | `src/store/db/` 现有 `files` / `questions` / `question_topics` / `topics` / **`errors`（2026-09-18 落地）** | errors 的依赖检查已可查（`get_by_question_id`）；exam_attempts 待模块落地后接入（当前恒 0） |
 | 全库无 `ON DELETE CASCADE` | 共享连接开了 `PRAGMA foreign_keys=ON`，但 DDL 未定义级联动作 | 级联一律由门面手工完成，指望不上数据库 |
 
-**落地节奏（2026-09-03 用户拍板，不做「删除时拒绝」）**：
+**落地节奏（2026-09-03 定，2026-09-18 修订）**：
 
-- **阶段 1（现在写门面）**：门面只级联三处（`question_topics` + Chroma + 主行），不为删题倒推建 errors / exam_attempts 模块
-- **阶段 2（错题本功能落地时）**：同步修改删除代码——① 门面级联扩展到 errors；② 新增**删除预检**：查该题是否在错题本中，命中则在 **Leader 回显阶段提示用户**（「该题还有 N 条错题记录」），用户确认后**一起删除**；③ 作答（exam_attempts）同理，随其模块落地
-- 设计哲学：检查结果**进回显**而非**当闸门**——删除本来就要回显确认，连带影响是确认信息的一部分，不需要单独的「拒绝」分支
+- **阶段 1（已实现）**：删三处（`question_topics` + Chroma + 主行），不为删题倒推建 errors / exam_attempts 模块
+- **阶段 2（进行中）**：`delete_question` 加**依赖闸门**——查 errors（已可查）/ exam_attempts（模块未落地，恒 0），有依赖则拒绝删除并返回 `blocked_by`；**不做级联删除**，由 Agent 先 `delete_error` 再删题
+- **修订说明（2026-09-18 用户拍板）**：原设计「检查进回显、确认后一起删除」**作废**，改为**闸门 + 逐层手动清理**；**回显确认保留**——Leader 拿 `blocked_by` 回显（「该题还有 N 条错题记录」），与手动清理是**补充关系、不冲突**
 
 ---
 

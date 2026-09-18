@@ -11,7 +11,7 @@
 | 职责 | 触发意图 | 输入 | 输出 |
 |------|----------|------|------|
 | **知识点归位**（原职责） | `ingest` | `pending_questions` / `lecture_segments` | `topic_draft`（每题知识点草案） |
-| **题目维护**（新增） | `manage` | Leader 打包的 `question_id` + 用户改动描述 / 删除确认 | 改动字段清单 / 级联删除统计 |
+| **题目维护**（新增） | `manage` | Leader 打包的 `question_id` + 用户改动描述 / 删除确认 | 改动字段清单 / 删除结果（含 `blocked_by`） |
 
 核心逻辑封装在 `src/ingestion/topic.py`（`resolve_or_create_topics` / `create_topic` / `add_topic_alias` / `delete_topic`）与 `src/ingestion/question.py`（`update_question` / `delete_question`，独立可测），本 Agent 通过 FunctionTool 调用（见 [../tools/ingest_tool.md](../tools/ingest_tool.md)）。
 
@@ -42,7 +42,7 @@
 | `create_topic` | (name, aliases=[]) → id | 新增 tag（内部先 search 去重） | 知识点归位 |
 | `add_alias` | (topic_id, alias) | 同义表述归并（别名查重） | 知识点归位 |
 | `update_question` | (question_id, ...) → {question_id, doc_id, updated_fields} | 改题目内容 / 答案 / 解析 / 元数据 / 知识点 | 题目维护 ✅ |
-| `delete_question` | (question_id) → {deleted, cascade:{...}} | 级联删题目 | 题目维护 ✅ |
+| `delete_question` | (question_id) → {deleted, blocked_by, cascade} | 删题目（**有依赖则拒绝删除**，见 [../../ingestion/question.md](../../ingestion/question.md)） | 题目维护 ✅ |
 
 > ✅ = 已落地（门面 2026-09-04 `29ae6ee`，工具与 Agent 挂载 2026-09-08）；知识点归位三件（`search_topic` / `create_topic` / `add_alias`）待 `src/ingestion/topic.py` 门面落地后接入（V0.6c）。
 
@@ -96,7 +96,7 @@ Leader 打包给本 Agent 的输入（示意）：
 - **阶段 2（errors / exam_attempts 模块落地后）**：两段式——
   1. **首次委派（预检）**：Agent 查该题在错题本 / 作答记录中的引用，返回回显素材（引用计数），**不删**
   2. Leader 回显（「该题还有 N 条错题记录，会一并删除」）→ 用户确认
-  3. **二次委派（执行，`user_confirmed=true`）**：Agent 调 `delete_question` 级联删除 → 回传 `cascade` 统计
+  3. **二次委派（执行，`user_confirmed=true`）**：Agent 调 `delete_question` → 回传结果；**若返回 `blocked_by`（该题还在错题本 / 作答记录中）则删除被拒**——Leader 先委派错题管理 Agent 清依赖（`delete_error`），再重试删题（**逐层，先依赖后主行**）
   4. 两段式跨会话轮次，预检（首轮）与执行（用户确认后的新一轮）**每轮只委派一次**——与「每成员每任务最多委派一次」铁律天然不冲突（铁律按轮次计，防同一轮内重复委派刷结果），instruction 无需写明例外，只需写清「未收到用户确认前不得执行删除」
 
 ---

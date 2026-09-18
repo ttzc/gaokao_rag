@@ -153,26 +153,30 @@ async def update_question(
 
 
 async def delete_question(*, question_id: int) -> dict:
-    """删除一道题目并级联清理关联数据。本操作**不可逆**（无软删除 / 回收站）。
+    """删除一道题目（依赖闸门 + 手动清理三处）。本操作**不可逆**（无软删除 / 回收站）。
 
     **仅当用户已明确确认删除时才调用本工具**——回显确认（向用户列出删除范围并
     得到同意）由 Leader 在委派前完成；委派任务里没有明确的用户确认标记
     （user_confirmed=true）时，绝不调用本工具。
 
-    级联范围：Chroma 向量文档 + question_topics 知识点关联 + questions 主行；
-    errors / exam_attempts 本版恒为 0（错题本 / 作答模块未落地）。
-    源文件不受影响：raw 原始文件与 files 登记行保留。
+    依赖闸门（不做级联删除）：删前检查该题的 errors / exam_attempts 引用——
+    有依赖则拒绝删除（一个字节都不删），返回 blocked_by 计数。拿到非空
+    blocked_by 时应回显用户（如「该题还有 1 条错题记录，要先清掉吗」），
+    确认后**先委派错题管理 Agent 调 delete_error 清依赖，再重试本工具**。
+    无依赖时级联清理三处：Chroma 向量文档 + question_topics 知识点关联 +
+    questions 主行。源文件不受影响：raw 原始文件与 files 登记行保留。
 
     Args:
         question_id: 题目 ID（questions.id），必填。
 
     Returns:
         {"question_id": int, "doc_id": str, "deleted": bool,
-         "cascade": {"question_topics": 删除的知识点关联条数, "errors": 0,
-                     "exam_attempts": 0, "vector": 向量是否已删}}。
+         "blocked_by": None（无依赖）或 {"errors": 错题记录数, "exam_attempts": 作答记录数},
+         "cascade": {"question_topics": 删除的知识点关联条数, "vector": 向量是否已删}}。
 
-    幂等：question_id 不存在 → deleted=False、cascade 各计数为 0/False，不抛异常
-    ——如实报告「该题已不在库中」即可，不要重试。
+    幂等与两种 deleted=False：blocked_by=None 且 deleted=False → 题不存在，
+    如实报告「该题已不在库中」即可，不要重试；blocked_by 非 None 且 deleted=False
+    → 被依赖挡住，先清依赖再删。两种都不抛异常。
     """
     # 门面为同步实现（Chroma delete + SQLite 级联删），经 to_thread 下沉工作线程。
     return await asyncio.to_thread(_delete_question, question_id=question_id)

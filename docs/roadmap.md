@@ -229,12 +229,12 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 - [x] `UpdateQuestionTool` / `DeleteQuestionTool` 并入写侧 `ingest_tool.py`，挂**题目维护 Agent**
 - [x] 题目维护 Agent 扩 `manage` 分支（改题：字段结构化 / 来源拆解 / 补解析；删题：薄调用 + 回传 cascade）
 - [x] Leader 加 `manage` 意图：定位 `question_id` + 打包委派 + 删前回显确认（Leader 不挂写工具）
-- [ ] **随错题本落地**：`delete_question` 级联扩展到 `errors` + 删除预检（查引用 → 回显连带影响 → 用户确认一起删）
+- [ ] **随错题本落地**：`delete_question` 加**依赖闸门**（有 `errors` 引用则拒绝删除、返回 `blocked_by`）+ Agent 逐层手动清理（先 `delete_error` 再删题）
 - [ ] **随作答功能落地**：同上扩展 `exam_attempts`
 
 > **归属决策（2026-09-03）**：改 / 删**不挂 Leader**——`create_gaokao_leader()` 不传 `tools=`，Leader 是纯编排者，挂写工具破坏「只委派」。执行者为**题目维护 Agent**：其原本就管「已入库题目的知识点改动」，树治理后置后并入改 / 删，属同一类写操作。决策时该 Agent 代码尚未落地，扩职责零成本（现已按此落地）。
 >
-> **级联分阶段（2026-09-03 用户拍板）**：现在门面只删三处，不为删题倒推建 errors / exam_attempts 模块；**错题本功能落地时同步修改删除代码**——检查该题是否在错题本中，命中则在回显阶段提示用户，确认后一起删除；作答同理。检查进回显而非当闸门，不做「删除时拒绝」。删题预检（首轮）与执行（用户确认后的新一轮）分属两轮、每轮只委派一次，与「每成员每任务最多委派一次」铁律天然不冲突，无需例外。
+> **依赖闸门与逐层清理（2026-09-03 定，2026-09-18 修订）**：门面只删三处（`question_topics` + Chroma + 主行），不为删题倒推建 exam_attempts 模块；**错题本落地后**——`delete_question` 查依赖，**有依赖则拒绝删除**（返回 `blocked_by` 计数），由 Agent **先手动清依赖**（`delete_error`）再删题，**不级联删除**。**回显确认保留**：Leader 拿 `blocked_by` 回显「该题还有 N 条错题记录」→ 用户确认 → 逐层删除（先依赖后主行）。原「检查进回显、确认后一起删除」已作废——删除永远只影响一个实体。
 
 **验收**：改一道题的答案 + 知识点 → SQLite 与 Chroma 同步、检索能召回新内容；删一道题 → 关联 `question_topics` 与向量一并清掉，raw 文件保留（`errors` / `exam_attempts` 级联在阶段 2 随各自功能验收）
 
@@ -264,7 +264,7 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 - [ ] 入库决策 Agent 去掉 `error_pending` 降级分支（工具面只保留 `IngestQuestionTool`，不写 `errors`）
 - [ ] `src/retrieval/error.py`：`get_error_stats` / `get_error_details` / `get_weak_topics`
 - [ ] Leader `review` 意图落地
-- [ ] 删题阶段 2：`delete_question` 级联扩展到 `errors` + 删除预检（查引用 → 回显连带影响 → 确认一起删）
+- [ ] 删题依赖闸门：`delete_question` 查 `errors` 引用，有则拒绝删除 + 返回 `blocked_by`；Agent 先 `delete_error` 再删题（**不级联**）；Leader 拿 `blocked_by` 回显确认
 
 **验收**：
 - 说「这题我算错了，符号看漏了」→ 错题入库（含结构化错因）；不说错因只说「这题进错题本」→ 建行成功、错因标记待补

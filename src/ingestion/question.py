@@ -2,15 +2,16 @@
 # 题目摄入与维护门面：
 #   - ingest_question   —— 原子化单题摄入，写入三层存储（FileStore + SQLite + Chroma）
 #   - update_question   —— 改题：SQLite 可变字段 + 知识点关联全量替换 + 向量重建（文件层不动）
-#   - delete_question   —— 删题：级联三处（Chroma document → question_topics → questions 主行）
+#   - delete_question   —— 删题：依赖闸门 + 手动清理三处（Chroma document → question_topics → questions 主行）
 # 设计契约见 docs/ingestion/question.md。
 #
 # 约束：
 #   - 不接收 errors 参数、不感知 errors 表；错题记录由独立的 ingest_error 在题目入库后写（先题后错）。
 #   - 知识点归位复用 src/store/db/topics.py（知识图谱注册表，不是 Chroma 检索组件）。
 #   - 四层顺序固定：文件层（可选）→ DB 层 → 知识点归位 → 向量层。
-#   - 删题级联 errors / exam_attempts 属阶段 2（DB 模块未落地）；返回契约 cascade 恒四键，
-#     阶段 1 中 errors / exam_attempts 恒为 0。
+#   - 删题依赖闸门（2026-09-18 定，原级联方案作废）：题目在 errors / exam_attempts 有引用时
+#     **拒绝删除**（返回 blocked_by 计数、一个字节都不删），不做级联——由 Agent 逐层先清依赖
+#     （delete_error）再重试删题；exam_attempts 模块未落地，计数恒 0 但键保留（契约形状固定）。
 #
 # 各函数的调用示例见对应 docstring。
 
@@ -21,6 +22,7 @@ from typing import Any
 
 from trpc_agent_sdk.log import logger
 
+from src.store.db.errors import get_errors_db
 from src.store.db.questions import get_questions_db
 from src.store.db.question_topics import get_question_topics_db
 from src.store.db.topics import get_topics_db
@@ -441,16 +443,18 @@ def update_question(
 
 
 def delete_question(*, question_id: int) -> dict:
-    """删除一道题：级联清理 Chroma document + question_topics 关联 + questions 主行。
+    """删除一道题：依赖闸门检查 + 手动清理三处（Chroma document + question_topics 关联 + questions 主行）。
+
+    **依赖闸门（2026-09-18 定，原级联方案作废）**：删前先查该题在 ``errors`` /
+    ``exam_attempts`` 中的引用——有依赖则**拒绝删除**，返回 ``blocked_by`` 计数，
+    **一个字节都不删**；Leader 拿计数回显用户（「该题还有 N 条错题记录，要先清掉吗」）
+    → 确认后由错题管理 Agent 先 ``delete_error``、再重试删题。**不做级联删除**：
+    删除动作永远只影响一个实体，避免「删题顺手抹掉错因」的不可逆连带损失。
 
     执行顺序不可反（docs/ingestion/question.md「为什么先删 Chroma」）：跨 SQLite /
     Chroma 没有分布式事务，先删 Chroma——中断残留的是「向量没了、数据还在」，
     重跑向量化即可恢复；反序则残留孤儿向量（检索能命中、回查 SQLite 拿不到内容），
     是不可恢复的脏数据。
-
-    级联分两阶段：阶段 1（本实现）级联三处；errors / exam_attempts 的 DB 模块未
-    落地，返回契约 ``cascade`` 恒含四键（阶段 2 只让计数变非零、不新增键），
-    阶段 1 中 ``errors`` / ``exam_attempts`` 恒为 0。
 
     边界：不动 ``files`` 表、不动 ``data/files/raw/``（源数据不可再生），也不清理
     ``processed/``（中间产物可重建，随后续清理策略统一走）。
@@ -460,17 +464,19 @@ def delete_question(*, question_id: int) -> dict:
 
     Returns:
         ``{"question_id": int, "doc_id": str, "deleted": bool,
-        "cascade": {"question_topics": int, "errors": 0, "exam_attempts": 0,
-        "vector": bool}}``。
+        "blocked_by": dict | None,
+        "cascade": {"question_topics": int, "vector": bool}}``。
+        两种 ``deleted=False`` 必须分清：``blocked_by=None`` = 题不存在（幂等）；
+        ``blocked_by`` 非 ``None`` = 被依赖挡住（需先清依赖再删）。
 
-    幂等：``question_id`` 不存在 → ``deleted=False`` + cascade 各键 0/False，
-    不抛异常（删一个不存在的题不是错误）。
+    幂等：``question_id`` 不存在 → ``deleted=False`` + ``blocked_by=None`` +
+    cascade 各键 0/False，不抛异常（删一个不存在的题不是错误）。
 
     示例：
         result = delete_question(question_id=1)
         # result == {"question_id": 1, "doc_id": "q_1", "deleted": True,
-        #            "cascade": {"question_topics": 2, "errors": 0,
-        #                        "exam_attempts": 0, "vector": True}}
+        #            "blocked_by": None,
+        #            "cascade": {"question_topics": 2, "vector": True}}
     """
     questions_db = get_questions_db()
 
@@ -484,23 +490,40 @@ def delete_question(*, question_id: int) -> dict:
             "question_id": question_id,
             "doc_id": f"q_{question_id}",
             "deleted": False,
-            "cascade": {
-                "question_topics": 0,
-                "errors": 0,  # 阶段 1 恒 0（模块未落地），契约形状固定
-                "exam_attempts": 0,  # 同上
-                "vector": False,
-            },
+            "blocked_by": None,
+            "cascade": {"question_topics": 0, "vector": False},
         }
 
     doc_id = row["doc_id"]
 
-    # 2. 先删 Chroma document（顺序依据见 docstring）
+    # 2. 依赖闸门：有依赖立即返回，一个字节都不删。
+    #    errors 一题一行（有行即 1）；exam_attempts 模块未落地恒 0、键保留
+    #    （契约形状固定，落地后接真计数）。FK 开启时这层闸门也避免父行被引用
+    #    拒删的 IntegrityError 裸奔到 Agent。
+    blocked_by = {
+        "errors": 1 if get_errors_db().get_by_question_id(question_id) is not None else 0,
+        "exam_attempts": 0,
+    }
+    if any(blocked_by.values()):
+        logger.info(
+            "delete_question blocked: question_id=%d blocked_by=%s",
+            question_id, blocked_by,
+        )
+        return {
+            "question_id": question_id,
+            "doc_id": doc_id,
+            "deleted": False,
+            "blocked_by": blocked_by,
+            "cascade": {"question_topics": 0, "vector": False},
+        }
+
+    # 3. 先删 Chroma document（顺序依据见 docstring）
     get_vector_store().delete([doc_id])
 
-    # 3. 再删知识点关联，取删除条数填 cascade
+    # 4. 再删知识点关联，取删除条数填 cascade
     removed_topics = get_question_topics_db().remove_by_question(question_id)
 
-    # 4. 最后删 questions 主行
+    # 5. 最后删 questions 主行
     deleted = questions_db.delete(question_id)
 
     logger.info(
@@ -508,15 +531,11 @@ def delete_question(*, question_id: int) -> dict:
         question_id, doc_id, removed_topics, deleted,
     )
 
-    # 5. 组装返回（cascade 恒四键；raw / processed / files 不动，见 docstring 边界）
+    # 6. 组装返回（raw / processed / files 不动，见 docstring 边界）
     return {
         "question_id": question_id,
         "doc_id": doc_id,
         "deleted": deleted,
-        "cascade": {
-            "question_topics": removed_topics,
-            "errors": 0,
-            "exam_attempts": 0,
-            "vector": True,
-        },
+        "blocked_by": None,
+        "cascade": {"question_topics": removed_topics, "vector": True},
     }

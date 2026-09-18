@@ -18,7 +18,7 @@
 | `KnowledgeTool` | `knowledge_tool` | 知识点查询 / tag 归位（`search` / `create` / `add_alias`） | `src.ingestion.topic` | 搜索信息（查询侧）、题目维护（摄入侧） |
 | `IngestQuestionTool` | `ingest_tool` | 题目摄入（`ingest_question`） | `src.ingestion.question` | 入库决策（摄入侧） |
 | `UpdateQuestionTool` | — | 修改题目信息（内容 / 答案 / 解析 / 元数据 / 知识点） | `src.ingestion.question` | **题目维护**（2026-09-03） |
-| `DeleteQuestionTool` | — | 删除题目（级联 question_topics / errors / exam_attempts + Chroma） | `src.ingestion.question` | **题目维护**（2026-09-03） |
+| `DeleteQuestionTool` | — | 删除题目（`question_topics` + Chroma + 主行；**有 `errors` 依赖则拒绝删除**并返回 `blocked_by`） | `src.ingestion.question` | **题目维护**（2026-09-03） |
 | `IngestErrorTool` | — | 写错因（`ingest_error`，**允许空错因入库**） | `src.ingestion.error` | **错题管理**（2026-09-13） |
 | `UpdateErrorTool` | — | 改错因 / 补录空错因 / 标记掌握（`update_error`） | `src.ingestion.error` | **错题管理**（2026-09-13） |
 | `DeleteErrorTool` | — | 移出错题本（`delete_error`，不动题目本身） | `src.ingestion.error` | **错题管理**（2026-09-13） |

@@ -2,7 +2,8 @@
 
 ingest：入库 → 知识点归位 → 向量写入 → 返回值原子化；
 update：DB 字段同步 + 部分更新语义 + 知识点全量替换 + 向量重建（含 VLM 回读）；
-delete：级联三处（question_topics + Chroma + 主行）+ 幂等 + files 表不动。
+delete：依赖闸门（errors 有引用 → 拒绝、零删除）+ 无依赖级联三处
+（question_topics + Chroma + 主行）+ 幂等 + files 表不动。
 
 依赖 conftest._reset_state（每测试前清空 SQLite + Chroma + FileStore + 重置单例），
 测试之间无顺序依赖。测试直接使用 config 真实路径（data/gaokao.db、data/chroma_db）。
@@ -14,12 +15,14 @@ import json
 
 import pytest
 
+from src.store.db.errors import get_errors_db
 from src.store.db.files import get_files_db
 from src.store.db.questions import get_questions_db
 from src.store.db.question_topics import get_question_topics_db
 from src.store.db.topics import get_topics_db
 from src.store.file_store import FileStore
 from src.store.vector import get_vector_store
+from src.ingestion.error import delete_error, ingest_error
 from src.ingestion.question import delete_question, ingest_question, update_question
 
 
@@ -457,7 +460,7 @@ class TestUpdateQuestion:
 class TestDeleteQuestion:
 
     def test_delete_cascades_three_targets(self):
-        """级联三处：question_topics 计数 + 主行消失 + Chroma 文档消失。"""
+        """无依赖 → 级联三处：question_topics 计数 + 主行消失 + Chroma 文档消失。"""
         r = ingest_question(
             question_text="求椭圆离心率最值。",
             question_type="解答题",
@@ -470,27 +473,19 @@ class TestDeleteQuestion:
         assert res["question_id"] == qid
         assert res["doc_id"] == f"q_{qid}"
         assert res["deleted"] is True
-        assert res["cascade"] == {
-            "question_topics": 2,
-            "errors": 0,        # 阶段 1 恒 0，契约形状固定
-            "exam_attempts": 0,  # 同上
-            "vector": True,
-        }
+        assert res["blocked_by"] is None  # 无依赖
+        assert res["cascade"] == {"question_topics": 2, "vector": True}
         assert get_questions_db().get_by_id(qid) is None
         assert get_vector_store().get(f"q_{qid}") is None
         assert get_vector_store().count() == 0
 
     def test_delete_nonexistent_is_idempotent(self):
-        """不存在的 id → deleted=False，不抛异常，cascade 各键 0/False。"""
+        """不存在的 id → deleted=False + blocked_by=None，不抛异常，cascade 各键 0/False。"""
         res = delete_question(question_id=999)
         assert res["question_id"] == 999
         assert res["deleted"] is False
-        assert res["cascade"] == {
-            "question_topics": 0,
-            "errors": 0,
-            "exam_attempts": 0,
-            "vector": False,
-        }
+        assert res["blocked_by"] is None
+        assert res["cascade"] == {"question_topics": 0, "vector": False}
 
     def test_associations_empty_after_delete(self):
         """删除后 get_by_question 关联清空（知识点行不残留）。"""
@@ -520,3 +515,66 @@ class TestDeleteQuestion:
         delete_question(question_id=r["question_id"])
         # 题没了，源文件登记行保留（注册表是事实记录）
         assert get_files_db().get_by_id(fid) is not None
+
+
+# ── delete_question 依赖闸门（2026-09-18 契约）─────────────────────
+
+class TestDeleteQuestionGate:
+
+    def test_blocked_by_error_deletes_nothing(self):
+        """有 errors 依赖 → 拒绝删除，返回 blocked_by，且**一个字节都没删**。"""
+        r = ingest_question(
+            question_text="求椭圆离心率。",
+            question_type="解答题",
+            topic_names=["椭圆"],
+        )
+        qid = r["question_id"]
+        e = ingest_error(question_id=qid, error_summary={"cause": "记混 e=c/a"})
+
+        res = delete_question(question_id=qid)
+        assert res == {
+            "question_id": qid,
+            "doc_id": r["doc_id"],
+            "deleted": False,
+            "blocked_by": {"errors": 1, "exam_attempts": 0},  # exam_attempts 未落地恒 0、键保留
+            "cascade": {"question_topics": 0, "vector": False},
+        }
+
+        # 闸门核心语义：拒绝 = 零副作用，三处数据原样保留
+        assert get_questions_db().get_by_id(qid) is not None
+        assert get_errors_db().get_by_question_id(qid) is not None
+        assert [x["topic_name"] for x in get_question_topics_db().get_by_question(qid)] == ["椭圆"]
+        vs = get_vector_store()
+        assert vs.get(f"q_{qid}") is not None
+        assert vs.get(f"err_{e['error_id']}") is not None
+        assert vs.count() == 2
+
+    def test_gate_distinguishes_missing_question_from_blocked(self):
+        """两种 deleted=False 可区分：题不存在 blocked_by=None；被挡 blocked_by 非 None。"""
+        r = ingest_question(question_text="题干", question_type="填空题")
+        ingest_error(question_id=r["question_id"], user_reflection="口述")
+
+        blocked = delete_question(question_id=r["question_id"])
+        missing = delete_question(question_id=999999)
+        assert blocked["deleted"] is False and blocked["blocked_by"] is not None
+        assert missing["deleted"] is False and missing["blocked_by"] is None
+
+    def test_delete_succeeds_after_clearing_dependency(self):
+        """先清依赖（delete_error）再删题 → 闸门放行，级联三处成功。"""
+        r = ingest_question(
+            question_text="题干",
+            question_type="填空题",
+            topic_names=["导数"],
+        )
+        qid = r["question_id"]
+        ingest_error(question_id=qid, error_summary={"cause": "看漏负号"})
+        assert delete_question(question_id=qid)["deleted"] is False
+
+        delete_error(qid)
+        res = delete_question(question_id=qid)
+        assert res["deleted"] is True
+        assert res["blocked_by"] is None
+        assert res["cascade"] == {"question_topics": 1, "vector": True}
+        assert get_questions_db().get_by_id(qid) is None
+        assert get_errors_db().get_by_question_id(qid) is None
+        assert get_vector_store().count() == 0
