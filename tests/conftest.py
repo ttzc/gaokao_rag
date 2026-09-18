@@ -24,6 +24,7 @@ import src.store.db.files as _files_mod
 import src.store.db.questions as _questions_mod
 import src.store.db.topics as _topics_mod
 import src.store.db.question_topics as _qt_mod
+import src.store.db.errors as _errors_mod
 import src.store.file_store as _file_store_mod
 import src.retrieval.knowledge as _knowledge_mod
 import src.store.vector.vector_store as _vector_store_mod
@@ -173,6 +174,7 @@ def _reset_state(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
     _questions_mod._questions_db = None
     _topics_mod._topics_db = None
     _qt_mod._question_topics_db = None
+    _errors_mod._errors_db = None
     reset_schema_tracking()
     _vector_store_mod._instance = None
     _knowledge_mod._instance = None
@@ -183,11 +185,13 @@ def _reset_state(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
     #     question_topics 的 FK 又引用 files/questions，插入前依赖表必须先存在。
     #     注意 get_*_db() 只返回空壳单例（构造不建表），必须真实触碰 _connect()
     #     才会触发基类 SQLiteTableDB._init_schema 的 CREATE TABLE IF NOT EXISTS。
-    #     顺序 = FK 依赖序：files → questions → topics → question_topics。
+    #     顺序 = FK 依赖序：files → questions → topics → question_topics → errors
+    #     （errors.question_id 引用 questions.id，预热必须排在 questions 之后）。
     _files_mod.get_files_db()._connect()
     _questions_mod.get_questions_db()._connect()
     _topics_mod.get_topics_db()._connect()
     _qt_mod.get_question_topics_db()._connect()
+    _errors_mod.get_errors_db()._connect()
 
     # 4. FileStore：清空 5 个子目录下的文件（保留目录本身）
     _clear_file_store_subdirs()
