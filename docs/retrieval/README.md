@@ -22,7 +22,7 @@
 | `question.py` | `search_questions` / `get_question_detail` / `browse_questions` | [question.md](question.md) |
 | `knowledge_note.py` | `search_knowledge_notes` | [knowledge_note.md](knowledge_note.md) |
 | `topic.py` | `search_topics` / `list_topics` / `get_topic` | [topic.md](topic.md) |
-| `error.py` | `get_error_stats` / `get_error_details` / `get_weak_topics` | [error.md](error.md) |
+| `error.py` | `get_error_stats` / `get_error_details`（✅ 已落地）；`get_weak_topics`（⏳ 随周报设计） | [error.md](error.md) |
 | `exam_attempt.py` | `get_attempt_stats` | [exam_attempt.md](exam_attempt.md) |
 | `report.py` | `aggregate_errors` / `aggregate_attempts` / `get_report` / `compute_trend` | [report.md](report.md) |
 

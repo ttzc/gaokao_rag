@@ -322,6 +322,20 @@ class TestCount:
         db.insert(question_id=qid2)
         assert db.count() == 2
 
+    def test_count_resolved(self, db: ErrorsDB, sample_question: int, sample_error: int):
+        """count_resolved 只数 resolved=1 的行（读门面掌握率分子）。"""
+        assert db.count_resolved() == 0
+        db.update(sample_question, resolved=True)
+        assert db.count_resolved() == 1
+        # 再补一行待补错题：total+1 但 resolved 不变
+        qid2 = get_questions_db().insert(
+            source_type="homework", subject="数学",
+            content_text="计算 1+1=？", question_type="填空题",
+        )
+        db.insert(question_id=qid2)
+        assert db.count() == 2
+        assert db.count_resolved() == 1
+
 
 # ── 单例 factory ───────────────────────────────────────────────────
 

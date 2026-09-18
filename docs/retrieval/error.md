@@ -1,22 +1,33 @@
-# error — 错题统计与薄弱知识点
+# error — 错题统计与明细
 
-把 `errors` 表聚合成对学生有用的错题画像（统计、明细、薄弱知识点）。只读，不直接写 `errors`。
+把 `errors` 表聚合成对学生有用的错题画像（统计、明细）。只读，不直接写 `errors`。
+
+> **落地状态（2026-09-18）**：✅ `get_error_stats`（基础口径）/ `get_error_details` 已落地；
+> ⏳ 知识点分布、时间趋势、`get_weak_topics` 属周报口径，随周报设计实现（见下「本期范围」）。
+
+## 本期范围（2026-09-18 定）
+
+| 内容 | 状态 | 说明 |
+|------|------|------|
+| `get_error_stats` 基础口径 | ✅ 已落地 | 三个计数原语 + 掌握率，**无时间窗参数** |
+| `get_error_details` | ✅ 已落地 | 单题错因明细（一题一行，实际恒单条） |
+| 统计的知识点分布 `by_topic` | ⏳ | 需 join `question_topics`，属周报口径 |
+| 统计的时间趋势 / 时间窗参数 | ⏳ | 属周报口径 |
+| `get_weak_topics` | ⏳ | **`WeakTopic.accuracy` 数据源未定**——errors 只记错题，"正确率"的分母应是"做过的题数"，唯一来源 `exam_attempts` 未落地；随周报设计定稿 |
 
 ## get_error_stats — 错题统计
 
 ```python
-def get_error_stats(
-    window: tuple[str, str] | None = None,
-) -> ErrorStats:
+def get_error_stats() -> ErrorStats:
 ```
 
-**内部流程**：`errors` 表按可选时间窗（`first_seen BETWEEN`）聚合：
+**内部流程**：三个 `ErrorsDB` 计数原语组合——
 
-- 总错题数、已掌握数（`resolved`）、掌握率、**错因待补数**（判定见 [store/db/errors.md](../store/db/errors.md)，统计两列均为空的行）
-- 按知识点分布（经 `question_topics.topic_name` 匹配）
-- 时间分布（窗口内新增趋势，按 `first_seen` 分桶）
+- `count()` → 总错题数
+- `count_resolved()` → 已掌握数；掌握率 = `resolved / total`（`total = 0` 时取 `0.0`，除零安全）
+- `count_pending()` → 错因待补数（判定见 [store/db/errors.md](../store/db/errors.md)）——**仍计入 total**，但不参与错因分析
 
-**返回**：`ErrorStats`（总数 / 掌握率 / 知识点分布 / 时间趋势 / **`pending_count`：错因待补数**）。
+**返回**：`ErrorStats`（`total` / `resolved` / `resolve_rate` / `pending_count`）。空库也是合法返回，不抛异常。
 
 ## get_error_details — 错题明细
 
@@ -42,7 +53,13 @@ def get_error_details(question_id: int) -> list[ErrorDetail]:
 > 设计意图：错因是错题本的核心价值，但要求用户在录入时逐题口述会劝退。故采取「先记下来、后补」——
 > 数据库里这行记录本身就是"错因待记录"的凭证（见 [store/db/errors.md](../store/db/errors.md)「一题一行」）。
 
-## get_weak_topics — 薄弱知识点
+## get_weak_topics — 薄弱知识点 ⏳
+
+> **未落地**（2026-09-18）：随周报设计实现。卡点是 `accuracy` 的口径——errors 表只记错题，
+> "正确率"的分母应是"该知识点做过的题数"，唯一来源 `exam_attempts` 尚未落地；
+> 若拿"该知识点全库题数"当分母，算出的是错题覆盖率而非正确率，语义会误导。
+> 候选方向：改用 `ratio`（该知识点错题数 ÷ 总错题数，与周报表格已有的「占比」列同口径），
+> 真正的正确率待 `exam_attempts` 落地后作为独立字段补。**设计周报时定稿。**
 
 ```python
 def get_weak_topics(top_n: int = 5) -> list[WeakTopic]:

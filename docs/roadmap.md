@@ -262,7 +262,7 @@ score 修好后连带行为改善：search Agent 不再靠 LLM 猜相关性自�
 - [ ] **错题管理 Agent**（`src/agent/ingestion/error_maintain.py`）+ 三个写工具（`IngestErrorTool` / `UpdateErrorTool` / `DeleteErrorTool`，并入 `ingest_tool.py`）
 - [ ] Leader：摄入闭环恢复「错题」去向、错因收集与后补流程、`manage` 意图**按对象分派**
 - [ ] 入库决策 Agent 去掉 `error_pending` 降级分支（工具面只保留 `IngestQuestionTool`，不写 `errors`）
-- [ ] `src/retrieval/error.py`：`get_error_stats` / `get_error_details` / `get_weak_topics`
+- [x] `src/retrieval/error.py`：`get_error_stats`（基础口径）/ `get_error_details`；⏳ `get_weak_topics` + 统计的 `by_topic` / `by_date` 随**周报设计**实现（`accuracy` 口径待定）
 - [ ] Leader `review` 意图落地
 - [ ] 删题依赖闸门：`delete_question` 查 `errors` 引用，有则拒绝删除 + 返回 `blocked_by`；Agent 先 `delete_error` 再删题（**不级联**）；Leader 拿 `blocked_by` 回显确认
 

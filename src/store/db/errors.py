@@ -253,6 +253,17 @@ class ErrorsDB(SQLiteTableDB):
         ).fetchone()
         return row["cnt"]
 
+    def count_resolved(self) -> int:
+        """已掌握错题数（``resolved=1``），供读门面算掌握率。
+
+        Returns:
+            ``resolved`` 为 1 的行数。
+        """
+        row = self._connect().execute(
+            "SELECT COUNT(*) AS cnt FROM errors WHERE resolved = 1"
+        ).fetchone()
+        return row["cnt"]
+
     def count_pending(self) -> int:
         """「错因待补」行数（周报/补充提示用，门面层 ``pending_count`` 直接读）。
 

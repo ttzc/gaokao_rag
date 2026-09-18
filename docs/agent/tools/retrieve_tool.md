@@ -87,7 +87,7 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 | `browse_questions` | 业务查询 | `src.retrieval.question` | 浏览 | ⏳ 门面已落地，待工具化 |
 | `search_knowledge_notes` | 业务查询 | `src.retrieval.knowledge_note` | 搜索信息 | ⏳ 门面未落地 |
 | `search_topics` / `list_topics` / `get_topic` | 业务查询 | `src.retrieval.topic` | 搜索信息 / 题目维护 | ⏳ 门面未落地 |
-| `get_error_stats` / `get_error_details` / `get_weak_topics` | 业务查询 | `src.retrieval.error` | 聚合数据 | ⏳ 门面未落地 |
+| `get_error_stats` / `get_error_details` | 业务查询 | `src.retrieval.error` | 聚合数据 | ✅ 已落地（2026-09-18）；`get_weak_topics` ⏳ 随周报设计 |
 | `get_attempt_stats` | 业务查询 | `src.retrieval.exam_attempt` | 聚合数据 | ⏳ 门面未落地 |
 | `aggregate_errors` / `aggregate_attempts` / `get_report` / `compute_trend` | 业务查询（含落库） | `src.retrieval.report` + `src.ingestion` 写 | 聚合数据 | ⏳ 门面未落地 |
 
