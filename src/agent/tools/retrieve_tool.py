@@ -15,8 +15,10 @@
 # 构造零副作用（只提取函数名 + docstring），门面 import 不碰网络，
 # 模块级实例直接导出，无需惰性实体化。
 #
-# 其余业务查询工具（search_questions / get_error_stats 等）待 src.retrieval
-# 对应门面落地后逐个补充，见 docs/agent/tools/retrieve_tool.md「工具清单」。
+# 错题本读侧（get_error_stats / get_error_details，2026-09-21 工具化）包装
+# src/retrieval/error.py 读门面——dataclass 一律经 asdict 转 dict 再给 LLM。
+# 其余业务查询工具（search_questions 等）待 src.retrieval 对应门面落地后
+# 逐个补充，见 docs/agent/tools/retrieve_tool.md「工具清单」。
 #
 # 注解写法约束（同 ingest_tool，实测验证）：可空参数必须写 typing.Optional[...]
 # 而非 X | None——FunctionTool schema 生成器只识别 typing 写法。
@@ -31,6 +33,8 @@ from trpc_agent_sdk.server.knowledge.langchain_knowledge import SearchType  # �
 from trpc_agent_sdk.server.knowledge.tools import LangchainKnowledgeSearchTool
 from trpc_agent_sdk.tools import FunctionTool
 
+from src.retrieval.error import get_error_details as _get_error_details
+from src.retrieval.error import get_error_stats as _get_error_stats
 from src.retrieval.knowledge import get_knowledge
 from src.retrieval.question import get_question_detail as _get_question_detail
 
@@ -104,4 +108,55 @@ async def get_question_detail(question_id: int) -> dict:
 # 工具函数 __name__ 即 LLM 可见工具名，故保持 get_question_detail。
 get_question_detail_tool = FunctionTool(get_question_detail)
 
-__all__ = ["knowledge_search_tool", "get_question_detail_tool"]
+
+# ── 错题本读侧（薄封装 src.retrieval.error，2026-09-21 工具化） ──────────────
+# 两个读门面都返回 dataclass（ErrorStats / ErrorDetail），必须 asdict 转
+# dict / list[dict] 再返回——保证给 LLM 的返回体可 JSON 序列化
+#（get_question_detail 同款模式）。
+# 工具函数 __name__ 即 LLM 可见工具名，故保持 get_error_stats / get_error_details。
+
+
+async def get_error_stats() -> dict:
+    """统计错题本整体情况：错题总数 / 已掌握数 / 掌握率 / 错因待补数（纯 SQLite 计数，**不是语义检索**，别和 knowledge_search 混用）。
+
+    用于回答「我有多少错题 / 掌握得怎么样」类问题，如「我的错题本情况」
+    「错题掌握率多少」——一次调用给出全局画像，不需要逐题查明细。
+
+    Returns:
+        {"total": 错题总数（int）, "resolved": 已掌握数（int）, "resolve_rate": 掌握率（float，0~1，= resolved/total）, "pending_count": 错因待补数（int——口述与结构化总结都还没记的错题，仍算错题、计入 total，但不参与错因分析）}。
+
+    空错题本返回全 0（total=0、resolve_rate=0.0）——这是合法结果不是错误，直接报告「错题本还是空的」即可。
+    """
+    # 门面为同步实现（SQLite 三个计数原语），经 to_thread 下沉工作线程。
+    stats = await asyncio.to_thread(_get_error_stats)
+    # ErrorStats dataclass → dict，保证返回体可 JSON 序列化给 LLM。
+    return asdict(stats)
+
+
+async def get_error_details(question_id: int) -> list[dict]:
+    """按 question_id 查该题的错题明细：错因原文 + 结构化总结 + 掌握状态（纯 SQLite 读取，非语义检索）。
+
+    用于回答「**这道题我为什么错**」——取该题错因记录后组织回复。
+    错题本一题一行，返回列表通常 0 或 1 条。
+
+    Args:
+        question_id: 题目主键 ID（整数），取自对话上下文或召回结果 doc_id 的数字部分（如 "q_42" → 42），不得臆造。
+
+    Returns:
+        明细字典列表（0 或 1 条），每条字段含：error_id / question_id / error_summary（已解析的四键 dict {error_type, cause, knowledge_gap, fix_suggestion}，可空 None）/ user_reflection（用户口述错因原文，可空 None）/ pending（bool，True = 错因待补——此时应告知用户这道题还没记录错因，邀请补充）/ resolved（bool，是否已掌握）/ first_seen（首次记入时间）/ last_seen（最后一次更新时间）。
+
+    该题无错题记录返回**空列表**（题目不存在同样是空列表）——**不是错误**，如实报告「这道题不在错题本里」即可，不要重试或换 ID 猜测。
+    """
+    # 门面为同步实现（SQLite 单行读取），经 to_thread 下沉工作线程。
+    details = await asyncio.to_thread(_get_error_details, question_id)
+    # list[ErrorDetail] → list[dict]，asdict 逐条转换。
+    return [asdict(d) for d in details]
+
+
+get_error_stats_tool = FunctionTool(get_error_stats)
+get_error_details_tool = FunctionTool(get_error_details)
+
+__all__ = [
+    "knowledge_search_tool", "get_question_detail_tool",
+    "get_error_stats_tool", "get_error_details_tool",
+]

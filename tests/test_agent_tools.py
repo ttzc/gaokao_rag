@@ -3,15 +3,20 @@
 
 被测主体是模块级工具实例（子 Agent 挂载的交付物）：写侧 ``ingest_question_tool``
 + ``update_question_tool`` + ``delete_question_tool``（FunctionTool，后两件挂题目
-维护子 Agent）+ 读侧 ``knowledge_search_tool``（框架 LangchainKnowledgeSearchTool）
-+ 读侧 ``get_question_detail_tool``（业务查询 FunctionTool），
+维护子 Agent）+ 错题本写侧三件 ``ingest_error_tool`` / ``update_error_tool`` /
+``delete_error_tool``（2026-09-21，挂错题管理子 Agent，规划中）
++ 读侧 ``knowledge_search_tool``（框架 LangchainKnowledgeSearchTool）
++ 读侧 ``get_question_detail_tool``（业务查询 FunctionTool）
++ 错题本读侧两件 ``get_error_stats_tool`` / ``get_error_details_tool``
+（包装 src.retrieval.error 门面，dataclass 经 asdict 转 dict），
 非测试内自行包装的副本。全部 mock 门面（src.ingestion / src.retrieval），
 不触真实存储 / 网络 / 计费 API。
 
 工具函数经 `from src.ingestion.question import ingest_question as _ingest_question`
-（update / delete 同款）绑定到工具模块，monkeypatch 必须打在
-``src.agent.tools.ingest_tool._ingest_question`` / ``._update_question`` /
-``._delete_question``（from-import 在 import 时把函数对象绑进本模块全局，
+（update / delete 及错题三件 `_ingest_error` / `_update_error` / `_delete_error`、
+读侧 `_get_error_stats` / `_get_error_details` 同款）绑定到工具模块，monkeypatch
+必须打在 ``src.agent.tools.ingest_tool._ingest_question`` 等**工具模块全局**
+（from-import 在 import 时把函数对象绑进本模块全局，
 只 patch 源模块不会重绑——同 tests/conftest.py 嵌入层 patch 三处的教训）。
 
 `_run_async_impl` 直调（非公开 run_async）：仿官方 tests/tools/test_function_tool.py，
@@ -33,10 +38,14 @@ from trpc_agent_sdk.tools.utils import get_mandatory_args
 
 from src.agent.tools import ingest_tool, retrieve_tool
 from src.agent.tools.ingest_tool import (
+    delete_error_tool,
     delete_question_tool,
+    ingest_error_tool,
     ingest_question_tool,
+    update_error_tool,
     update_question_tool,
 )
+from src.retrieval.error import ErrorDetail, ErrorStats
 from src.retrieval.question import QuestionDetail
 
 
@@ -82,6 +91,7 @@ class TestToolExports:
         """只导出 tool 实例；包装函数与未来工具不进公共接口面。"""
         assert ingest_tool.__all__ == [
             "ingest_question_tool", "update_question_tool", "delete_question_tool",
+            "ingest_error_tool", "update_error_tool", "delete_error_tool",
         ]
 
 
@@ -107,6 +117,7 @@ class TestRetrieveToolExports:
         """只导出 tool 实例；get_knowledge 绑定与内部机制不进公共接口面。"""
         assert retrieve_tool.__all__ == [
             "knowledge_search_tool", "get_question_detail_tool",
+            "get_error_stats_tool", "get_error_details_tool",
         ]
 
     def test_question_detail_instance(self) -> None:
@@ -267,6 +278,89 @@ class TestMaintainToolMetadata:
         assert desc == delete_question_tool.func.__doc__
         for marker in ("不可逆", "仅当用户已明确确认删除", "user_confirmed",
                        "级联", "幂等", "cascade"):
+            assert marker in desc
+
+
+class TestErrorWriteToolExports:
+    """错题本写侧三件：模块级 FunctionTool 实例 + 工具名逐字一致。
+
+    ``_get_declaration()`` 调用本身就是校验——可空参数误写成 `X | None`
+    （PEP 604 UnionType）会在此抛 ValueError，schema 生成器只认 typing.Optional。
+    """
+
+    def test_instances_are_function_tools(self) -> None:
+        assert isinstance(ingest_error_tool, FunctionTool)
+        assert ingest_error_tool.name == "ingest_error"
+        assert ingest_error_tool.func is ingest_tool.ingest_error
+        assert isinstance(update_error_tool, FunctionTool)
+        assert update_error_tool.name == "update_error"
+        assert update_error_tool.func is ingest_tool.update_error
+        assert isinstance(delete_error_tool, FunctionTool)
+        assert delete_error_tool.name == "delete_error"
+        assert delete_error_tool.func is ingest_tool.delete_error
+
+    def test_declarations_build(self) -> None:
+        """三件 schema 全部生成不抛（抓 Optional 写法回归 + 声明名逐字）。"""
+        for tool in (ingest_error_tool, update_error_tool, delete_error_tool):
+            decl = tool._get_declaration()
+            assert decl.name == tool.name
+
+
+class TestErrorWriteToolMetadata:
+    """错题本写侧三件的参数 schema 与 docstring 语义关键词（LLM 选工具/传参依据）。"""
+
+    def test_ingest_declaration_schema(self) -> None:
+        """ingest_error：question_id 必填；error_summary 为 Optional[dict] → OBJECT+nullable。"""
+        props = ingest_error_tool._get_declaration().parameters.properties
+        assert set(props.keys()) == {"question_id", "user_reflection", "error_summary"}
+        assert props["question_id"].type.value == "INTEGER"
+        assert get_mandatory_args(ingest_error_tool.func) == ["question_id"]
+        es = props["error_summary"]
+        assert es.type.value == "OBJECT"
+        assert es.nullable is True
+        assert props["user_reflection"].type.value == "STRING"
+        assert props["user_reflection"].nullable is True
+
+    def test_ingest_description_semantics(self) -> None:
+        """幂等 / 允许空错因 / 复位+覆盖 / 空值不覆盖 / 四键键名必须全部 LLM 可见。"""
+        desc = ingest_error_tool.description
+        assert desc == ingest_error_tool.func.__doc__
+        for marker in ("幂等", "不必先查", "空错因", "复位", "覆盖", "不会被清空",
+                       "error_type", "knowledge_gap", "fix_suggestion", "created"):
+            assert marker in desc
+
+    def test_update_declaration_schema(self) -> None:
+        """update_error：question_id + 3 个可选字段；resolved BOOLEAN+nullable（三态）。"""
+        props = update_error_tool._get_declaration().parameters.properties
+        assert set(props.keys()) == {
+            "question_id", "user_reflection", "error_summary", "resolved",
+        }
+        assert get_mandatory_args(update_error_tool.func) == ["question_id"]
+        r = props["resolved"]
+        assert r.type.value == "BOOLEAN"
+        assert r.nullable is True
+
+    def test_update_description_semantics(self) -> None:
+        """补录/修正/掌握三用途 + 部分更新 + 与 ingest_error 的区别写进 docstring。"""
+        desc = update_error_tool.description
+        assert desc == update_error_tool.func.__doc__
+        for marker in ("补录", "掌握", "部分更新", "不自动碰", "ingest_error",
+                       "updated_fields"):
+            assert marker in desc
+
+    def test_delete_declaration_schema(self) -> None:
+        """delete_error：schema 只有 question_id（INTEGER、必填）。"""
+        props = delete_error_tool._get_declaration().parameters.properties
+        assert set(props.keys()) == {"question_id"}
+        assert props["question_id"].type.value == "INTEGER"
+        assert get_mandatory_args(delete_error_tool.func) == ["question_id"]
+
+    def test_delete_description_gates(self) -> None:
+        """移出≠删题 + 不可逆 + 确认前置（回显确认）+ 幂等，全部 LLM 可见。"""
+        desc = delete_error_tool.description
+        assert desc == delete_error_tool.func.__doc__
+        for marker in ("移出错题本", "≠ 删题目", "delete_question", "不可逆",
+                       "回显确认", "幂等", "deleted"):
             assert marker in desc
 
 
@@ -518,6 +612,202 @@ class TestDeleteCallForwarding:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# 错题本写侧调用转发（mock src.ingestion.error 门面）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestIngestErrorCallForwarding:
+    """ingest_error 工具：参数 kwargs 透传门面、{error_id, created} 原样返回、异常不吞。"""
+
+    @pytest.mark.asyncio
+    async def test_forwards_all_args_with_dict_intact(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        summary = {
+            "error_type": "知识盲区", "cause": "记混 e=c/a 与 b²=a²-c²",
+            "knowledge_gap": "椭圆离心率定义", "fix_suggestion": "复习焦点三角形模型",
+        }
+        recorder = _MaintainRecorder({"error_id": 3, "created": True})
+        monkeypatch.setattr(ingest_tool, "_ingest_error", recorder)
+
+        result = await ingest_error_tool._run_async_impl(
+            tool_context=_fake_tool_context(),
+            args={
+                "question_id": 42,
+                "user_reflection": "把 b/a 当成离心率了",
+                "error_summary": summary,
+            },
+        )
+
+        assert result == {"error_id": 3, "created": True}
+        assert len(recorder.calls) == 1
+        fwd = recorder.calls[0]
+        assert fwd["question_id"] == 42
+        assert fwd["user_reflection"] == "把 b/a 当成离心率了"
+        # error_summary 四键 dict 原样透传：不字符串化、不丢键、不加键
+        assert fwd["error_summary"] == summary
+        assert set(fwd.keys()) == {"question_id", "user_reflection", "error_summary"}
+
+    @pytest.mark.asyncio
+    async def test_empty_reflection_forwards_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """允许空错因：只传 question_id 时两个错因参数以 None 透传（先建行、错因后补）。"""
+        recorder = _MaintainRecorder({"error_id": 4, "created": True})
+        monkeypatch.setattr(ingest_tool, "_ingest_error", recorder)
+
+        result = await ingest_error_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"question_id": 42},
+        )
+
+        assert "error_id" in result and "created" in result
+        assert recorder.calls[0] == {
+            "question_id": 42, "user_reflection": None, "error_summary": None,
+        }
+
+    @pytest.mark.asyncio
+    async def test_facade_exception_not_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """先题后错：门面 ValueError 原样抛出，由框架转 error 告知 Agent。"""
+
+        def boom(**kwargs) -> None:
+            raise ValueError("question_id=999 不存在，请先入库题目（先题后错）")
+
+        monkeypatch.setattr(ingest_tool, "_ingest_error", boom)
+
+        with pytest.raises(ValueError, match="先题后错"):
+            await ingest_error_tool._run_async_impl(
+                tool_context=_fake_tool_context(), args={"question_id": 999},
+            )
+
+
+class TestUpdateErrorCallForwarding:
+    """update_error 工具：部分更新原样透传——resolved 的 None（不动）与 False（取消掌握）必须区分。"""
+
+    @pytest.mark.asyncio
+    async def test_resolved_false_not_collapsed_to_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        recorder = _MaintainRecorder({"error_id": 3, "updated_fields": ["resolved"]})
+        monkeypatch.setattr(ingest_tool, "_update_error", recorder)
+
+        result = await update_error_tool._run_async_impl(
+            tool_context=_fake_tool_context(),
+            args={"question_id": 42, "resolved": False},
+        )
+
+        assert result == {"error_id": 3, "updated_fields": ["resolved"]}
+        fwd = recorder.calls[0]
+        assert fwd["resolved"] is False  # 显式 False 不被 or/默认值逻辑折叠成 None
+        assert fwd["user_reflection"] is None
+        assert fwd["error_summary"] is None
+
+    @pytest.mark.asyncio
+    async def test_summary_and_resolved_true_passthrough(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        summary = {"cause": "符号看漏了"}
+        recorder = _MaintainRecorder(
+            {"error_id": 3, "updated_fields": ["error_summary", "resolved"]}
+        )
+        monkeypatch.setattr(ingest_tool, "_update_error", recorder)
+
+        result = await update_error_tool._run_async_impl(
+            tool_context=_fake_tool_context(),
+            args={"question_id": 42, "error_summary": summary, "resolved": True},
+        )
+
+        assert result["updated_fields"] == ["error_summary", "resolved"]
+        fwd = recorder.calls[0]
+        assert fwd["error_summary"] == summary
+        assert fwd["resolved"] is True
+        assert fwd["user_reflection"] is None  # 未传字段保持 None = 不动
+
+    @pytest.mark.asyncio
+    async def test_all_defaults_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """只传 question_id → 三个可选字段全部 None 透传；空 updated_fields 原样返回。"""
+        recorder = _MaintainRecorder({"error_id": 3, "updated_fields": []})
+        monkeypatch.setattr(ingest_tool, "_update_error", recorder)
+
+        result = await update_error_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"question_id": 42},
+        )
+
+        assert result["updated_fields"] == []  # 无变更是合法结果，不是错误
+        assert recorder.calls[0] == {
+            "question_id": 42, "user_reflection": None,
+            "error_summary": None, "resolved": None,
+        }
+
+    @pytest.mark.asyncio
+    async def test_facade_exception_not_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """该题无错题记录 → 门面 ValueError 原样抛出（提示改用 ingest_error，归上层判断）。"""
+
+        def boom(**kwargs) -> None:
+            raise ValueError("question_id=999 无错题记录，无法更新")
+
+        monkeypatch.setattr(ingest_tool, "_update_error", boom)
+
+        with pytest.raises(ValueError, match="无错题记录"):
+            await update_error_tool._run_async_impl(
+                tool_context=_fake_tool_context(), args={"question_id": 999},
+            )
+
+
+class TestDeleteErrorCallForwarding:
+    """delete_error 工具：question_id 透传、幂等 deleted=False 原样给出、缺参不触门面。"""
+
+    @pytest.mark.asyncio
+    async def test_forwards_id_and_returns_result(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        recorder = _MaintainRecorder({"question_id": 7, "deleted": True})
+        monkeypatch.setattr(ingest_tool, "_delete_error", recorder)
+
+        result = await delete_error_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"question_id": 7},
+        )
+
+        assert result == {"question_id": 7, "deleted": True}
+        assert recorder.calls == [{"question_id": 7}]
+
+    @pytest.mark.asyncio
+    async def test_idempotent_false_passthrough(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """无错题记录 → deleted=False 不抛异常，工具原样透传（不加工不重试）。"""
+        recorder = _MaintainRecorder({"question_id": 999, "deleted": False})
+        monkeypatch.setattr(ingest_tool, "_delete_error", recorder)
+
+        result = await delete_error_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"question_id": 999},
+        )
+
+        assert result["deleted"] is False
+
+    @pytest.mark.asyncio
+    async def test_missing_question_id_returns_error_not_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """缺 question_id → FunctionTool error 提示补参，门面零调用（不可逆操作防误删）。"""
+        recorder = _MaintainRecorder({"question_id": 0, "deleted": True})
+        monkeypatch.setattr(ingest_tool, "_delete_error", recorder)
+
+        result = await delete_error_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={},
+        )
+
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert recorder.calls == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # get_question_detail 调用转发（mock 读门面）
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -587,6 +877,166 @@ class TestQuestionDetailCall:
             await tool._run_async_impl(
                 tool_context=_fake_tool_context(), args={"question_id": 999},
             )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 错题本读侧两件（get_error_stats / get_error_details）：导出 + schema + asdict 转发
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _fake_stats() -> ErrorStats:
+    """构造一个完整的 ErrorStats 替身（不触库）。"""
+    return ErrorStats(total=10, resolved=4, resolve_rate=0.4, pending_count=2)
+
+
+def _fake_error_detail(question_id: int = 42) -> ErrorDetail:
+    """构造一条已填错因的 ErrorDetail 替身（不触库）。"""
+    return ErrorDetail(
+        error_id=3,
+        question_id=question_id,
+        user_reflection="把 b/a 当成离心率了",
+        error_summary={
+            "error_type": "知识盲区", "cause": "记混公式",
+            "knowledge_gap": "椭圆离心率定义", "fix_suggestion": "复习焦点三角形模型",
+        },
+        pending=False,
+        resolved=False,
+        first_seen="2026-09-01 20:00:00",
+        last_seen="2026-09-10 21:30:00",
+    )
+
+
+class TestErrorReadToolExports:
+    """错题本读侧两件：模块级 FunctionTool 实例 + 工具名逐字 + schema 生成不抛。"""
+
+    def test_instances_and_names(self) -> None:
+        stats = retrieve_tool.get_error_stats_tool
+        details = retrieve_tool.get_error_details_tool
+        assert isinstance(stats, FunctionTool)
+        assert stats.name == "get_error_stats"
+        assert stats.func is retrieve_tool.get_error_stats
+        assert isinstance(details, FunctionTool)
+        assert details.name == "get_error_details"
+        assert details.func is retrieve_tool.get_error_details
+
+    def test_declarations_build(self) -> None:
+        """构造 + _get_declaration() 不抛（抓 Optional 写法回归）。"""
+        assert retrieve_tool.get_error_stats_tool._get_declaration().name == "get_error_stats"
+        assert retrieve_tool.get_error_details_tool._get_declaration().name == "get_error_details"
+
+    def test_declaration_schemas(self) -> None:
+        """stats 零参数（实测 parameters 整体为 None）；details 只暴露 question_id 必填。"""
+        stats_decl = retrieve_tool.get_error_stats_tool._get_declaration()
+        assert not (stats_decl.parameters.properties if stats_decl.parameters else None)
+        props = retrieve_tool.get_error_details_tool._get_declaration().parameters.properties
+        assert set(props.keys()) == {"question_id"}
+        assert props["question_id"].type.value == "INTEGER"
+        assert get_mandatory_args(retrieve_tool.get_error_details) == ["question_id"]
+
+    def test_description_semantics(self) -> None:
+        """统计四字段 / 明细可空与空列表语义写进 docstring，LLM 可见。"""
+        stats_desc = retrieve_tool.get_error_stats_tool.description
+        for marker in ("不是语义检索", "knowledge_search", "掌握率", "错因待补",
+                       "total", "resolve_rate", "pending_count"):
+            assert marker in stats_desc
+        details_desc = retrieve_tool.get_error_details_tool.description
+        for marker in ("为什么错", "一题一行", "error_summary", "user_reflection",
+                       "pending", "resolved", "空列表"):
+            assert marker in details_desc
+
+
+class TestErrorStatsCall:
+    """ErrorStats 经 asdict 转平铺 dict（dataclass 不直接给 LLM）。"""
+
+    @pytest.mark.asyncio
+    async def test_returns_dict_not_dataclass(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_facade() -> ErrorStats:
+            return _fake_stats()
+
+        monkeypatch.setattr(retrieve_tool, "_get_error_stats", fake_facade)
+
+        result = await retrieve_tool.get_error_stats_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={},
+        )
+
+        assert not isinstance(result, ErrorStats)
+        assert isinstance(result, dict)
+        assert result == {
+            "total": 10, "resolved": 4, "resolve_rate": 0.4, "pending_count": 2,
+        }
+
+    @pytest.mark.asyncio
+    async def test_empty_book_all_zero_passthrough(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """空错题本全 0 是合法返回，原样透传（不抛不加工）。"""
+        monkeypatch.setattr(
+            retrieve_tool, "_get_error_stats",
+            lambda: ErrorStats(total=0, resolved=0, resolve_rate=0.0, pending_count=0),
+        )
+
+        result = await retrieve_tool.get_error_stats_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={},
+        )
+
+        assert result == {
+            "total": 0, "resolved": 0, "resolve_rate": 0.0, "pending_count": 0,
+        }
+
+
+class TestErrorDetailsCall:
+    """question_id 透传门面，list[ErrorDetail] 逐条 asdict 转 list[dict]。"""
+
+    @pytest.mark.asyncio
+    async def test_forwards_id_and_returns_list_of_dict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[int] = []
+
+        def fake_facade(question_id: int) -> list[ErrorDetail]:
+            seen.append(question_id)
+            return [_fake_error_detail(question_id)]
+
+        monkeypatch.setattr(retrieve_tool, "_get_error_details", fake_facade)
+
+        result = await retrieve_tool.get_error_details_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"question_id": 42},
+        )
+
+        assert seen == [42]
+        assert isinstance(result, list) and len(result) == 1
+        row = result[0]
+        assert isinstance(row, dict) and not isinstance(row, ErrorDetail)
+        assert row["error_id"] == 3
+        assert row["question_id"] == 42
+        assert row["pending"] is False
+        assert row["resolved"] is False
+        assert row["error_summary"]["knowledge_gap"] == "椭圆离心率定义"
+        assert row["user_reflection"] == "把 b/a 当成离心率了"
+        assert row["first_seen"] == "2026-09-01 20:00:00"
+        assert row["last_seen"] == "2026-09-10 21:30:00"
+
+    @pytest.mark.asyncio
+    async def test_empty_result_is_empty_list_not_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """无记录（含题不存在）→ 工具函数透传 []——不是错误、不抛。
+
+        空值折叠是框架行为非工具语义：`_run_async_impl` 内
+        `res = await self.func(**args) or {}`（_function_tool.py）会把 falsy 的
+        [] 折成 {} 再给 LLM——故工具函数本体直接断言 []；FunctionTool 路径
+        一并断言 {} 钉住现状（框架若修正折叠，此断言会红，届时改回 [] 即可）。
+        """
+        monkeypatch.setattr(retrieve_tool, "_get_error_details", lambda question_id: [])
+
+        assert await retrieve_tool.get_error_details(999) == []
+
+        folded = await retrieve_tool.get_error_details_tool._run_async_impl(
+            tool_context=_fake_tool_context(), args={"question_id": 999},
+        )
+        assert folded == {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

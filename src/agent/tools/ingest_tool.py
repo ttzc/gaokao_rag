@@ -1,8 +1,10 @@
 # src/agent/tools/ingest_tool.py
-# 题目写侧 FunctionTool：包装 src/ingestion/question.py 的写门面——
+# 写侧 FunctionTool：包装 src/ingestion/question.py + src/ingestion/error.py 写门面——
 #   - ingest_question（入库）→ 入库决策子 Agent 挂载；
 #   - update_question / delete_question（改题 / 删题，2026-09-04 落地）
-#     → 题目维护子 Agent 挂载（manage 分支，见 docs/agent/ingestion/question_maintain.md）。
+#     → 题目维护子 Agent 挂载（manage 分支，见 docs/agent/ingestion/question_maintain.md）；
+#   - ingest_error / update_error / delete_error（错题本，2026-09-21 落地）
+#     → 错题管理子 Agent 挂载（规划中，见 docs/agent/tools/ingest_tool.md）。
 #
 # 为什么薄封装而不直接 FunctionTool(门面)：
 #   - 门面 ingest_question 有 14 个 keyword-only 参数，其中 image_file_ids /
@@ -10,8 +12,8 @@
 #   - 工具只暴露 LLM 友好子集（本文件），门面未暴露的参数走默认值；
 #   - update_question 工具同理不暴露 image_file_ids——图片摄入管线（ingest_image）
 #     未落地，库里不存在合法的图片 file_id，图形关联改动本版不支持；
-#   - 错题分支（ingest_error）待其门面落地后再补
-#     （先题后错，见 docs/agent/tools/ingest_tool.md）。
+#   - 错题本三件同理薄封装 src/ingestion/error.py：参数即门面全子集
+#     （LLM 无复杂形状可传错），先题后错校验归门面，工具不重复实现。
 #
 # 分层铁律：工具只调 src/ingestion / src/retrieval 门面，严禁 import src.store.*。
 # 不含 LLM 决策：入不入库、归哪个知识点由上游子 Agent 决定，本工具只执行写入。
@@ -28,11 +30,17 @@ from typing import Optional
 
 from trpc_agent_sdk.tools import FunctionTool
 
+from src.ingestion.error import delete_error as _delete_error
+from src.ingestion.error import ingest_error as _ingest_error
+from src.ingestion.error import update_error as _update_error
 from src.ingestion.question import delete_question as _delete_question
 from src.ingestion.question import ingest_question as _ingest_question
 from src.ingestion.question import update_question as _update_question
 
-__all__ = ["ingest_question_tool", "update_question_tool", "delete_question_tool"]
+__all__ = [
+    "ingest_question_tool", "update_question_tool", "delete_question_tool",
+    "ingest_error_tool", "update_error_tool", "delete_error_tool",
+]
 
 
 async def ingest_question(
@@ -195,3 +203,120 @@ async def delete_question(*, question_id: int) -> dict:
 ingest_question_tool = FunctionTool(ingest_question)
 update_question_tool = FunctionTool(update_question)
 delete_question_tool = FunctionTool(delete_question)
+
+
+# ── 错题本写侧 FunctionTool（包装 src/ingestion/error.py，2026-09-21 落地） ──
+# 错题定位一律用 question_id（一题一行），不是 error_id；空值语义
+# （"" / {} = 未提供、不覆盖既有错因）由门面实现，工具原样透传不加工。
+# 工具函数 __name__ 即 LLM 可见工具名，故必须逐字保持
+# ingest_error / update_error / delete_error。
+
+
+async def ingest_error(
+    *,
+    question_id: int,
+    user_reflection: Optional[str] = None,
+    error_summary: Optional[dict] = None,
+) -> dict:
+    """记录一道题的错因到错题本（先题后错：题目必须已入库）。
+
+    **幂等，不必先查**——该题不在错题本则新建记录，已存在则更新该行；
+    「同一题又错一次 / 又补一句错因」重复调用是常态，不是错误。
+
+    **允许空错因**——用户只说「这题进错题本」、没说为什么错时，
+    `user_reflection` 与 `error_summary` 都留空即可：先建行（错因待补），
+    之后再用 `update_error` 补录。
+
+    **再次错同一题会复位「已掌握」**——又错了说明还没掌握，掌握标记自动清除、
+    最近错误时间刷新；且本次带的新错因**覆盖**旧值。
+    **空值不覆盖**——只传 `question_id`（不传错因）时，已有的错因不会被清空。
+
+    Args:
+        question_id: 题目 ID（questions.id），必填，须已入库；未入库会报错，不要臆造 ID 重试。
+        user_reflection: 用户口述的原始错因描述（照存原文）；用户没说就留空 None。
+        error_summary: 结构化错因总结，四键 dict：{"error_type": 错因类型, "cause": 具体错因, "knowledge_gap": 知识点缺口, "fix_suggestion": 改进建议}。键名逐字照写；某个键不知道就**省略该键**，不要编造填充；没有总结就留空 None。
+
+    Returns:
+        {"error_id": 错题记录 ID（int）, "created": bool}——created=True 为新建，created=False 表示更新了已有记录（该题此前已在错题本）。
+
+    Raises:
+        ValueError: question_id 不存在（先题后错）——如实报告题目未入库，不要换 ID 猜测重试。
+    """
+    # 门面为同步实现（SQLite errors 行 + Chroma err_{id} 重嵌），经 to_thread
+    # 下沉工作线程，防阻塞 Agent 事件循环。
+    return await asyncio.to_thread(
+        _ingest_error,
+        question_id=question_id,
+        user_reflection=user_reflection,
+        error_summary=error_summary,
+    )
+
+
+async def update_error(
+    *,
+    question_id: int,
+    user_reflection: Optional[str] = None,
+    error_summary: Optional[dict] = None,
+    resolved: Optional[bool] = None,
+) -> dict:
+    """补录 / 修正一道错题的错因，或标记掌握——**部分更新**，只改你传入的字段。
+
+    三种用途：
+    - **补录错因**：先前留空的「错因待补」记录，用户后来才说错在哪；
+    - **修正错因**：用户改口，传入新值全量替换旧值；
+    - **标记掌握**：用户说「这题我搞懂了」→ `resolved=True`（反悔则 `resolved=False`）。
+
+    不传 / None / "" = **不修改该字段**（错因不可清空——传 "" 视为未提供，
+    与 update_question 的 ""=清空 语义**相反**，勿照搬）。
+
+    **与 ingest_error 的区别**：本工具**不自动碰 `resolved`**——它是「补录 / 修正」
+    语义，不影响掌握状态；只有显式传 `resolved` 才改掌握标记。想表达「又错了」
+    应该用 ingest_error。
+
+    Args:
+        question_id: 题目 ID（questions.id），必填，用于定位错题记录。
+        user_reflection: 新的用户口述错因（全量替换旧原文）；None/"" = 不动。
+        error_summary: 新的结构化错因总结，四键 dict：{"error_type": 错因类型, "cause": 具体错因, "knowledge_gap": 知识点缺口, "fix_suggestion": 改进建议}，键名逐字照写、不知道的键省略（全量替换旧总结）；None/{} = 不动。
+        resolved: 是否已掌握：True =「这题我搞懂了」/ False = 取消掌握标记 / 不传 = 不动掌握状态。
+
+    Returns:
+        {"error_id": 错题记录 ID（int）, "updated_fields": 实际发生变更的字段名列表}。updated_fields 为空列表 = 传入值与现值全部相同、未发生任何变更（不是错误，如实报告即可）。
+
+    Raises:
+        ValueError: question_id 无错题记录——该题还没进过错题本，应改用 ingest_error 记录，不要换 ID 猜测重试。
+    """
+    # 门面为同步实现（SQLite 逐项比对 + 仅错因变化才重嵌），经 to_thread 下沉。
+    return await asyncio.to_thread(
+        _update_error,
+        question_id=question_id,
+        user_reflection=user_reflection,
+        error_summary=error_summary,
+        resolved=resolved,
+    )
+
+
+async def delete_error(question_id: int) -> dict:
+    """把一道题**移出错题本**——**≠ 删题目**：题面、答案、解析、知识点关联全部保留。
+
+    用户说「这道题我不想再在错题本里看到」用本工具；说「把这题删了」应该用
+    delete_question（删的是题目本身），二者别混用。
+
+    本操作**不可逆**（无软删除 / 回收站）。**仅当 Leader 已完成回显确认时
+    才调用本工具**——委派任务里没有明确的用户确认时，绝不调用。
+
+    Args:
+        question_id: 题目 ID（questions.id），必填，用于定位错题记录。
+
+    Returns:
+        {"question_id": int, "deleted": bool}。
+
+    幂等：该题无错题记录 → {"deleted": False}，不抛异常——如实报告
+    「该题不在错题本里」即可，不要重试。
+    """
+    # 门面为同步实现（先删 Chroma err_{id} 再删 errors 行），经 to_thread 下沉。
+    return await asyncio.to_thread(_delete_error, question_id=question_id)
+
+
+ingest_error_tool = FunctionTool(ingest_error)
+update_error_tool = FunctionTool(update_error)
+delete_error_tool = FunctionTool(delete_error)

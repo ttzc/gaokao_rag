@@ -87,7 +87,7 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 | `browse_questions` | 业务查询 | `src.retrieval.question` | 浏览 | ⏳ 门面已落地，待工具化 |
 | `search_knowledge_notes` | 业务查询 | `src.retrieval.knowledge_note` | 搜索信息 | ⏳ 门面未落地 |
 | `search_topics` / `list_topics` / `get_topic` | 业务查询 | `src.retrieval.topic` | 搜索信息 / 题目维护 | ⏳ 门面未落地 |
-| `get_error_stats` / `get_error_details` | 业务查询 | `src.retrieval.error` | 聚合数据 | ✅ 已落地（2026-09-18）；`get_weak_topics` ⏳ 随周报设计 |
+| `get_error_stats` / `get_error_details` | 业务查询 | `src.retrieval.error` | 聚合数据 | ✅ 已工具化（2026-09-21；门面 2026-09-18 落地）；`get_weak_topics` ⏳ 随周报设计 |
 | `get_attempt_stats` | 业务查询 | `src.retrieval.exam_attempt` | 聚合数据 | ⏳ 门面未落地 |
 | `aggregate_errors` / `aggregate_attempts` / `get_report` / `compute_trend` | 业务查询（含落库） | `src.retrieval.report` + `src.ingestion` 写 | 聚合数据 | ⏳ 门面未落地 |
 
@@ -108,13 +108,21 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 - **业务查询工具（如 `get_question_detail_tool`）模块级直接实例化即可**：`FunctionTool.__init__` 零副作用（与 `ingest_question_tool` 同理），门面 import 不碰网络，无需惰性导出
 - 严禁 `import src.store.*`
 
+### 错题本读侧（✅ 已实现，2026-09-21）
+
+`src/agent/tools/retrieve_tool.py` 导出 `get_error_stats_tool` / `get_error_details_tool`，薄封装 `src/retrieval/error.py`——门面返回 dataclass（`ErrorStats` / `ErrorDetail`），工具一律 `asdict()` 转 dict / list[dict] 再给 LLM（`get_question_detail` 同款模式）。
+
+- **`get_error_stats()` → dict**：纯 SQLite 计数四件套 `{total, resolved, resolve_rate(0~1), pending_count}`（待补数 = 两列错因均空，仍计入 total、不参与错因分析）；答「我有多少错题 / 掌握得怎么样」。**不是语义检索**，与 `knowledge_search` 的区分写进了 docstring；空错题本全 0 是合法结果
+- **`get_error_details(question_id)` → list[dict]**：单题错因明细（一题一行，0 或 1 条）`{error_id, question_id, user_reflection, error_summary(已解析四键 dict), pending, resolved, first_seen, last_seen}`；答「这道题我为什么错」。无记录 / 题不存在 = 空列表，**不是错误**（docstring 明示如实报告，不重试不换 ID）
+- ⚠️ **空列表折叠（框架行为，非错题本特有）**：`FunctionTool._run_async_impl` 内 `res = await self.func(...) or {}` 会把 falsy 的 `[]` 折成 `{}` 再给 LLM——工具函数本体契约仍是 `[]`（docstring / 测试如此断言），`{}` 是框架对**所有** falsy 返回的兜底，已在 `tests/test_agent_tools.py` 钉住现状
+
 ## 挂载矩阵（读侧）
 
 | 子 Agent | 挂载工具 |
 |----------|----------|
 | 搜索信息 | **MVP（2026-08-29 已注册进 Leader）挂 `knowledge_search_tool`（`LangchainKnowledgeSearchTool`）+ `get_question_detail_tool` 两个**（后者 2026-08-31 补挂，召回后按需查单题完整详情）；其余业务查询工具（`search_questions` / `search_knowledge_notes` / `search_topics` 等）待封装后逐个补挂 |
 | VLM 理解 | `VLMUnderstandTool`（见 [ingest_tool.md](ingest_tool.md)，理解检索到的题图） |
-| 聚合数据 | 业务查询工具（`get_error_stats` / `get_attempt_stats` / `aggregate_*` / `get_report`） |
+| 聚合数据 | 业务查询工具（`get_error_stats` / `get_attempt_stats` / `aggregate_*` / `get_report`）——**`get_error_stats_tool` / `get_error_details_tool` 已落地（2026-09-21）**，聚合数据子 Agent 规划中、其余待封装 |
 | 输出整理 | —（纯 LLM 格式化，可选 `get_question_detail`） |
 
 ## 与门面的边界

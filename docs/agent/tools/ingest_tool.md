@@ -23,7 +23,7 @@
 | `UpdateErrorTool` | — | 改错因 / 补录空错因 / 标记掌握（`update_error`） | `src.ingestion.error` | **错题管理**（2026-09-13） |
 | `DeleteErrorTool` | — | 移出错题本（`delete_error`，不动题目本身） | `src.ingestion.error` | **错题管理**（2026-09-13） |
 
-> **实现现状（2026-09-08 更新）**：代码侧已落地 `IngestQuestionTool`（`src/agent/tools/ingest_tool.py`，导出 `ingest_question_tool`，2026-08-28）与改 / 删两件（导出 `update_question_tool` / `delete_question_tool`，2026-09-08）；`ExtractTool` / `VLMUnderstandTool` / `KnowledgeTool` 及读侧工具**逐个按链路需要实现中，不急于归并**——写齐后再对齐本文件与 `retrieve_tool.md` 的两文件结构。本表为规划目标，不代表已全部实现。
+> **实现现状（2026-09-21 更新）**：代码侧已落地 `IngestQuestionTool`（`src/agent/tools/ingest_tool.py`，导出 `ingest_question_tool`，2026-08-28）、改 / 删两件（导出 `update_question_tool` / `delete_question_tool`，2026-09-08）与错题本写侧三件（导出 `ingest_error_tool` / `update_error_tool` / `delete_error_tool`，2026-09-21，见下文「错题本工具」）；`ExtractTool` / `VLMUnderstandTool` / `KnowledgeTool` 及读侧工具**逐个按链路需要实现中，不急于归并**——写齐后再对齐本文件与 `retrieve_tool.md` 的两文件结构。本表为规划目标，不代表已全部实现。
 >
 > **改 / 删已落地（规划 2026-09-03，门面 2026-09-04 `29ae6ee`，工具 2026-09-08）**：设计见 [ingestion/question.md](../../ingestion/question.md)，工具挂题目维护 Agent（`manage` 分支）。
 
@@ -67,7 +67,7 @@
 | Tool | 状态 | 签名 | 用途 |
 |------|------|------|------|
 | `ingest_question` | ✅已实现 | (question_text, answer_text="", analysis_text="", topic_names=None, raw_file_path=None, question_type="", source_type="exam", subject="数学", exam_year=None, exam_month=None, question_number=None, exam_regions=None) → {question_id, doc_id} | 一道题入库：文件 + SQLite（questions + question_topics）+ Chroma（`doc_id = q_{id}`） |
-| `ingest_error` | ⏳门面未落地 | (question_id, user_reflection="", error_summary=None) → {error_id, created} | 错题写错因——**2026-09-13 起归错题管理 Agent**（经 `IngestErrorTool`），不并入本工具 |
+| `ingest_error` | ✅已实现（2026-09-21） | (*, question_id, user_reflection=None, error_summary=None) → {error_id, created} | 错题写错因——**2026-09-13 起归错题管理 Agent**（经 `IngestErrorTool`，独立工具），不并入本工具，见下文「错题本工具」 |
 | `ingest_image` | ⏳门面未落地 | (image_path, source) → file_id | 图片入库（文件 + files 表） |
 | `ingest_exam_paper` | ⏳门面未落地 | (pdf_path, title="") → file_id | 试卷文件注册（文件 + files 表） |
 
@@ -147,6 +147,26 @@ Bot: 确认删除第 3 题【导数应用】恒成立参数取值范围（Q42）
 
 路径 ③ 缓做的理由：语义检索可能命中多道，还要再确认一轮「是第 1 道还是第 3 道」，交互变长；先等真实场景遇到再补。
 
+## 错题本工具（记 / 改 / 移出）
+
+> ✅ **已落地**（门面 2026-09-18；工具 2026-09-21）。门面设计见 [ingestion/error.md](../../ingestion/error.md)。挂**错题管理子 Agent**（规划中，`src/agent/ingestion/` 尚无对应模块）。
+
+错题记录一律以 `question_id` 定位（**一题一行**，`error_id` 只是返回值、不是 LLM 要传的入参）；空值语义（`""` / `{}` = 未提供、**不覆盖**既有错因）由门面实现，工具 kwargs 原样透传不加工。
+
+| Tool | 状态 | 签名 | 用途 |
+|------|------|------|------|
+| `ingest_error` | ✅已实现 | (*, question_id, user_reflection=None, error_summary=None) → {error_id, created} | 记错因：**幂等不必先查**——不在错题本则建（允许空错因，「错因待补」先建行后补录）；已在则更新并**自动复位 `resolved`**（「又错了」= 还没掌握）+ 刷 `last_seen`；本次带的新错因**覆盖**旧值，空值不覆盖 |
+| `update_error` | ✅已实现 | (*, question_id, user_reflection=None, error_summary=None, resolved=None) → {error_id, updated_fields} | 补录 / 修正错因、标记掌握：**部分更新**，不传 / None / `""` = 不动（错因**不可清空**，`""` 语义与 `update_question` 相反）；**不自动碰 `resolved`**——只有显式传才改，与 `ingest_error` 的「又错了」语义划清 |
+| `delete_error` | ✅已实现 | (question_id) → {question_id, deleted} | 移出错题本：删 `errors` 行 + `err_{id}` 向量，**题面 / 答案 / 解析 / 知识点关联全部保留**——**≠ `delete_question`**（删题目本身），用户措辞二选一不可混用。**不可逆 → 仅 Leader 回显确认后调用**；幂等：无记录 `deleted=False` 不抛异常 |
+
+**实现说明**：
+
+- **两把写钥匙的分工**（LLM 最易混的一对，docstring 各自写死区别）：「这道题又错了」→ `ingest_error`（复位掌握 + 覆盖错因）；「补一下错因 / 改口 / 这题我搞懂了」→ `update_error`（不碰 `resolved`，除非显式传）
+- **`error_summary` 为 `Optional[dict]`**：四键 `{error_type, cause, knowledge_gap, fix_suggestion}`（error-organize Skill 产出成品），schema 生成器实测可解析裸 `dict`（OBJECT + nullable），无需降级 `str`；不知道的键省略、不编造
+- **`resolved` 为 `Optional[bool]`（三态）**：`None` 不动 / `True` 掌握 / `False` 取消掌握——工具层原样透传，`False` 不得被默认值逻辑折叠（有回归测试钉住）
+- **与 `delete_question` 依赖闸门联动**（2026-09-08 联动约定）：删题被 `blocked_by={"errors": ≥1}` 挡住 → Leader 回显 → 改派错题管理 `delete_error` 清依赖 → 重试删题
+- 注解铁律同款：可空参数 `typing.Optional[...]`；门面同步实现经 `asyncio.to_thread` 下沉
+
 ## 挂载矩阵（写侧）
 
 | 子 Agent | 挂载工具 |
@@ -154,7 +174,7 @@ Bot: 确认删除第 3 题【导数应用】恒成立参数取值范围（Q42）
 | 文档识别 | `ExtractTool` + `VLMUnderstandTool` |
 | 题目维护 | `KnowledgeTool` + `UpdateQuestionTool` + `DeleteQuestionTool`（`manage` 意图由 Leader 委派本 Agent） |
 | 入库决策 | `IngestQuestionTool` |
-| **错题管理** | `IngestErrorTool` + `UpdateErrorTool` + `DeleteErrorTool`（`ingest` 标为错题时 + `manage` 错题侧，2026-09-13 新增） |
+| **错题管理** | `IngestErrorTool` + `UpdateErrorTool` + `DeleteErrorTool`（`ingest` 标为错题时 + `manage` 错题侧，2026-09-13 新增；**三件工具已落地 2026-09-21**，错题管理子 Agent 本体规划中） |
 | VLM 理解 | `VLMUnderstandTool`（理解检索到的图，见 retrieve_tool 侧） |
 
 ## 与门面的边界
