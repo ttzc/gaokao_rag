@@ -111,7 +111,8 @@ get_question_detail_tool = FunctionTool(get_question_detail)
 
 # ── 错题本读侧（薄封装 src.retrieval.error，2026-09-21 工具化） ──────────────
 # 两个读门面都返回 dataclass（ErrorStats / ErrorDetail），必须 asdict 转
-# dict / list[dict] 再返回——保证给 LLM 的返回体可 JSON 序列化
+# dict 再返回（明细包进 {count, details}）——既对齐工具返回统一 dict 的规范、
+# 可 JSON 序列化，也规避框架对 falsy 返回的 `or {}` 折叠（见 get_error_details）。
 #（get_question_detail 同款模式）。
 # 工具函数 __name__ 即 LLM 可见工具名，故保持 get_error_stats / get_error_details。
 
@@ -133,24 +134,27 @@ async def get_error_stats() -> dict:
     return asdict(stats)
 
 
-async def get_error_details(question_id: int) -> list[dict]:
+async def get_error_details(question_id: int) -> dict:
     """按 question_id 查该题的错题明细：错因原文 + 结构化总结 + 掌握状态（纯 SQLite 读取，非语义检索）。
 
     用于回答「**这道题我为什么错**」——取该题错因记录后组织回复。
-    错题本一题一行，返回列表通常 0 或 1 条。
+    错题本一题一行，明细通常 0 或 1 条。
 
     Args:
         question_id: 题目主键 ID（整数），取自对话上下文或召回结果 doc_id 的数字部分（如 "q_42" → 42），不得臆造。
 
     Returns:
-        明细字典列表（0 或 1 条），每条字段含：error_id / question_id / error_summary（已解析的四键 dict {error_type, cause, knowledge_gap, fix_suggestion}，可空 None）/ user_reflection（用户口述错因原文，可空 None）/ pending（bool，True = 错因待补——此时应告知用户这道题还没记录错因，邀请补充）/ resolved（bool，是否已掌握）/ first_seen（首次记入时间）/ last_seen（最后一次更新时间）。
+        {"count": 记录条数（0 或 1）, "details": 明细字典列表（0 或 1 条）}。details 每条字段含：error_id / question_id / error_summary（已解析的四键 dict {error_type, cause, knowledge_gap, fix_suggestion}，可空 None）/ user_reflection（用户口述错因原文，可空 None）/ pending（bool，True = 错因待补——此时应告知用户这道题还没记录错因，邀请补充）/ resolved（bool，是否已掌握）/ first_seen（首次记入时间）/ last_seen（最后一次更新时间）。
 
-    该题无错题记录返回**空列表**（题目不存在同样是空列表）——**不是错误**，如实报告「这道题不在错题本里」即可，不要重试或换 ID 猜测。
+    该题无错题记录 → count=0、details=[]（题目不存在同样 count=0）——**不是错误**，如实报告「这道题不在错题本里」即可，不要重试或换 ID 猜测。
     """
     # 门面为同步实现（SQLite 单行读取），经 to_thread 下沉工作线程。
     details = await asyncio.to_thread(_get_error_details, question_id)
-    # list[ErrorDetail] → list[dict]，asdict 逐条转换。
-    return [asdict(d) for d in details]
+    # list[ErrorDetail] → list[dict]（asdict 逐条），包进非空 dict 返回：
+    # 一是项目工具返回规范统一为 dict，二是规避框架 _run_async_impl 的
+    # `res = ... or {}` 对 falsy 空列表的折叠（返回裸 [] 时 LLM 会看到 {}），
+    # count 键让 LLM 一眼区分「无记录（0）」与「有记录（1）」。
+    return {"count": len(details), "details": [asdict(d) for d in details]}
 
 
 get_error_stats_tool = FunctionTool(get_error_stats)

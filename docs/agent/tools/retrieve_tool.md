@@ -110,11 +110,11 @@ tRPC-Agent-Python 在 `trpc_agent_sdk.server.knowledge.tools.langchain_knowledge
 
 ### 错题本读侧（✅ 已实现，2026-09-21）
 
-`src/agent/tools/retrieve_tool.py` 导出 `get_error_stats_tool` / `get_error_details_tool`，薄封装 `src/retrieval/error.py`——门面返回 dataclass（`ErrorStats` / `ErrorDetail`），工具一律 `asdict()` 转 dict / list[dict] 再给 LLM（`get_question_detail` 同款模式）。
+`src/agent/tools/retrieve_tool.py` 导出 `get_error_stats_tool` / `get_error_details_tool`，薄封装 `src.retrieval.error` 门面——门面返回 dataclass（`ErrorStats` / `ErrorDetail`），工具一律 `asdict()` 转 dict 再给 LLM（`get_question_detail` 同款模式），**返回形状统一为 dict**（对齐项目 9 工具返回规范，详见下）。
 
 - **`get_error_stats()` → dict**：纯 SQLite 计数四件套 `{total, resolved, resolve_rate(0~1), pending_count}`（待补数 = 两列错因均空，仍计入 total、不参与错因分析）；答「我有多少错题 / 掌握得怎么样」。**不是语义检索**，与 `knowledge_search` 的区分写进了 docstring；空错题本全 0 是合法结果
-- **`get_error_details(question_id)` → list[dict]**：单题错因明细（一题一行，0 或 1 条）`{error_id, question_id, user_reflection, error_summary(已解析四键 dict), pending, resolved, first_seen, last_seen}`；答「这道题我为什么错」。无记录 / 题不存在 = 空列表，**不是错误**（docstring 明示如实报告，不重试不换 ID）
-- ⚠️ **空列表折叠（框架行为，非错题本特有）**：`FunctionTool._run_async_impl` 内 `res = await self.func(...) or {}` 会把 falsy 的 `[]` 折成 `{}` 再给 LLM——工具函数本体契约仍是 `[]`（docstring / 测试如此断言），`{}` 是框架对**所有** falsy 返回的兜底，已在 `tests/test_agent_tools.py` 钉住现状
+- **`get_error_details(question_id)` → dict**：`{"count": 0 或 1, "details": [明细字典]}`，明细字段 `{error_id, question_id, user_reflection, error_summary(已解析四键 dict), pending, resolved, first_seen, last_seen}`；答「这道题我为什么错」。无记录 / 题不存在 = `{count: 0, details: []}`，**不是错误**（docstring 明示如实报告，不重试不换 ID）。读门面签名保留 `list[ErrorDetail]`（将来一题多行时 `{count, details}` 形状不变），工具层包 dict
+- **为什么 dict 而非裸 list**：项目 9 个工具 8 个返回 dict，裸 `list[dict]` 是异类；且 `FunctionTool._run_async_impl` 内 `res = await self.func(...) or {}`（`_function_tool.py`）会把 falsy 的 `[]` 折成 `{}` 给 LLM（空记录与折叠不可区分）——返回恒 truthy 的 dict 既对齐规范、**从根上绕开折叠**，`count` 键还让 LLM 一眼判有无
 
 ## 挂载矩阵（读侧）
 

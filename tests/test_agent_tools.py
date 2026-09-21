@@ -941,7 +941,7 @@ class TestErrorReadToolExports:
             assert marker in stats_desc
         details_desc = retrieve_tool.get_error_details_tool.description
         for marker in ("为什么错", "一题一行", "error_summary", "user_reflection",
-                       "pending", "resolved", "空列表"):
+                       "pending", "resolved", "count=0"):
             assert marker in details_desc
 
 
@@ -987,10 +987,15 @@ class TestErrorStatsCall:
 
 
 class TestErrorDetailsCall:
-    """question_id 透传门面，list[ErrorDetail] 逐条 asdict 转 list[dict]。"""
+    """question_id 透传门面，明细逐条 asdict 后包进 {count, details} dict 返回。
+
+    返回形状定为非空 dict（工具返回统一 dict 规范）：`count` 让 LLM 一眼区分
+    无记录（0）/ 有记录（1），且 dict 恒 truthy——框架 `_run_async_impl` 的
+    `res = ... or {}` 折叠不再可能触达（上一版返回裸 list 时 [] 会被折成 {}）。
+    """
 
     @pytest.mark.asyncio
-    async def test_forwards_id_and_returns_list_of_dict(
+    async def test_forwards_id_and_returns_counted_dict(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         seen: list[int] = []
@@ -1006,8 +1011,10 @@ class TestErrorDetailsCall:
         )
 
         assert seen == [42]
-        assert isinstance(result, list) and len(result) == 1
-        row = result[0]
+        assert isinstance(result, dict)  # 恒 truthy，or {} 折叠无从触达
+        assert result["count"] == 1
+        assert len(result["details"]) == 1
+        row = result["details"][0]
         assert isinstance(row, dict) and not isinstance(row, ErrorDetail)
         assert row["error_id"] == 3
         assert row["question_id"] == 42
@@ -1019,24 +1026,17 @@ class TestErrorDetailsCall:
         assert row["last_seen"] == "2026-09-10 21:30:00"
 
     @pytest.mark.asyncio
-    async def test_empty_result_is_empty_list_not_error(
+    async def test_empty_result_is_count_zero_not_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """无记录（含题不存在）→ 工具函数透传 []——不是错误、不抛。
-
-        空值折叠是框架行为非工具语义：`_run_async_impl` 内
-        `res = await self.func(**args) or {}`（_function_tool.py）会把 falsy 的
-        [] 折成 {} 再给 LLM——故工具函数本体直接断言 []；FunctionTool 路径
-        一并断言 {} 钉住现状（框架若修正折叠，此断言会红，届时改回 [] 即可）。
-        """
+        """无记录（含题不存在）→ {count: 0, details: []}——不是错误、不抛、不折叠。"""
         monkeypatch.setattr(retrieve_tool, "_get_error_details", lambda question_id: [])
 
-        assert await retrieve_tool.get_error_details(999) == []
-
-        folded = await retrieve_tool.get_error_details_tool._run_async_impl(
+        result = await retrieve_tool.get_error_details_tool._run_async_impl(
             tool_context=_fake_tool_context(), args={"question_id": 999},
         )
-        assert folded == {}
+
+        assert result == {"count": 0, "details": []}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
